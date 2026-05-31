@@ -14,6 +14,7 @@ import {
 } from "@/modules/editor/lib/diffCache";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { statusCodeForMode } from "./statusDecoration";
 import type { SourceControlSummary } from "./useSourceControl";
 
 type PanelState = "closed" | "loading" | "no-repo" | "ready" | "error";
@@ -117,34 +118,6 @@ function normalizeError(error: unknown): string {
     if (typeof message === "string") return message;
   }
   return "Unknown source control error";
-}
-
-function normalizeStatusCode(status: string): string {
-  const code = status.trim().toUpperCase();
-  switch (code) {
-    case "?":
-      return "U";
-    case "A":
-      return "A";
-    case "M":
-      return "M";
-    case "D":
-      return "D";
-    case "R":
-    case "C":
-      return "R";
-    case "U":
-      return "U";
-    default:
-      return code || "M";
-  }
-}
-
-function statusCodeForMode(mode: DiffMode, file: GitChangedFile): string {
-  if (mode === "-" && file.untracked) return "U";
-  const primary = mode === "+" ? file.indexStatus : file.worktreeStatus;
-  const fallback = mode === "+" ? file.worktreeStatus : file.indexStatus;
-  return normalizeStatusCode(primary !== " " ? primary : fallback);
 }
 
 function makeEntry(

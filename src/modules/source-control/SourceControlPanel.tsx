@@ -47,6 +47,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { statusAccentClass } from "./statusDecoration";
 import type { SourceControlSummary } from "./useSourceControl";
 import {
   useSourceControlPanel,
@@ -101,23 +102,6 @@ function entryPathLabel(entry: SourceControlFileEntry): string {
 function upstreamBadgeLabel(upstream: string | null | undefined): string {
   if (!upstream) return "No upstream";
   return upstream;
-}
-
-function statusAccent(code: string): string {
-  switch (code) {
-    case "A":
-      return "bg-emerald-500/85";
-    case "U":
-      return "bg-teal-500/85";
-    case "M":
-      return "bg-amber-500/85";
-    case "D":
-      return "bg-rose-500/85";
-    case "R":
-      return "bg-sky-500/85";
-    default:
-      return "bg-muted-foreground/40";
-  }
 }
 
 function checkboxValue(state: CheckState): boolean | "indeterminate" {
@@ -941,7 +925,7 @@ const EntryRow = memo(function EntryRow({
       <span
         className={cn(
           "pointer-events-none absolute inset-y-1 left-0 w-[2px] rounded-full transition-opacity",
-          statusAccent(entry.statusCode),
+          statusAccentClass(entry.statusCode),
           isSelected || focused
             ? "opacity-100"
             : "opacity-55 group-hover:opacity-95",

@@ -18,6 +18,7 @@ import {
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
 import type { useFileTree } from "./lib/useFileTree";
+import { statusTextClass } from "@/modules/source-control/statusDecoration";
 
 type Tree = ReturnType<typeof useFileTree>;
 
@@ -31,6 +32,10 @@ export type EntryRowProps = {
   tree: Tree;
   isSelected: boolean;
   isRenaming: boolean;
+  /** Git status code for a file row (U/M/A/D/R), if changed. */
+  statusCode?: string;
+  /** Most prominent git status among a directory's descendants, if any. */
+  dirCode?: string;
   onOpenFile: (path: string, pin?: boolean) => void;
   onSelectPath: (path: string) => void;
   onRevealInTerminal?: (path: string) => void;
@@ -53,6 +58,8 @@ function EntryRowImpl(props: EntryRowProps) {
     tree,
     isSelected,
     isRenaming,
+    statusCode,
+    dirCode,
     onOpenFile,
     onSelectPath,
     onRevealInTerminal,
@@ -62,6 +69,7 @@ function EntryRowImpl(props: EntryRowProps) {
 
   const [isConfirming, setIsConfirming] = useState(false);
   const iconUrl = isDir ? folderIconUrl(name, isExpanded) : fileIconUrl(name);
+  const gitCode = isDir ? dirCode : statusCode;
   const createTarget = isDir ? path : path.slice(0, path.lastIndexOf("/")) || rootPath;
   const paddingLeft = 6 + depth * 12;
 
@@ -122,7 +130,25 @@ function EntryRowImpl(props: EntryRowProps) {
             ) : (
               <span className="size-4 shrink-0" />
             )}
-            <span className="min-w-0 flex-1 truncate">{name}</span>
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate",
+                gitCode && statusTextClass(gitCode),
+              )}
+            >
+              {name}
+            </span>
+            {!isDir && statusCode ? (
+              <span
+                className={cn(
+                  "shrink-0 text-[10px] font-semibold leading-none tabular-nums",
+                  statusTextClass(statusCode),
+                )}
+                aria-hidden
+              >
+                {statusCode}
+              </span>
+            ) : null}
           </button>
         )}
       </ContextMenuTrigger>
