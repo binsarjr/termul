@@ -30,6 +30,7 @@ import { InlineInput } from "./InlineInput";
 import { copyToClipboard, revealInFinder } from "./lib/contextActions";
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
+import { useExplorerGitStatus } from "./lib/useExplorerGitStatus";
 import { useFileTree } from "./lib/useFileTree";
 import { useGlobalShortcuts } from "@/modules/shortcuts";
 
@@ -157,6 +158,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
     ref,
   ) {
     const tree = useFileTree(rootPath, { onPathRenamed, onPathDeleted });
+    const git = useExplorerGitStatus(rootPath);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isSearchActive, setIsSearchActive] = useState(false);
@@ -338,6 +340,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
               tree={tree}
               isSelected={selectedPath === row.path}
               isRenaming={row.kind === "rename"}
+              statusCode={row.isDir ? undefined : git.fileCode.get(row.path)}
+              dirCode={row.isDir ? git.dirCode.get(row.path) : undefined}
               onOpenFile={onOpenFile}
               onSelectPath={setSelectedPath}
               onRevealInTerminal={onRevealInTerminal}
