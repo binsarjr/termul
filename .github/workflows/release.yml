@@ -10,8 +10,11 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
+    env:
+      APPLE_API_KEY_PATH_SECRET: ${{ secrets.APPLE_API_KEY_PATH }}
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - platform: macos-latest
@@ -65,7 +68,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Write Apple API key to disk
-        if: startsWith(matrix.platform, 'macos')
+        if: startsWith(matrix.platform, 'macos') && env.APPLE_API_KEY_PATH_SECRET != ''
         shell: bash
         env:
           KEY_CONTENT: ${{ secrets.APPLE_API_KEY_PATH }}
