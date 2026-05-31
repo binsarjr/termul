@@ -88,7 +88,7 @@
 
 ## Install
 
-Latest installers are on the [Releases](https://github.com/binsarjr/its-just-terminal/releases/latest) page. The app auto-updates from there.
+Latest installers are on the [Releases](https://github.com/binsarjr/its-just-terminal/releases/latest) page.
 
 ### Windows notes
 

@@ -88,7 +88,6 @@ Each module is self-contained, exports a thin barrel via `index.ts`, and owns it
 - **markdown/** — markdown preview renderer (backs the `markdown` tab kind).
 - **workspace/** — workspace environment switching (Local + WSL distros).
 - **theme/** — custom theme engine (no `next-themes`). `ThemeProvider` + `applyTheme` write CSS variables; built-in presets in `themes/` (ijt-default, nord, tide, catppuccin, tokyo-night, caffeine, claude, gruvbox, sage, rose-pine), user themes via `customThemes.ts` + `validateTheme.ts`, optional background image via `bgImageStore.ts` + `SurfaceLayer`.
-- **updater/** — auto-updater UI built on `tauri-plugin-updater`. Lets an installed app check a remote `latest.json`, download a newer **signed** build, verify it against the embedded pubkey, and relaunch. **Currently disabled** (no release signing key yet): the Rust plugin is unregistered in `lib.rs` and the `updater:default` capability is dropped — registering the plugin without a `plugins.updater` config panics at startup (`PluginInitialization("updater", ...null, expected struct Config)`), and CI never launches the app so it isn't caught. The frontend tolerates the absence: Linux uses a plain GitHub-API `fetch` (manual `.deb`/`.rpm` prompt), macOS/Windows wrap `check()` in try/catch. To re-enable once releases are signed: `pnpm tauri signer generate`, add a `plugins.updater` block (pubkey + `…/releases/latest/download/latest.json` endpoint) to `tauri.conf.json`, re-register the plugin + restore `updater:default`, flip `createUpdaterArtifacts: true`, and sign artifacts in CI via `TAURI_SIGNING_PRIVATE_KEY`.
 - **agents/** — agent notifications + management for both the built-in Its Just Terminal agent and terminal coding-agents (Claude Code; Codex later). Shared store (`store/agentStore.ts`: terminal `sessions` + `localAgent` + `notifications`) and a shared router (`lib/route.ts`: suppress when focused-and-visible, OS-notify when unfocused, in-app Sonner toast when focused-but-hidden) feed the header `NotificationBell` (management surface, Its Just Terminal agent listed first). Toasts use Sonner (`components/ui/sonner.tsx`) themed via the central engine; `lib/agentIcon.tsx` renders the per-agent brand mark (Its Just Terminal logo, Claude/Codex hugeicon). Terminal detection is Rust-side (`pty/agent_detect.rs`) on the PTY reader's byte filter, armed on `OSC 133;C;<cmd>`, emitting `ijt:agent-signal` transitions (`started`/`working`/`attention`/`finished`/`exited`) driven only by OSC sequences (never raw output, so a repainting TUI never flaps) — zero cost when no agent runs. Terminal signals arrive via Claude Code hooks (`UserPromptSubmit`/`Notification`/`Stop`) returning an `OSC 777` marker through the `terminalSequence` field (hooks lost `/dev/tty` access in v2.1.139); `agent_enable_claude_hooks` installs them (atomic write, never clobbers invalid JSON, prunes empty groups), gated on `IJT_TERMINAL`, and the marker self-arms the detector so it works in bash/Windows/tmux without shell preexec. The Its Just Terminal agent path is `ai/components/LocalAgentNotificationsBridge.tsx`, mapping `chatStore.agentMeta` (`awaiting-approval`→attention, busy→idle→finished, `error`) into the same router.
 - **ai/** — see below.
 
@@ -125,7 +124,7 @@ BYOK. Cloud providers via `@ai-sdk/*`: **OpenAI, Anthropic, Google, xAI, Cerebra
 
 ### Tauri capabilities
 
-`src-tauri/capabilities/default.json` is the allowlist for plugin APIs available to the webview. New plugins (dialog, autostart, updater, window-state, store, opener, os, log are wired in `lib.rs`) typically need:
+`src-tauri/capabilities/default.json` is the allowlist for plugin APIs available to the webview. New plugins (dialog, autostart, window-state, store, opener, os, log are wired in `lib.rs`) typically need:
 1. `Cargo.toml` dependency
 2. `.plugin(...)` call in `lib.rs` `run()`
 3. capability entry in `default.json`
@@ -142,7 +141,6 @@ BYOK. Cloud providers via `@ai-sdk/*`: **OpenAI, Anthropic, Google, xAI, Cerebra
   - **macOS**: `minimumSystemVersion: 10.15`.
   - **Linux**: deb depends `libwebkit2gtk-4.1-0`, `libgtk-3-0`; rpm `webkit2gtk4.1`, `gtk3`; AppImage bundles its media framework.
   - **Windows**: NSIS installer in `currentUser` mode (no admin required), WebView2 via `embedBootstrapper` (offline install).
-- Auto-updater wiring is present but disabled in this fork (no signing key; bundle `createUpdaterArtifacts: false`, no `plugins.updater` block). Re-enable by adding a `plugins.updater` block with your own minisign pubkey + a `binsarjr/its-just-terminal` releases endpoint.
 
 ### Known gotchas
 
