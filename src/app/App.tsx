@@ -62,6 +62,7 @@ import {
   type SearchInlineHandle,
   type SearchTarget,
 } from "@/modules/header";
+import { ImageStack, IMAGE_EXT_RE } from "@/modules/image";
 import { MarkdownStack } from "@/modules/markdown";
 import { PdfStack } from "@/modules/pdf";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
@@ -195,6 +196,7 @@ export default function App() {
     pinTab,
     newMarkdownTab,
     newPdfTab,
+    newImageTab,
     openAiDiffTab,
     closeAiDiffTab,
     openGitDiffTab,
@@ -496,6 +498,7 @@ export default function App() {
   const isEditorTab = activeTab?.kind === "editor";
   const isMarkdownTab = activeTab?.kind === "markdown";
   const isPdfTab = activeTab?.kind === "pdf";
+  const isImageTab = activeTab?.kind === "image";
   const isAiDiffTab = activeTab?.kind === "ai-diff";
   const isGitDiffTab =
     activeTab?.kind === "git-diff" || activeTab?.kind === "git-commit-file";
@@ -870,17 +873,21 @@ export default function App() {
 
   const handleOpenFile = useCallback(
     (path: string, pin?: boolean) => {
-      // PDFs aren't text — route them straight to the PDF viewer instead of an
-      // editor tab that would just report "binary file".
+      // Binary media aren't text — route them straight to their viewers
+      // instead of an editor tab that would just report "binary file".
       if (/\.pdf$/i.test(path)) {
         newPdfTab(path);
+        return;
+      }
+      if (IMAGE_EXT_RE.test(path)) {
+        newImageTab(path);
         return;
       }
       // Explorer defaults to preview (pin=false); explicit actions like
       // context-menu "Open" pass pin=true for a persistent tab.
       openFileTab(path, pin ?? false);
     },
-    [openFileTab, newPdfTab],
+    [openFileTab, newPdfTab, newImageTab],
   );
 
   const handlePathRenamed = useCallback(
@@ -1395,6 +1402,15 @@ export default function App() {
         aria-hidden={!isPdfTab}
       >
         <PdfStack tabs={tabs} activeId={activeId} />
+      </div>
+      <div
+        className={cn(
+          "absolute inset-0 px-3 pt-2 pb-2",
+          !isImageTab && "invisible pointer-events-none",
+        )}
+        aria-hidden={!isImageTab}
+      >
+        <ImageStack tabs={tabs} activeId={activeId} />
       </div>
       <div
         className={cn(

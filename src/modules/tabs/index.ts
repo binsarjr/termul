@@ -8,6 +8,7 @@ export {
   type EditorTab,
   type MarkdownTab,
   type PdfTab,
+  type ImageTab,
   type AiDiffTab,
   type GitDiffTab,
   type GitHistoryTab,
