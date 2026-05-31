@@ -63,6 +63,7 @@ import {
   type SearchTarget,
 } from "@/modules/header";
 import { MarkdownStack } from "@/modules/markdown";
+import { PdfStack } from "@/modules/pdf";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { onKeysChanged, setThemeId as persistThemeId } from "@/modules/settings/store";
@@ -191,6 +192,7 @@ export default function App() {
     openFileTab,
     pinTab,
     newMarkdownTab,
+    newPdfTab,
     openAiDiffTab,
     closeAiDiffTab,
     openGitDiffTab,
@@ -490,6 +492,7 @@ export default function App() {
   const isTerminalTab = activeTab?.kind === "terminal";
   const isEditorTab = activeTab?.kind === "editor";
   const isMarkdownTab = activeTab?.kind === "markdown";
+  const isPdfTab = activeTab?.kind === "pdf";
   const isAiDiffTab = activeTab?.kind === "ai-diff";
   const isGitDiffTab =
     activeTab?.kind === "git-diff" || activeTab?.kind === "git-commit-file";
@@ -864,11 +867,17 @@ export default function App() {
 
   const handleOpenFile = useCallback(
     (path: string, pin?: boolean) => {
+      // PDFs aren't text — route them straight to the PDF viewer instead of an
+      // editor tab that would just report "binary file".
+      if (/\.pdf$/i.test(path)) {
+        newPdfTab(path);
+        return;
+      }
       // Explorer defaults to preview (pin=false); explicit actions like
       // context-menu "Open" pass pin=true for a persistent tab.
       openFileTab(path, pin ?? false);
     },
-    [openFileTab],
+    [openFileTab, newPdfTab],
   );
 
   const handlePathRenamed = useCallback(
@@ -1374,6 +1383,15 @@ export default function App() {
         aria-hidden={!isMarkdownTab}
       >
         <MarkdownStack tabs={tabs} activeId={activeId} />
+      </div>
+      <div
+        className={cn(
+          "absolute inset-0 px-3 pt-2 pb-2",
+          !isPdfTab && "invisible pointer-events-none",
+        )}
+        aria-hidden={!isPdfTab}
+      >
+        <PdfStack tabs={tabs} activeId={activeId} />
       </div>
       <div
         className={cn(

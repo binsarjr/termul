@@ -7,6 +7,7 @@ export {
   type TerminalTab,
   type EditorTab,
   type MarkdownTab,
+  type PdfTab,
   type AiDiffTab,
   type GitDiffTab,
   type GitHistoryTab,
