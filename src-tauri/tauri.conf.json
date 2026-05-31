@@ -75,7 +75,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwRkREMUQ3MDlERjI4NkMKUldSc0tOOEoxOUg5SUI2ckZMSEdlSWJsMnVpNFg3TGVoYlZwam5nNXhtWHJZUzA4RmxVaXIva0MK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgQjc1MTc2MTkyODg4MjNBNwpSV1NuSTRnb0dYWlJ0NXAxQS9hTEpwOUw0SnJsZkY4NDk3RVNTYlpWdmRnajhtWnVoc1V3Zzh4WAo=",
       "endpoints": [
         "https://github.com/binsarjr/its-just-terminal/releases/latest/download/latest.json"
       ]
