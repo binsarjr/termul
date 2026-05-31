@@ -210,7 +210,12 @@ export function TabBar({
 }
 
 export function TabIcon({ tab }: { tab: Tab }) {
-  if (tab.kind === "editor" || tab.kind === "markdown" || tab.kind === "pdf") {
+  if (
+    tab.kind === "editor" ||
+    tab.kind === "markdown" ||
+    tab.kind === "pdf" ||
+    tab.kind === "image"
+  ) {
     const url = fileIconUrl(tab.title);
     return url ? <img src={url} alt="" className="size-3.5 shrink-0" /> : null;
   }
@@ -268,6 +273,7 @@ export function labelFor(t: Tab): string {
   if (t.kind === "editor") return t.title;
   if (t.kind === "markdown") return t.title;
   if (t.kind === "pdf") return t.title;
+  if (t.kind === "image") return t.title;
   if (t.kind === "ai-diff") return t.title;
   if (t.kind === "git-diff") return t.title;
   if (t.kind === "git-history") return t.title;

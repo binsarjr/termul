@@ -55,6 +55,13 @@ export type PdfTab = {
   path: string;
 };
 
+export type ImageTab = {
+  id: number;
+  kind: "image";
+  title: string;
+  path: string;
+};
+
 export type AiDiffStatus = "pending" | "approved" | "rejected";
 
 export type AiDiffTab = {
@@ -105,6 +112,7 @@ export type Tab =
   | EditorTab
   | MarkdownTab
   | PdfTab
+  | ImageTab
   | AiDiffTab
   | GitDiffTab
   | GitHistoryTab
@@ -408,6 +416,22 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     return targetId;
   }, []);
 
+  const newImageTab = useCallback((path: string) => {
+    let targetId: number | null = null;
+    setTabs((curr) => {
+      const existing = curr.find((t) => t.kind === "image" && t.path === path);
+      if (existing) {
+        targetId = existing.id;
+        return curr;
+      }
+      const id = nextIdRef.current++;
+      targetId = id;
+      return [...curr, { id, kind: "image", title: basename(path), path }];
+    });
+    if (targetId !== null) setActiveId(targetId);
+    return targetId;
+  }, []);
+
   const openGitDiffTab = useCallback(
     (input: {
       path: string;
@@ -583,7 +607,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
             ...(patch.cwd !== undefined && { cwd: patch.cwd }),
           };
         }
-        if (x.kind === "markdown" || x.kind === "pdf") {
+        if (x.kind === "markdown" || x.kind === "pdf" || x.kind === "image") {
           return {
             ...x,
             ...(patch.title !== undefined && { title: patch.title }),
@@ -791,6 +815,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     pinTab,
     newMarkdownTab,
     newPdfTab,
+    newImageTab,
     openAiDiffTab,
     openGitDiffTab,
     openCommitHistoryTab,

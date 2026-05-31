@@ -27,6 +27,7 @@ function subtitleFor(t: Tab): string {
     case "editor":
     case "markdown":
     case "pdf":
+    case "image":
     case "ai-diff":
     case "git-diff":
       return t.path;
