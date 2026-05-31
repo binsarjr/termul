@@ -106,6 +106,7 @@ import {
   themeFilePath,
   writeThemeFile,
 } from "@/modules/theme/themeFiles";
+import { UpdaterDialog } from "@/modules/updater";
 import {
   currentWorkspaceEnv,
   getWslHome,
@@ -1575,6 +1576,8 @@ export default function App() {
             rootPath={explorerRoot ?? home}
             onCreated={(path) => openFileTab(path)}
           />
+
+          <UpdaterDialog />
 
           <TabSearch
             tabs={tabs}
