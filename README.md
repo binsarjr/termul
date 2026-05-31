@@ -1,27 +1,28 @@
 <div align="center">
-  <img src="public/logo.png" width="144" height="144" alt="Terax" />
-  <h1>Terax</h1>
+  <img src="public/logo.png" width="144" height="144" alt="it's just a terminal" />
+  <h1>it's just a terminal</h1>
 
-  <p><strong>Lightweight Terminal-first AI-native dev workspace.</strong></p>
+  <p><em>(it's not just a terminal.)</em></p>
+  <p><strong>Lightweight, terminal-first, AI-native dev workspace.</strong></p>
 
   <p>
-    <img src="https://img.shields.io/github/v/release/crynta/terax-ai?label=version&color=blue" alt="version" />
+    <img src="https://img.shields.io/github/v/release/binsarjr/its-just-terminal?label=version&color=blue" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="license" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="platform" />
   </p>
 
   <p>
-    <a href="https://terax.app">Website</a>
+    <a href="https://github.com/binsarjr/its-just-terminal">GitHub</a>
     ·
-    <a href="https://terax.app/docs">Docs</a>
-    ·
-    <a href="https://github.com/crynta/Terax-website">Website's source code</a>
+    <a href="https://github.com/binsarjr/its-just-terminal/releases/latest">Releases</a>
   </p>
 </div>
 
 ---
 
-Terax is a lightweight open-source terminal (ADE) built on Tauri 2 + Rust and React 19. A native PTY backend with a WebGL renderer, an agentic AI side-panel that runs against your own keys or fully local models, plus a code editor, file explorer, source control with a git graph, and a web preview pane built in. About 7-8 MB on disk. No telemetry. No account.
+**it's just a terminal** is a lightweight open-source terminal (ADE) built on Tauri 2 + Rust and React 19. A native PTY backend with a WebGL renderer, an agentic AI side-panel that runs against your own keys or fully local models, plus a code editor, file explorer, source control with a git graph, and a web preview pane built in. About 7-8 MB on disk. No telemetry. No account.
+
+> A fork of [Terax](https://github.com/crynta/terax-ai). See [Credits](#credits).
 
 ## Screenshots
 
@@ -93,23 +94,22 @@ Terax is a lightweight open-source terminal (ADE) built on Tauri 2 + Rust and Re
 
 ## Install
 
-Latest installers are on the [Releases](https://github.com/crynta/terax-ai/releases/latest) page. Terax auto-updates from there.
+Latest installers are on the [Releases](https://github.com/binsarjr/its-just-terminal/releases/latest) page. The app auto-updates from there.
 
 ### Windows notes
 
-- On first launch Windows shows "Windows protected your PC" because Terax isn't code-signed yet. Click **More info** then **Run anyway**.
+- On first launch Windows shows "Windows protected your PC" because the app isn't code-signed yet. Click **More info** then **Run anyway**.
 - Default shell detection: `pwsh.exe` (PowerShell 7+) -> `powershell.exe` (Windows PowerShell 5.1) -> `cmd.exe`.
 - WSL is a first-class workspace environment, not a wrapped subprocess.
 
 ### Linux notes
 
-- **Arch / AUR:** `yay -S terax-bin` (or `paru`, etc.). Tracks the latest release.
-- **AppImage:** needs FUSE. Without it: `./Terax_*.AppImage --appimage-extract-and-run`. On Wayland with rendering glitches, try `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Otherwise the `.deb` / `.rpm` packages link against the system GTK stack and tend to be smoother.
+- **AppImage:** needs FUSE. Without it: `./its-just-terminal_*.AppImage --appimage-extract-and-run`. On Wayland with rendering glitches, try `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Otherwise the `.deb` / `.rpm` packages link against the system GTK stack and tend to be smoother.
 
 ## Configure AI
 
 1. Open **Settings -> AI**.
-2. Pick a provider and paste your API key. For local inference, point Terax at your LM Studio / MLX / Ollama endpoint.
+2. Pick a provider and paste your API key. For local inference, point the app at your LM Studio / MLX / Ollama endpoint.
 3. Keys are written to the OS keychain via `keyring`. They never touch disk or localStorage.
 
 ## Build from source
@@ -141,18 +141,24 @@ Tauri 2, Rust, `portable-pty`, React 19, TypeScript, Vite, xterm.js, CodeMirror 
 
 Issues and PRs are welcome! Feel free to open issues, suggest features, or submit pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
+## Credits
+
+**it's just a terminal** is a fork of [Terax](https://github.com/crynta/terax-ai) by Crynta — an excellent open-source AI-native terminal that this project is built on top of. Huge thanks to the original authors; this would not exist without their work.
+
+The original code is licensed under Apache-2.0 (`Copyright 2026 Crynta`). That notice is preserved in [LICENSE](LICENSE) and the attribution lives in [NOTICE](NOTICE). Changes made in this fork are tracked in the git history.
+
 ## License
 
-Terax is licensed under the Apache-2.0 License. For more information on our dependencies, see [Apache License 2.0](LICENSE).
+Licensed under the Apache-2.0 License. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
 
 ## Star history
 
 <div align="center">
-  <a href="https://www.star-history.com/#crynta/terax-ai&Date">
+  <a href="https://www.star-history.com/#binsarjr/its-just-terminal&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=crynta/terax-ai&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=crynta/terax-ai&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=crynta/terax-ai&type=Date" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=binsarjr/its-just-terminal&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=binsarjr/its-just-terminal&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=binsarjr/its-just-terminal&type=Date" />
     </picture>
   </a>
 </div>
