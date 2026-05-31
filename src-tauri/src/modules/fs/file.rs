@@ -10,6 +10,9 @@ use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
+// Binary viewers (PDF) routinely exceed the 10 MB text cap; give them a larger
+// dedicated ceiling. Past this, the UI falls back to the system viewer.
+const MAX_READ_BYTES_BINARY: u64 = 100 * 1024 * 1024; // 100 MB
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -76,6 +79,32 @@ pub fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<Rea
         Ok(content) => Ok(ReadResult::Text { content, size }),
         Err(_) => Ok(ReadResult::Binary { size }),
     }
+}
+
+/// Raw file bytes for binary viewers (PDF). Returns the bytes over Tauri's
+/// binary IPC fast path — no base64, no ~33% inflation. The frontend reads the
+/// response as an `ArrayBuffer`. On `toolarge:<size>:<limit>` the UI offers to
+/// open the file in the system viewer instead.
+#[tauri::command]
+pub fn fs_read_bytes(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<tauri::ipc::Response, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let p = resolve_path(&path, &workspace);
+    let meta = std::fs::metadata(&p).map_err(|e| {
+        log::debug!("fs_read_bytes stat({}) failed: {e}", p.display());
+        e.to_string()
+    })?;
+    let size = meta.len();
+    if size > MAX_READ_BYTES_BINARY {
+        return Err(format!("toolarge:{size}:{MAX_READ_BYTES_BINARY}"));
+    }
+    let bytes = std::fs::read(&p).map_err(|e| {
+        log::debug!("fs_read_bytes read({}) failed: {e}", p.display());
+        e.to_string()
+    })?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 #[derive(Serialize, Clone)]

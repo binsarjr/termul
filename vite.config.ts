@@ -54,6 +54,10 @@ export default defineConfig(async ({ mode }) => ({
             return "codemirror";
           if (id.includes("/streamdown/") || id.includes("@streamdown/"))
             return "streamdown";
+          if (id.includes("/pdfjs-dist/")) return "pdfjs";
+          if (id.includes("/mermaid/") || id.includes("/dagre-d3-es/"))
+            return "mermaid";
+          if (id.includes("/katex/")) return "katex";
           if (id.includes("/motion/") || id.includes("framer-motion"))
             return "motion";
           if (

@@ -48,6 +48,13 @@ export type MarkdownTab = {
   path: string;
 };
 
+export type PdfTab = {
+  id: number;
+  kind: "pdf";
+  title: string;
+  path: string;
+};
+
 export type AiDiffStatus = "pending" | "approved" | "rejected";
 
 export type AiDiffTab = {
@@ -97,6 +104,7 @@ export type Tab =
   | TerminalTab
   | EditorTab
   | MarkdownTab
+  | PdfTab
   | AiDiffTab
   | GitDiffTab
   | GitHistoryTab
@@ -384,6 +392,22 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     return targetId;
   }, []);
 
+  const newPdfTab = useCallback((path: string) => {
+    let targetId: number | null = null;
+    setTabs((curr) => {
+      const existing = curr.find((t) => t.kind === "pdf" && t.path === path);
+      if (existing) {
+        targetId = existing.id;
+        return curr;
+      }
+      const id = nextIdRef.current++;
+      targetId = id;
+      return [...curr, { id, kind: "pdf", title: basename(path), path }];
+    });
+    if (targetId !== null) setActiveId(targetId);
+    return targetId;
+  }, []);
+
   const openGitDiffTab = useCallback(
     (input: {
       path: string;
@@ -559,7 +583,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
             ...(patch.cwd !== undefined && { cwd: patch.cwd }),
           };
         }
-        if (x.kind === "markdown") {
+        if (x.kind === "markdown" || x.kind === "pdf") {
           return {
             ...x,
             ...(patch.title !== undefined && { title: patch.title }),
@@ -766,6 +790,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     openFileTab,
     pinTab,
     newMarkdownTab,
+    newPdfTab,
     openAiDiffTab,
     openGitDiffTab,
     openCommitHistoryTab,
