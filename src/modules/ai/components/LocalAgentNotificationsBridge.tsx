@@ -5,7 +5,7 @@ import type { AgentStatus } from "@/modules/agents/lib/types";
 import { useEffect, useRef } from "react";
 import { useChatStore } from "../store/chatStore";
 
-const AGENT = "Terax";
+const AGENT = "Its Just Terminal";
 
 type RunStatus =
   | "idle"
@@ -63,11 +63,11 @@ export function LocalAgentNotificationsBridge() {
       });
 
     if (status === "awaiting-approval") {
-      fire("attention", "Terax needs your approval", "Approve a tool to continue");
+      fire("attention", "Its Just Terminal needs your approval", "Approve a tool to continue");
     } else if (status === "error") {
-      fire("error", "Terax run failed", error ?? undefined);
+      fire("error", "Its Just Terminal run failed", error ?? undefined);
     } else if (status === "idle" && isBusy(was)) {
-      fire("finished", "Terax finished", "Your task is ready");
+      fire("finished", "Its Just Terminal finished", "Your task is ready");
     }
   }, [status, error]);
 

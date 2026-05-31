@@ -70,7 +70,7 @@ export function SettingsApp() {
       }
     };
     const unlistenPromise = getCurrentWebviewWindow().listen<string>(
-      "terax:settings-tab",
+      "ijt:settings-tab",
       (e) => apply(e.payload),
     );
     return () => {
