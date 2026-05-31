@@ -1,11 +1,11 @@
 export { TabBar } from "./TabBar";
+export { TabSearch } from "./TabSearch";
 export {
   MAX_PANES_PER_TAB,
   useTabs,
   type Tab,
   type TerminalTab,
   type EditorTab,
-  type PreviewTab,
   type MarkdownTab,
   type AiDiffTab,
   type GitDiffTab,

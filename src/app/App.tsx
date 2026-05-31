@@ -63,7 +63,6 @@ import {
   type SearchTarget,
 } from "@/modules/header";
 import { MarkdownStack } from "@/modules/markdown";
-import { PreviewStack, type PreviewPaneHandle } from "@/modules/preview";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { onKeysChanged, setThemeId as persistThemeId } from "@/modules/settings/store";
@@ -79,7 +78,12 @@ import {
   useSourceControl,
 } from "@/modules/source-control";
 import { StatusBar } from "@/modules/statusbar";
-import { MAX_PANES_PER_TAB, useTabs, useWorkspaceCwd } from "@/modules/tabs";
+import {
+  MAX_PANES_PER_TAB,
+  TabSearch,
+  useTabs,
+  useWorkspaceCwd,
+} from "@/modules/tabs";
 import {
   clearFocusedTerminal,
   disposeSession,
@@ -187,7 +191,6 @@ export default function App() {
     newPrivateTab,
     openFileTab,
     pinTab,
-    newPreviewTab,
     newMarkdownTab,
     openAiDiffTab,
     closeAiDiffTab,
@@ -223,7 +226,6 @@ export default function App() {
   const searchInlineRef = useRef<SearchInlineHandle | null>(null);
   const terminalRefs = useRef<Map<number, TerminalPaneHandle>>(new Map());
   const editorRefs = useRef<Map<number, EditorPaneHandle>>(new Map());
-  const previewRefs = useRef<Map<number, PreviewPaneHandle>>(new Map());
   const [activeEditorHandle, setActiveEditorHandle] =
     useState<EditorPaneHandle | null>(null);
   const [gitHistoryHandle, setGitHistoryHandle] =
@@ -375,7 +377,6 @@ export default function App() {
       searchAddons.current.clear();
       terminalRefs.current.clear();
       editorRefs.current.clear();
-      previewRefs.current.clear();
       setActiveSearchAddon(null);
       setActiveEditorHandle(null);
       setWorkspaceEnv(env.kind === "local" ? LOCAL_WORKSPACE : env);
@@ -402,6 +403,7 @@ export default function App() {
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [newEditorOpen, setNewEditorOpen] = useState(false);
+  const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const miniOpen = useChatStore((s) => s.mini.open);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const openMini = useChatStore((s) => s.openMini);
@@ -488,7 +490,6 @@ export default function App() {
   const activeTab = tabs.find((t) => t.id === activeId);
   const isTerminalTab = activeTab?.kind === "terminal";
   const isEditorTab = activeTab?.kind === "editor";
-  const isPreviewTab = activeTab?.kind === "preview";
   const isMarkdownTab = activeTab?.kind === "markdown";
   const isAiDiffTab = activeTab?.kind === "ai-diff";
   const isGitDiffTab =
@@ -656,7 +657,6 @@ export default function App() {
       // the effect below as the pane tree changes; only the tab-id-keyed
       // handles need explicit cleanup here.
       editorRefs.current.delete(id);
-      previewRefs.current.delete(id);
       closeTab(id);
     },
     [closeTab],
@@ -1006,16 +1006,24 @@ export default function App() {
     sourceControlContextPath,
   ]);
 
-  const openPreviewTab = useCallback(
-    (url: string) => {
-      const id = newPreviewTab(url);
-      // Focus the address bar if the URL is empty so the user can type.
-      if (!url) {
-        setTimeout(() => previewRefs.current.get(id)?.focusAddressBar(), 0);
+  const switchToTab = useCallback(
+    (id: number) => {
+      setActiveId(id);
+      // The palette is a Radix dialog; it restores focus to the body on close.
+      // Switching tabs only flips visibility, so re-focus the target terminal
+      // leaf a couple frames later (after Radix's restore) to land typing
+      // straight in the terminal. Non-terminal tabs need no explicit focus.
+      const t = tabsRef.current.find((x) => x.id === id);
+      if (t?.kind === "terminal") {
+        const leafId = t.activeLeafId;
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() =>
+            terminalRefs.current.get(leafId)?.focus(),
+          ),
+        );
       }
-      return id;
     },
-    [newPreviewTab],
+    [setActiveId],
   );
 
   const openMarkdownPreview = useCallback(
@@ -1047,7 +1055,7 @@ export default function App() {
     () => ({
       "tab.new": openNewTab,
       "tab.newPrivate": openNewPrivateTab,
-      "tab.newPreview": () => openPreviewTab(""),
+      "tab.search": () => setTabSearchOpen((v) => !v),
       "tab.newEditor": () => setNewEditorOpen(true),
       "tab.close": handleCloseTabOrPane,
       "tab.next": () => cycleTab(1),
@@ -1080,7 +1088,6 @@ export default function App() {
       handleCloseTabOrPane,
       openNewTab,
       openNewPrivateTab,
-      openPreviewTab,
       selectByIndex,
       splitActivePaneInActiveTab,
       focusNextPaneInTab,
@@ -1139,19 +1146,6 @@ export default function App() {
       if (id === activeId) setActiveEditorHandle(h);
     },
     [activeId],
-  );
-
-  const registerPreviewHandle = useCallback(
-    (id: number, h: PreviewPaneHandle | null) => {
-      if (h) previewRefs.current.set(id, h);
-      else previewRefs.current.delete(id);
-    },
-    [],
-  );
-
-  const handlePreviewUrl = useCallback(
-    (id: number, url: string) => updateTab(id, { url }),
-    [updateTab],
   );
 
   const authorizedCwds = useRef(new Set<string>());
@@ -1284,10 +1278,6 @@ export default function App() {
         const t = tabs.find((x) => x.id === activeId);
         return t?.kind === "editor" ? t.path : null;
       },
-      openPreview: (url: string) => {
-        openPreviewTab(url);
-        return true;
-      },
       spawnManagedAgent: (prompt: string, sessionId: string) => {
         const trimmed = prompt.trim();
         if (!trimmed) return null;
@@ -1340,7 +1330,6 @@ export default function App() {
     explorerRoot,
     launchCwd,
     home,
-    openPreviewTab,
     newAgentTab,
   ]);
 
@@ -1376,20 +1365,6 @@ export default function App() {
           registerHandle={registerEditorHandle}
           onDirtyChange={handleEditorDirty}
           onCloseTab={disposeTab}
-        />
-      </div>
-      <div
-        className={cn(
-          "absolute inset-0 px-3 pt-2 pb-2",
-          !isPreviewTab && "invisible pointer-events-none",
-        )}
-        aria-hidden={!isPreviewTab}
-      >
-        <PreviewStack
-          tabs={tabs}
-          activeId={activeId}
-          registerHandle={registerPreviewHandle}
-          onUrlChange={handlePreviewUrl}
         />
       </div>
       <div
@@ -1451,7 +1426,6 @@ export default function App() {
             onSelect={setActiveId}
             onNew={openNewTab}
             onNewPrivate={openNewPrivateTab}
-            onNewPreview={() => openPreviewTab("")}
             onNewEditor={() => setNewEditorOpen(true)}
             onNewGitGraph={openGitGraphFromContext}
             onClose={handleClose}
@@ -1604,6 +1578,14 @@ export default function App() {
           />
 
           <UpdaterDialog />
+
+          <TabSearch
+            tabs={tabs}
+            activeId={activeId}
+            onSelect={switchToTab}
+            open={tabSearchOpen}
+            onOpenChange={setTabSearchOpen}
+          />
 
           <AlertDialog
             open={pendingCloseTab !== null}

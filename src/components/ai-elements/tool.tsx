@@ -10,7 +10,6 @@ import {
   ArrowRight01Icon,
   CheckListIcon,
   Edit02Icon,
-  EyeIcon,
   File01Icon,
   FileEditIcon,
   FilePlusIcon,
@@ -47,7 +46,6 @@ const TOOL_META: Record<string, { label: string; icon: typeof File01Icon }> = {
   grep: { label: "Search", icon: GlobalSearchIcon },
   glob: { label: "Glob", icon: Folder01Icon },
   suggest_command: { label: "Suggest", icon: SparklesIcon },
-  open_preview: { label: "Preview", icon: EyeIcon },
   run_subagent: { label: "Subagent", icon: RobotIcon },
   todo_write: { label: "Todos", icon: CheckListIcon },
 };
@@ -98,8 +96,6 @@ function deriveSummary(toolName: string, input: unknown): string | null {
       return str("pattern");
     case "suggest_command":
       return str("intent") ?? str("description");
-    case "open_preview":
-      return str("path") ?? str("url");
     case "run_subagent":
       return str("agent") ?? str("task");
     case "todo_write": {
@@ -290,10 +286,9 @@ function renderInputPreview(
   if (
     toolName === "read_file" ||
     toolName === "list_directory" ||
-    toolName === "create_directory" ||
-    toolName === "open_preview"
+    toolName === "create_directory"
   ) {
-    const path = str("path") ?? str("url");
+    const path = str("path");
     if (!path) return null;
     return (
       <div className="font-mono text-[11px] text-muted-foreground">{path}</div>

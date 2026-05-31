@@ -59,47 +59,5 @@ export function buildTerminalTools(ctx: ToolContext) {
         return { output: capped, lines_returned: Math.min(parts.length, n) };
       },
     }),
-
-    open_preview: tool({
-      description:
-        "Open a preview tab (in-app iframe) at the given URL — restricted to localhost/loopback addresses for the local dev server. Use this after starting a dev server (e.g. `pnpm dev`, `npm run dev`) to surface the rendered page next to the terminal. To preview external sites, the user should paste the URL into the preview address bar themselves.",
-      inputSchema: z.object({
-        url: z
-          .url()
-          .describe(
-            "Full URL to load (e.g. http://localhost:5173). Must include scheme. Only http/https on loopback hosts are accepted.",
-          ),
-      }),
-      execute: async ({ url }) => {
-        let parsed: URL;
-        try {
-          parsed = new URL(url);
-        } catch {
-          return { error: "invalid URL", url };
-        }
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-          return { error: "only http/https URLs are allowed", url };
-        }
-        const host = parsed.hostname;
-        const isLocal =
-          host === "localhost" ||
-          host === "127.0.0.1" ||
-          host === "0.0.0.0" ||
-          host === "[::1]" ||
-          host === "::1" ||
-          host.endsWith(".localhost");
-        if (!isLocal) {
-          return {
-            error:
-              "open_preview is restricted to localhost URLs. Ask the user to paste the external URL into the preview address bar instead.",
-            url,
-          };
-        }
-        const ok = ctx.openPreview(url);
-        if (!ok) return { error: "preview surface unavailable", url };
-        return { url, ok: true };
-      },
-    }),
-
   } as const;
 }

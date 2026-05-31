@@ -42,7 +42,6 @@ type Live = {
   injectIntoActivePty: (text: string) => boolean;
   getWorkspaceRoot: () => string | null;
   getActiveFile: () => string | null;
-  openPreview: (url: string) => boolean;
   spawnManagedAgent: (
     prompt: string,
     sessionId: string,
@@ -168,7 +167,6 @@ const NOOP_LIVE: Live = {
   injectIntoActivePty: () => false,
   getWorkspaceRoot: () => null,
   getActiveFile: () => null,
-  openPreview: () => false,
   spawnManagedAgent: () => null,
   readLeafBuffer: () => null,
 };
@@ -230,7 +228,6 @@ function makeChat(sessionId: string): Chat<UIMessage> {
       useChatStore.getState().live.isActiveTerminalPrivate(),
     injectIntoActivePty: (text) =>
       useChatStore.getState().live.injectIntoActivePty(text),
-    openPreview: (url) => useChatStore.getState().live.openPreview(url),
     spawnAgent: (prompt) =>
       useChatStore.getState().live.spawnManagedAgent(prompt, sessionId),
     readAgentOutput: (leafId) =>

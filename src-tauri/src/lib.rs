@@ -117,7 +117,11 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Updater intentionally not registered: there's no release signing key
+        // yet, and registering tauri_plugin_updater without a `plugins.updater`
+        // config panics at startup. Re-enable by registering the plugin again
+        // and restoring `updater:default` + the `plugins.updater` config block
+        // (pubkey + endpoints). The frontend updater UI tolerates its absence.
         // Skip restoring VISIBLE — frontend calls window.show() after first
         // paint so the user never sees a transparent window-shadow flash on
         // Windows/Linux.
