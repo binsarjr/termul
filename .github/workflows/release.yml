@@ -89,8 +89,8 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Terax ${{ github.ref_name }}"
-          releaseBody: "See the assets to download and install. Auto-update is built in."
+          releaseName: "Its Just Terminal ${{ github.ref_name }}"
+          releaseBody: "See the assets to download and install."
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
