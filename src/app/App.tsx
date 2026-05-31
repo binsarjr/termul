@@ -93,6 +93,7 @@ import {
   leafIds,
   respawnSession,
   TerminalStack,
+  useTerminalFileDrop,
   whenSessionReady,
   writeToSession,
   type TerminalPaneHandle,
@@ -233,6 +234,7 @@ export default function App() {
   const [gitHistoryHandle, setGitHistoryHandle] =
     useState<GitHistorySearchHandle | null>(null);
   const { zoomIn, zoomOut, zoomReset } = useZoom();
+  useTerminalFileDrop();
   const explorerRef = useRef<FileExplorerHandle>(null);
   const explorerReturnFocusRef = useRef<HTMLElement | null>(null);
 
