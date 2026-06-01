@@ -1724,17 +1724,6 @@ export default function App() {
             onOpenFile={(path) => openFileTab(path)}
           />
 
-          <CommandPalette
-            open={paletteOpen}
-            onOpenChange={setPaletteOpen}
-            tabs={tabs}
-            activeId={activeId}
-            onSelectTab={switchToTab}
-            commands={paletteCommands}
-            files={paletteFiles}
-            onOpenFile={(path) => openFileTab(path)}
-          />
-
           <AlertDialog
             open={pendingCloseTab !== null}
             onOpenChange={(open) => !open && cancelClose()}
