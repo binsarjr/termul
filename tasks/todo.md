@@ -16,37 +16,43 @@ interaction. We build that.
 - [x] verify: tsc + vitest
 
 ## Phase 2 — visual block rendering (#1)
-- [ ] `CommandBlockRing.onChange` listener (fires on push/dispose)
-- [ ] `blockDecorations.ts`: per-block left gutter bar via `registerDecoration`,
-      colored by exit (red=fail, subtle=ok), spans block rows, rebuilds on
-      ring change + `term.onResize` (reflow). Skips open block.
-- [ ] wire controller in `bindLeafToSlot`; dispose on unbind (mirror `s.blocks`)
-- [ ] verify
+- [x] `CommandBlockRing.onChange` listener (fires on push)
+- [x] `blockDecorations.ts`: per-block left gutter bar via `registerDecoration`,
+      colored by exit (red=fail, subtle=ok via --border), rebuilds on ring
+      change + `term.onResize` (reflow). Skips open block.
+- [x] wire controller in `bindLeafToSlot`; dispose on unbind (mirror `s.blocks`)
+- [x] verify
 
 ## Phase 3 — selection + keyboard nav (#2) + copy targets selected (#3)
-- [ ] selection index in controller; `selectRelative`, `clear`, `scrollToSelected`
-- [ ] selected block highlighted (accent gutter + faint tint)
-- [ ] session API: `selectPrevBlock/selectNextBlock/clearBlockSelection/getActiveBlock`
-- [ ] copy/reinput act on selected block, fallback to last
-- [ ] shortcuts `block.selectPrev/selectNext` (mac: Cmd+Up/Down; else Ctrl+Shift+Up/Down),
-      gated to focused terminal; Esc clears
-- [ ] pill reflects active (selected||last) block + "n/m" when selected
-- [ ] verify
+- [x] selection in controller; `selectRelative`, `clearSelection`, `scrollToSelected`
+- [x] selected block highlighted (accent/ring gutter + glow)
+- [x] session API: `selectPrevBlock/selectNextBlock/clearBlockSelection/getActiveBlock`
+- [x] copy/reinput act on selected block, fallback to last
+- [x] shortcuts `block.selectPrev/selectNext` (mac: Cmd+Up/Down; else Ctrl+Shift+Up/Down),
+      gated to focused terminal; primary click clears (Esc deferred)
+- [x] pill reflects active (selected||last) block + "n/m" when selected
+- [x] verify
 
 ## Phase 4 — per-block context menu (#4)
-- [ ] right-click terminal → hit-test click row → block, select it, show menu
-- [ ] menu: copy command/output/both, reinput, (filter output)
-- [ ] verify
+- [x] right-click terminal → hit-test click row → block, select it, show menu
+- [x] menu: copy command/output/both, reinput, filter output
+- [x] verify
 
 ## Phase 5 — block output filter (#5, the "cleaner first win")
-- [ ] dialog: filter selected block output by query (case/regex), copy filtered
-- [ ] palette + context-menu entry
-- [ ] verify
+- [x] dialog: filter selected block output by query (case/regex), copy filtered
+- [x] context-menu entry (palette covers copy actions automatically)
+- [x] verify
 
 ## Out of v1 (note in PR)
 - multi-block select (Cmd+A / shift-click) — sub-part of #3
-- full block-scoped find inside SearchAddon range — #5 harder half
+- full block-scoped find inside SearchAddon range — #5 harder half (filter shipped)
+- spanning bar persists only while the command's start row is on screen
+  (xterm decorations gate on marker visibility); full floating frame deferred
+- Esc-to-clear-selection (primary click clears today)
 - low gaps #7–#12
 
 ## Verification log
-(filled per phase)
+- Phase 1–5: `tsc --noEmit` clean; `vitest run` 132 passed (incl. 14 new for
+  ring observer / selection nav / output filter); `npm run build` ✓.
+- react-doctor diff vs main flat at 44 pre-existing findings — no new
+  regressions introduced (transient ones fixed as they appeared).

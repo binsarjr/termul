@@ -73,6 +73,44 @@ export class BlockDecorations {
     return this.selected;
   }
 
+  /** Select a specific block without scrolling (it is already on screen). */
+  select(block: CommandBlock | null): void {
+    this.selected = block && this.ring.all().includes(block) ? block : null;
+    this.applyStyles();
+  }
+
+  /** The block whose output range covers the buffer line under `clientY`, or
+   * null when the click lands on the live prompt / blank area below the blocks.
+   * Used to select the block under a right-click before opening its menu. */
+  blockAtClientY(clientY: number): CommandBlock | null {
+    const screen = this.term.element?.querySelector(
+      ".xterm-screen",
+    ) as HTMLElement | null;
+    const rows = this.term.rows;
+    if (!screen || rows <= 0) return null;
+    const rect = screen.getBoundingClientRect();
+    if (rect.height <= 0) return null;
+    const cellHeight = rect.height / rows;
+    let row = Math.floor((clientY - rect.top) / cellHeight);
+    if (row < 0) row = 0;
+    if (row > rows - 1) row = rows - 1;
+    const line = this.term.buffer.active.viewportY + row;
+
+    const blocks = this.ring.all();
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const block = blocks[i];
+      const start = block.startMarker;
+      if (!start || start.isDisposed || start.line < 0) continue;
+      const end = block.endMarker;
+      const endLine =
+        end && !end.isDisposed && end.line >= 0
+          ? end.line
+          : Number.POSITIVE_INFINITY;
+      if (line >= start.line && line < endLine) return block;
+    }
+    return null;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -147,7 +185,7 @@ export class BlockDecorations {
         exit === null
           ? "transparent"
           : exit === 0
-            ? "color-mix(in oklch, var(--muted-foreground) 55%, transparent)"
+            ? "var(--border)"
             : "var(--destructive)";
     }
   }

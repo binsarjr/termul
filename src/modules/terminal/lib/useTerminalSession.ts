@@ -591,6 +591,13 @@ export function useTerminalSession({
     sessions.get(leafId)?.blockDeco?.clearSelection();
   }, [leafId]);
 
+  // Select the block under a right-click (or clear when the click misses every
+  // block) so the context menu acts on it.
+  const selectBlockAtClientY = useCallback((clientY: number) => {
+    const deco = sessions.get(leafId)?.blockDeco;
+    if (deco) deco.select(deco.blockAtClientY(clientY));
+  }, [leafId]);
+
   const getBlockSelection = useCallback((): BlockSelection | null => {
     const s = sessions.get(leafId);
     const selected = s?.blockDeco?.getSelected();
@@ -616,6 +623,7 @@ export function useTerminalSession({
       selectPrevBlock,
       selectNextBlock,
       clearBlockSelection,
+      selectBlockAtClientY,
       getBlockSelection,
       applyTheme,
     }),
@@ -630,6 +638,7 @@ export function useTerminalSession({
       selectPrevBlock,
       selectNextBlock,
       clearBlockSelection,
+      selectBlockAtClientY,
       getBlockSelection,
       applyTheme,
     ],

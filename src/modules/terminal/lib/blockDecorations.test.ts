@@ -90,7 +90,7 @@ describe("BlockDecorations.selectRelative", () => {
 
     const picked = deco.selectRelative(-1);
     expect(picked).toBe(ring.all()[2]);
-    expect(scrolledTo.at(-1)).toBe(20); // newest block's start line
+    expect(scrolledTo[scrolledTo.length - 1]).toBe(20); // newest block's start
   });
 
   it("Cmd+Down with no selection is a no-op", () => {

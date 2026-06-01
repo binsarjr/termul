@@ -1,7 +1,15 @@
 import { useTheme } from "@/modules/theme";
 import type { SearchAddon } from "@xterm/addon-search";
-import { useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { BlockAffordance } from "./BlockAffordance";
+import { BlockContextMenu } from "./BlockContextMenu";
+import { BlockFilterDialog } from "./BlockFilterDialog";
 import {
   type BlockSelection,
   type CommandBlockView,
@@ -20,6 +28,7 @@ export type TerminalPaneHandle = {
   selectPrevBlock: () => void;
   selectNextBlock: () => void;
   clearBlockSelection: () => void;
+  selectBlockAtClientY: (clientY: number) => void;
   getBlockSelection: () => BlockSelection | null;
 };
 
@@ -79,6 +88,7 @@ export function TerminalPane({
       selectPrevBlock: () => session.selectPrevBlock(),
       selectNextBlock: () => session.selectNextBlock(),
       clearBlockSelection: () => session.clearBlockSelection(),
+      selectBlockAtClientY: (y: number) => session.selectBlockAtClientY(y),
       getBlockSelection: () => session.getBlockSelection(),
     }),
     [session],
@@ -90,6 +100,32 @@ export function TerminalPane({
     // Type it back at the prompt without a CR — the user runs it themselves.
     session.write(command);
     session.focus();
+  }, [session]);
+
+  const copyActive = useCallback(
+    (kind: "command" | "output" | "both") => {
+      const block = session.getActiveBlock();
+      if (!block) return;
+      const command = block.command.trim();
+      const text =
+        kind === "command"
+          ? command
+          : kind === "output"
+            ? block.output
+            : [command, block.output].filter(Boolean).join("\n");
+      if (text) void navigator.clipboard.writeText(text).catch(() => {});
+    },
+    [session],
+  );
+
+  // Snapshot of the block whose output the filter dialog is showing (null =
+  // closed). Snapshotting at open time decouples it from the live buffer.
+  const [filterTarget, setFilterTarget] = useState<CommandBlockView | null>(
+    null,
+  );
+  const openFilter = useCallback(() => {
+    const block = session.getActiveBlock();
+    if (block?.output) setFilterTarget(block);
   }, [session]);
 
   // A primary click in the grid returns focus to the live prompt, so drop any
@@ -107,19 +143,37 @@ export function TerminalPane({
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="zoom-exempt h-full w-full"
-        style={{
-          visibility: visible ? "visible" : "hidden",
-          pointerEvents: visible ? "auto" : "none",
-        }}
-      />
+      <BlockContextMenu
+        onContextMenu={(y) => session.selectBlockAtClientY(y)}
+        getActiveBlock={session.getActiveBlock}
+        onCopyCommand={() => copyActive("command")}
+        onCopyOutput={() => copyActive("output")}
+        onCopyBoth={() => copyActive("both")}
+        onReinput={reinputActiveBlock}
+        onFilter={openFilter}
+      >
+        <div
+          ref={containerRef}
+          className="zoom-exempt h-full w-full"
+          style={{
+            visibility: visible ? "visible" : "hidden",
+            pointerEvents: visible ? "auto" : "none",
+          }}
+        />
+      </BlockContextMenu>
       <BlockAffordance
         active={visible && focused}
         getActiveBlock={session.getActiveBlock}
         getSelection={session.getBlockSelection}
         onReinput={reinputActiveBlock}
+      />
+      <BlockFilterDialog
+        open={!!filterTarget}
+        onOpenChange={(o) => {
+          if (!o) setFilterTarget(null);
+        }}
+        command={filterTarget?.command ?? ""}
+        output={filterTarget?.output ?? ""}
       />
     </>
   );
