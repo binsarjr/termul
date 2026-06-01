@@ -4,6 +4,8 @@ import type { SearchAddon } from "@xterm/addon-search";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DormantRing } from "./dormantRing";
 import {
+  type CommandBlock,
+  type CommandBlockRing,
   createShellIntegrationState,
   registerCwdHandler,
   registerPromptTracker,
@@ -23,6 +25,7 @@ import {
   getSlotForLeaf,
   releaseSlot,
   setSlotFocused,
+  type Slot,
 } from "./rendererPool";
 
 type Callbacks = {
@@ -50,6 +53,10 @@ type Session = {
   searchQuery: string | null;
   dormantRing: DormantRing;
   hasSlot: boolean;
+  // Command-block ring owned by the prompt tracker of the currently bound
+  // slot. Set when a slot binds (registerOsc), cleared on release. Lets the
+  // block accessors reach the live ring; null when no slot is bound.
+  blocks: CommandBlockRing | null;
   // True if the slot was in alt-screen mode (TUI like vim, htop, dofek)
   // at the most recent release. Read once on the next bind to trigger a
   // SIGWINCH-driven repaint instead of replaying dormant bytes.
@@ -181,6 +188,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     searchQuery: null,
     dormantRing: new DormantRing(),
     hasSlot: false,
+    blocks: null,
     altScreenAtRelease: false,
   };
   sessions.set(leafId, session);
@@ -247,6 +255,10 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // attacker file, etc.).
       const shellState = createShellIntegrationState();
       const prompt = registerPromptTracker(term, shellState);
+      // Expose the slot's command-block ring to the session so getLastBlock /
+      // getBlocks can read it. The prompt tracker disposes the ring on its own
+      // disposer (returned below), so we only need to drop our reference.
+      s.blocks = prompt.blocks;
       const cwd = registerCwdHandler(
         term,
         (next) => {
@@ -280,6 +292,9 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
     if (out.rows > 0) s.rows = out.rows;
     s.altScreenAtRelease = out.altScreen;
   }
+  // releaseSlot ran the prompt-tracker disposer, which disposed the ring's
+  // markers. Drop our reference so the accessors report no blocks until rebind.
+  s.blocks = null;
   s.hasSlot = false;
 }
 
@@ -511,14 +526,82 @@ export function useTerminalSession({
     return sel.length > 0 ? sel : null;
   }, [leafId]);
 
+  const readBlock = useCallback(
+    (block: CommandBlock | null): CommandBlockView | null => {
+      if (!block) return null;
+      const slot = getSlotForLeaf(leafId);
+      const output = slot ? readBlockOutput(slot, block) : "";
+      return { command: block.command, output, exitCode: block.exitCode };
+    },
+    [leafId],
+  );
+
+  const getLastBlock = useCallback(
+    (): CommandBlockView | null => {
+      const s = sessions.get(leafId);
+      return readBlock(s?.blocks?.last() ?? null);
+    },
+    [leafId, readBlock],
+  );
+
+  const getBlocks = useCallback((): CommandBlockView[] => {
+    const s = sessions.get(leafId);
+    const blocks = s?.blocks?.all() ?? [];
+    const out: CommandBlockView[] = [];
+    for (const b of blocks) {
+      const view = readBlock(b);
+      if (view) out.push(view);
+    }
+    return out;
+  }, [leafId, readBlock]);
+
   const applyTheme = useCallback(() => {
     applyPoolTheme();
   }, []);
 
   return useMemo(
-    () => ({ write, focus, getBuffer, getSelection, applyTheme }),
-    [write, focus, getBuffer, getSelection, applyTheme],
+    () => ({
+      write,
+      focus,
+      getBuffer,
+      getSelection,
+      getLastBlock,
+      getBlocks,
+      applyTheme,
+    }),
+    [write, focus, getBuffer, getSelection, getLastBlock, getBlocks, applyTheme],
   );
+}
+
+/** A command block read back into plain text, on demand. */
+export type CommandBlockView = {
+  command: string;
+  output: string;
+  exitCode: number | null;
+};
+
+/**
+ * Translate a block's `[startMarker.line, endMarker.line)` range into output
+ * text the same way getBuffer reads the active buffer. Markers auto-dispose
+ * when their line scrolls out of scrollback (line === -1 / isDisposed), so the
+ * range is clamped and disposed markers degrade to whatever is still readable.
+ */
+function readBlockOutput(slot: Slot, block: CommandBlock): string {
+  const start = block.startMarker;
+  const end = block.endMarker;
+  if (!start || start.isDisposed || start.line < 0) return "";
+  const buf = slot.term.buffer.active;
+  const from = start.line;
+  const to =
+    end && !end.isDisposed && end.line >= 0
+      ? Math.min(end.line, buf.length)
+      : buf.length;
+  const lines: string[] = [];
+  for (let i = from; i < to; i++) {
+    lines.push(buf.getLine(i)?.translateToString(true) ?? "");
+  }
+  while (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines.join("\n");
 }
 
 const ANSI_RE =
