@@ -4,6 +4,7 @@ import {
   type GitStatusSnapshot,
 } from "@/modules/ai/lib/native";
 import { useWorkspaceEnvStore, workspaceScopeKey } from "@/modules/workspace";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const AUTO_FETCH_THROTTLE_MS = 5 * 60_000;
@@ -83,56 +84,6 @@ function getContextualAction(
   return "fetch";
 }
 
-export function getSourceControlRemoteIndicator(
-  summary: Pick<
-    SourceControlSummary,
-    "hasRepo" | "upstream" | "ahead" | "behind" | "busyAction"
-  >,
-): SourceControlRemoteIndicator {
-  if (!summary.hasRepo || !summary.upstream) {
-    return { visible: false, label: "", title: "", disabled: true, action: null };
-  }
-  if (summary.ahead > 0 && summary.behind > 0) {
-    return {
-      visible: true,
-      label: `↑${summary.ahead} ↓${summary.behind}`,
-      title:
-        "Branch has diverged from upstream. Use Source Control or the terminal to resolve it.",
-      disabled: true,
-      action: null,
-    };
-  }
-  if (summary.behind > 0) {
-    return {
-      visible: true,
-      label: `↓${summary.behind}`,
-      title: `Pull ${summary.behind} remote ${
-        summary.behind === 1 ? "commit" : "commits"
-      } with fast-forward only.`,
-      disabled: summary.busyAction !== null,
-      action: "pull",
-    };
-  }
-  if (summary.ahead > 0) {
-    return {
-      visible: true,
-      label: `↑${summary.ahead}`,
-      title: `Push ${summary.ahead} local ${
-        summary.ahead === 1 ? "commit" : "commits"
-      }.`,
-      disabled: summary.busyAction !== null,
-      action: "push",
-    };
-  }
-  return {
-    visible: true,
-    label: "Sync",
-    title: "Fetch remote updates.",
-    disabled: summary.busyAction !== null,
-    action: "fetch",
-  };
-}
-
 function touchAutoFetch(map: Map<string, number>, key: string): void {
   map.delete(key);
   map.set(key, Date.now());
@@ -162,7 +113,9 @@ export function useSourceControl(
   const requestIdRef = useRef(0);
   const inflightRef = useRef<Promise<void> | null>(null);
   const inflightModeRef = useRef<SourceControlRefreshMode>("never");
-  const autoFetchByRepoRef = useRef(new Map<string, number>());
+  const autoFetchByRepoRef = useLazyRef<Map<string, number>>(
+    () => new Map(),
+  );
   const enabledRef = useRef(enabled);
   const lastRefreshAtRef = useRef(0);
 
@@ -338,7 +291,7 @@ export function useSourceControl(
         lastRefreshAtRef.current = Date.now();
       }
     },
-    [contextPath, workspaceKey],
+    [contextPath],
   );
 
   const refresh = useCallback(

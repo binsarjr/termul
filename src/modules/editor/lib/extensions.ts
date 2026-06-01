@@ -7,8 +7,6 @@ import { EditorView } from "@codemirror/view";
 
 // Compartments allow runtime reconfiguration without rebuilding state.
 export const languageCompartment = new Compartment();
-export const readOnlyCompartment = new Compartment();
-export const wrapCompartment = new Compartment();
 export const vimCompartment = new Compartment();
 
 // Only what basicSetup doesn't already cover, to avoid duplicate extensions.

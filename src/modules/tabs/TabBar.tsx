@@ -134,10 +134,18 @@ export function TabBar({
                   {tabs.length > 1 && (
                     <span
                       role="button"
+                      tabIndex={0}
                       aria-label="Close tab"
                       onClick={(e) => {
                         e.stopPropagation();
                         onClose(t.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onClose(t.id);
+                        }
                       }}
                       className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent hover:opacity-100 group-hover:opacity-60"
                     >

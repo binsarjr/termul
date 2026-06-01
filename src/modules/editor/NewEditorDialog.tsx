@@ -42,13 +42,14 @@ export function NewEditorDialog({
     setError(null);
     // Pre-select the basename so the user can quickly retype the filename
     // while keeping the extension handy.
-    setTimeout(() => {
+    const focusTimer = setTimeout(() => {
       const el = inputRef.current;
       if (!el) return;
       el.focus();
       const dot = el.value.lastIndexOf(".");
       el.setSelectionRange(0, dot > 0 ? dot : el.value.length);
     }, 0);
+    return () => clearTimeout(focusTimer);
   }, [open]);
 
   const submit = async () => {

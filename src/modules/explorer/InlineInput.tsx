@@ -71,6 +71,7 @@ export function InlineInput({
     <input
       ref={ref}
       value={value}
+      aria-label={placeholder ?? "Enter name"}
       placeholder={placeholder}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {

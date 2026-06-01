@@ -8,7 +8,7 @@ export type CompletionRequest = {
 const MAX_PREFIX = 2000;
 const MAX_SUFFIX = 1000;
 
-export function trimContext(prefix: string, suffix: string) {
+function trimContext(prefix: string, suffix: string) {
   const p =
     prefix.length > MAX_PREFIX
       ? prefix.slice(prefix.length - MAX_PREFIX)

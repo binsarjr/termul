@@ -845,7 +845,7 @@ function DivergedBanner() {
         <span className="font-medium text-foreground/85">
           Diverged from upstream
         </span>
-        <span className="ml-1 opacity-75">— resolve in terminal</span>
+        <span className="ml-1 opacity-75">: resolve in terminal</span>
       </span>
     </div>
   );
@@ -867,9 +867,13 @@ function ListHeader({
       <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-border/60 px-1 text-[9.5px] font-semibold tabular-nums text-muted-foreground">
         {row.count}
       </span>
-      <label className="ml-auto flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-[10.5px] font-medium text-muted-foreground hover:text-foreground">
+      <label
+        htmlFor="scm-stage-all"
+        className="ml-auto flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-[10.5px] font-medium text-muted-foreground hover:text-foreground"
+      >
         <span>All</span>
         <Checkbox
+          id="scm-stage-all"
           aria-label="Stage all changes"
           checked={checkboxValue(headerCheckState)}
           disabled={actionBusy !== null}
@@ -911,6 +915,7 @@ const EntryRow = memo(function EntryRow({
       data-focused={focused || undefined}
       data-selected={isSelected || undefined}
       role="option"
+      tabIndex={-1}
       aria-selected={isSelected}
       onMouseDown={() => onFocusRow(row.key)}
       className={cn(

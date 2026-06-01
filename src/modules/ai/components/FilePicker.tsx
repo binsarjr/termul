@@ -46,16 +46,16 @@ export function FilePickerContent({
         Workspace files
       </div>
       {!hasWorkspace ? (
-        <div className="px-3 py-3 text-[11px] text-muted-foreground">
+        <div className="p-3 text-[11px] text-muted-foreground">
           No workspace open
         </div>
       ) : indexing && files.length === 0 ? (
-        <div className="flex items-center gap-2 px-3 py-3 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 p-3 text-[11px] text-muted-foreground">
           <Spinner className="size-3" />
           <span>Indexing workspace…</span>
         </div>
       ) : files.length === 0 ? (
-        <div className="px-3 py-3 text-[11px] text-muted-foreground">
+        <div className="p-3 text-[11px] text-muted-foreground">
           No matching files
         </div>
       ) : (

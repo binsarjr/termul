@@ -17,7 +17,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { currentWorkspaceEnv } from "@/modules/workspace";
 import { motion } from "motion/react";
 import {
-  forwardRef,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -59,7 +58,7 @@ export type ExplorerSearchHandle = {
   isFocused: () => boolean;
 };
 
-export const ExplorerSearch = forwardRef<ExplorerSearchHandle, Props>(function ExplorerSearch({
+export function ExplorerSearch({
   rootPath,
   onOpenFile,
   open,
@@ -67,9 +66,8 @@ export const ExplorerSearch = forwardRef<ExplorerSearchHandle, Props>(function E
   onActiveChange,
   onRevealInTerminal,
   onAttachToAgent,
-}: Props,
   ref,
-) {
+}: Props & { ref?: React.Ref<ExplorerSearchHandle> }) {
   const showHidden = usePreferencesStore((s) => s.showHidden);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchHit[]>([]);
@@ -318,7 +316,7 @@ export const ExplorerSearch = forwardRef<ExplorerSearchHandle, Props>(function E
             )}
             {truncated && results.length > 0 ? (
               <div className="px-3 py-1.5 text-[10px] text-muted-foreground">
-                Showing partial results — refine your query.
+                Showing partial results: refine your query.
               </div>
             ) : null}
           </div>
@@ -326,4 +324,4 @@ export const ExplorerSearch = forwardRef<ExplorerSearchHandle, Props>(function E
       ) : null}
     </div>
   );
-});
+}

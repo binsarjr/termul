@@ -533,26 +533,13 @@ export const useChatStore = create<StoreState>((set, get) => ({
   },
 }));
 
-export function getAgentMeta(): AgentMeta {
-  return useChatStore.getState().agentMeta;
-}
-
-export function getActiveProviderKey(): string | null {
+function getActiveProviderKey(): string | null {
   const { selectedModelId, apiKeys, customEndpointKeys } = useChatStore.getState();
   if (isCompatModelId(selectedModelId)) {
     const eid = endpointIdFromCompatModel(selectedModelId);
     return customEndpointKeys[eid] ?? null;
   }
   return apiKeys[getModel(selectedModelId as ModelId).provider] ?? null;
-}
-
-export function hasKeyForModel(modelId: string): boolean {
-  const { apiKeys } = useChatStore.getState();
-  if (isCompatModelId(modelId)) {
-    return true;
-  }
-  const provider = getModel(modelId as ModelId).provider;
-  return providerNeedsKey(provider) ? !!apiKeys[provider] : true;
 }
 
 export function getOrCreateChat(sessionId: string): Chat<UIMessage> {
@@ -564,12 +551,6 @@ export function getOrCreateChat(sessionId: string): Chat<UIMessage> {
   const c = makeChat(sessionId);
   touchChat(sessionId, c);
   return c;
-}
-
-export function getChat(sessionId?: string): Chat<UIMessage> | undefined {
-  if (sessionId) return chats.get(sessionId);
-  const id = useChatStore.getState().activeSessionId;
-  return id ? chats.get(id) : undefined;
 }
 
 export async function sendMessage(text: string): Promise<boolean> {

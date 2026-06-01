@@ -18,8 +18,10 @@ const DEDUPE_MS = 400;
 /** Shell-quote and space-join dropped file paths for insertion into a shell. */
 export function formatDropPaths(paths: string[]): string {
   return paths
-    .filter((path) => path.length > 0)
-    .map((path) => quoteShellArg(path))
+    .reduce<string[]>((acc, path) => {
+      if (path.length > 0) acc.push(quoteShellArg(path));
+      return acc;
+    }, [])
     .join(" ");
 }
 

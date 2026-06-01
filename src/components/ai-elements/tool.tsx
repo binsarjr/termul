@@ -744,11 +744,4 @@ function SuggestCommandCard({
   );
 }
 
-// Compatibility re-exports — the previous API exposed these subcomponents,
-// but the new compact <Tool /> takes everything via props. Kept as no-ops
-// to avoid breaking accidental imports.
-export const ToolHeader = () => null;
-export const ToolContent = ({ children }: { children?: ReactNode }) => (
-  <>{children}</>
-);
 export { ToolInput, ToolOutput };

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   createContext,
-  useContext,
+  use,
   useEffect,
   useRef,
   useState,
@@ -60,7 +60,7 @@ type ComposerCtx = {
 const Ctx = createContext<ComposerCtx | null>(null);
 
 export function useComposer(): ComposerCtx {
-  const ctx = useContext(Ctx);
+  const ctx = use(Ctx);
   if (!ctx)
     throw new Error("useComposer must be used inside <AiComposerProvider>");
   return ctx;
@@ -154,11 +154,8 @@ export function AiComposerProvider({ children }: ProviderProps) {
 
   const addFiles = async (list: FileList | null) => {
     if (!list) return;
-    const next: FileAttachment[] = [];
-    for (const f of Array.from(list)) {
-      const att = await readAttachment(f);
-      if (att) next.push(att);
-    }
+    const results = await Promise.all(Array.from(list).map(readAttachment));
+    const next = results.filter((att): att is FileAttachment => att != null);
     if (next.length) setFiles((prev) => [...prev, ...next]);
   };
 
@@ -250,18 +247,22 @@ export function AiComposerProvider({ children }: ProviderProps) {
     }
 
     const parts: MessagePart[] = [];
-    const fileBlocks = files
-      .filter((f) => f.kind === "text")
-      .map(
-        (f) =>
+    const fileBlocks: string[] = [];
+    for (const f of files) {
+      if (f.kind === "text") {
+        fileBlocks.push(
           `<file name="${f.name}" mediaType="${f.mediaType}">\n${f.text ?? ""}\n</file>`,
-      );
-    const selectionBlocks = files
-      .filter((f) => f.kind === "selection")
-      .map(
-        (f) =>
+        );
+      }
+    }
+    const selectionBlocks: string[] = [];
+    for (const f of files) {
+      if (f.kind === "selection") {
+        selectionBlocks.push(
           `<selection source="${f.source ?? "terminal"}">\n${f.text ?? ""}\n</selection>`,
-      );
+        );
+      }
+    }
     const { body: bodyAfterTokens, blocks: snippetBlocks } = expandSnippetTokens(
       effectiveText,
       useSnippetsStore.getState().snippets,

@@ -10,7 +10,7 @@ import {
   TerminalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
+import { createContext, memo, use, useEffect, useRef, useState } from "react";
 
 import { Shimmer } from "./shimmer";
 import { highlight, isHighlightable, type HighlightedNode } from "./chat-code-lezer";
@@ -59,7 +59,7 @@ export type ChatCodeBlockProps = {
 };
 
 export function ChatCodeBlock({ code, lang }: ChatCodeBlockProps) {
-  const streaming = useContext(StreamingCtx);
+  const streaming = use(StreamingCtx);
   const label = normalizeLangLabel(lang ?? "");
 
   if (streaming) {

@@ -9,7 +9,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { SearchAddon } from "@xterm/addon-search";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -43,9 +42,12 @@ type Props = {
   compact?: boolean;
 };
 
-export const SearchInline = forwardRef<SearchInlineHandle, Props>(
-  function SearchInline({ target, compact }, ref) {
-    const [q, setQ] = useState("");
+export function SearchInline({
+  target,
+  compact,
+  ref,
+}: Props & { ref?: React.Ref<SearchInlineHandle> }) {
+  const [q, setQ] = useState("");
     // In compact mode the field is hidden behind an icon until activated.
     // In normal mode the field is always present.
     const [openInCompact, setOpenInCompact] = useState(false);
@@ -71,13 +73,13 @@ export const SearchInline = forwardRef<SearchInlineHandle, Props>(
 
     const baseLabel = target?.kind === "git-history" ? "Git search" : "Search";
 
-    const placeholder = useMemo(() => {
-      return shortcutText ? `${baseLabel} (${shortcutText})` : baseLabel;
-    }, [baseLabel, shortcutText]);
+    const placeholder = shortcutText
+      ? `${baseLabel} (${shortcutText})`
+      : baseLabel;
 
-    const tooltipTitle = useMemo(() => {
-      return shortcutText ? `${baseLabel} (${shortcutText})` : baseLabel;
-    }, [baseLabel, shortcutText]);
+    const tooltipTitle = shortcutText
+      ? `${baseLabel} (${shortcutText})`
+      : baseLabel;
 
     const expanded = !compact || openInCompact;
 
@@ -231,5 +233,4 @@ export const SearchInline = forwardRef<SearchInlineHandle, Props>(
         </AnimatePresence>
       </motion.div>
     );
-  },
-);
+}

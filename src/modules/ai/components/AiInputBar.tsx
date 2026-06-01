@@ -110,21 +110,28 @@ export function AiInputBar() {
   const filteredItems = useMemo<PickerItem[]>(() => {
     if (!trigger) return [];
     const q = trigger.query;
-    const cmdItems: PickerItem[] = Object.values(SLASH_COMMANDS)
-      .filter(
-        (c) => !q || c.name.includes(q) || c.label.toLowerCase().includes(q),
-      )
-      .map((command) => ({ kind: "command", command }));
+    const cmdItems: PickerItem[] = [];
+    for (const command of Object.values(SLASH_COMMANDS)) {
+      if (
+        !q ||
+        command.name.includes(q) ||
+        command.label.toLowerCase().includes(q)
+      ) {
+        cmdItems.push({ kind: "command", command });
+      }
+    }
     if (trigger.char === "/") return cmdItems;
-    const snipItems: PickerItem[] = snippets
-      .filter(
-        (s) =>
-          !q ||
-          s.handle.includes(q) ||
-          s.name.toLowerCase().includes(q) ||
-          s.description.toLowerCase().includes(q),
-      )
-      .map((snippet) => ({ kind: "snippet", snippet }));
+    const snipItems: PickerItem[] = [];
+    for (const snippet of snippets) {
+      if (
+        !q ||
+        snippet.handle.includes(q) ||
+        snippet.name.toLowerCase().includes(q) ||
+        snippet.description.toLowerCase().includes(q)
+      ) {
+        snipItems.push({ kind: "snippet", snippet });
+      }
+    }
     return [...cmdItems, ...snipItems];
   }, [trigger, snippets]);
 
@@ -240,6 +247,7 @@ export function AiInputBar() {
             <div className="flex items-start gap-2">
               <textarea
                 ref={c.textareaRef}
+                aria-label="Message Its Just Terminal"
                 value={c.value}
                 onChange={(e) => c.setValue(e.target.value)}
                 onKeyUp={updateTrigger}

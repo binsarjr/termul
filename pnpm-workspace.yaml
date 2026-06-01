@@ -1,3 +1,7 @@
+# Delay installs until a release has been public long enough to be vetted/unpublished
+# if malicious. Value is in minutes; 10080 = 7 days. See react-doctor/require-pnpm-hardening.
+minimumReleaseAge: 10080
+
 allowBuilds:
   esbuild: true
   msw: true

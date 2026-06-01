@@ -24,6 +24,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useMemo, useRef, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
 
+const onCreateTheme = () => {
+  void emitThemeEdit({ action: "create" });
+  void getCurrentWindow().hide();
+};
+
+const onEditTheme = (id: string) => {
+  void emitThemeEdit({ action: "edit", id });
+  void getCurrentWindow().hide();
+};
+
 export function ThemesSection() {
   const { themeId, setThemeId, resolvedMode, customThemes } = useTheme();
   const builtinThemes = listBuiltinThemes();
@@ -40,16 +50,6 @@ export function ThemesSection() {
   const [bgError, setBgError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bgInputRef = useRef<HTMLInputElement | null>(null);
-
-  const onCreateTheme = () => {
-    void emitThemeEdit({ action: "create" });
-    void getCurrentWindow().hide();
-  };
-
-  const onEditTheme = (id: string) => {
-    void emitThemeEdit({ action: "edit", id });
-    void getCurrentWindow().hide();
-  };
 
   const backgroundKind = usePreferencesStore((s) => s.backgroundKind);
   const backgroundImageId = usePreferencesStore((s) => s.backgroundImageId);
@@ -158,6 +158,7 @@ export function ThemesSection() {
           <input
             ref={fileInputRef}
             type="file"
+            aria-label="Import theme file"
             accept=".ijt-theme,.json,application/json"
             className="hidden"
             onChange={(e) => {
@@ -225,22 +226,38 @@ export function ThemesSection() {
                   <span className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
                     <span
                       role="button"
+                      tabIndex={0}
                       aria-label={`Edit ${t.name}`}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                       onClick={(e) => {
                         e.stopPropagation();
                         onEditTheme(t.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onEditTheme(t.id);
+                        }
                       }}
                     >
                       <HugeiconsIcon icon={Edit02Icon} size={12} strokeWidth={1.75} />
                     </span>
                     <span
                       role="button"
+                      tabIndex={0}
                       aria-label={`Remove ${t.name}`}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
+                      className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
                       onClick={(e) => {
                         e.stopPropagation();
                         void onRemoveCustomTheme(t.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void onRemoveCustomTheme(t.id);
+                        }
                       }}
                     >
                       ×
@@ -288,6 +305,7 @@ export function ThemesSection() {
             <input
               ref={bgInputRef}
               type="file"
+              aria-label="Choose background image"
               accept="image/*"
               className="hidden"
               onChange={(e) => {

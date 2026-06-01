@@ -282,7 +282,7 @@ const CompactionNotice = memo(function CompactionNotice({
     <div className="flex items-center gap-2 rounded-md border border-border/40 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground">
       <span className="size-1.5 shrink-0 rounded-full bg-amber-500/80" />
       <span className="flex-1 truncate">
-        Context compacted — {droppedCount} older tool result
+        Context compacted: {droppedCount} older tool result
         {droppedCount === 1 ? "" : "s"} elided to save tokens.
       </span>
       <button
@@ -309,6 +309,7 @@ const ContinueRow = memo(function ContinueRow({
       <button
         type="button"
         onClick={onContinue}
+        aria-label="Continue the task from the step limit"
         className="rounded-md border border-border/60 bg-background px-2 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
       >
         Continue
@@ -335,6 +336,10 @@ const RenderedMessage = memo(function RenderedMessage({
       break;
     }
   }
+  const groups = useMemo(() => buildPartGroups(message.parts as AnyPart[]), [
+    message.parts,
+  ]);
+
   if (message.role === "user") {
     const rawText = message.parts
       .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -362,10 +367,6 @@ const RenderedMessage = memo(function RenderedMessage({
       </Message>
     );
   }
-
-  const groups = useMemo(() => buildPartGroups(message.parts as AnyPart[]), [
-    message.parts,
-  ]);
 
   return (
     <Message from={message.role}>
@@ -556,7 +557,6 @@ const PartAppear = memo(function PartAppear({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      style={{ willChange: "transform, opacity" }}
     >
       {children}
     </motion.div>

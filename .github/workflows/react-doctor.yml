@@ -1,0 +1,31 @@
+name: React Doctor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: react-doctor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  react-doctor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: millionco/react-doctor@main
+        with:
+          # Advisory for now: the codebase still has error-level findings that
+          # are intentionally deferred to a follow-up PR (the state/effect
+          # refactor family — no-adjust-state-on-prop-change, etc.) plus a few
+          # verified false positives (effect-needs-cleanup that DO return an
+          # unlisten cleanup). The action fails on ANY error in changed files
+          # with no regression-only mode, so a blocking gate would be
+          # permanently red. Reports the score + sticky PR comment + annotations
+          # without blocking merges. Flip back to false once those errors clear.
+          non-blocking: "true"

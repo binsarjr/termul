@@ -1,6 +1,7 @@
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import type { ToolUIPart, UIMessagePart } from "ai";
 import { useEffect, useMemo, useRef } from "react";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { native } from "../lib/native";
 import { checkReadable } from "../lib/security";
 import { resolvePath } from "../tools/tools";
@@ -127,7 +128,7 @@ function Bridge({
   // ---- AI diff tab management ----------------------------------------------
   // We track which approvalIds have already opened a tab so re-renders don't
   // open duplicates. Reset when the session changes.
-  const openedRef = useRef<Set<string>>(new Set());
+  const openedRef = useLazyRef<Set<string>>(() => new Set());
   const fileMutationFingerprintRef = useRef<string>("");
   useEffect(() => {
     openedRef.current = new Set();
@@ -311,13 +312,16 @@ function extractFileMutation(part: AnyPart): FileMutation | null {
     const input = (p.input ?? {}) as { path?: unknown; edits?: unknown };
     const path = typeof input.path === "string" ? input.path : "";
     if (!path || !Array.isArray(input.edits)) return null;
-    const edits: EditOp[] = (input.edits as Record<string, unknown>[])
-      .map((e) => ({
-        old_string: typeof e.old_string === "string" ? e.old_string : "",
+    const edits: EditOp[] = [];
+    for (const e of input.edits as Record<string, unknown>[]) {
+      const old_string = typeof e.old_string === "string" ? e.old_string : "";
+      if (old_string.length === 0) continue;
+      edits.push({
+        old_string,
         new_string: typeof e.new_string === "string" ? e.new_string : "",
         replace_all: Boolean(e.replace_all),
-      }))
-      .filter((e) => e.old_string.length > 0);
+      });
+    }
     if (edits.length === 0) return null;
     return { state, approvalId, path, derive: { kind: "edits", edits } };
   }

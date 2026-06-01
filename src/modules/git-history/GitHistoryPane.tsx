@@ -7,6 +7,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useLazyRef } from "@/lib/useLazyRef";
 import {
   native,
   type GitCommitFileChange,
@@ -219,13 +220,15 @@ export function GitHistoryPane({
     height: number;
   } | null>(null);
   const [remoteWeb, setRemoteWeb] = useState<RemoteWebInfo | null>(null);
-  const filesCacheRef = useRef(new Map<string, FilesEntry>());
+  const filesCacheRef = useLazyRef<Map<string, FilesEntry>>(
+    () => new Map<string, FilesEntry>(),
+  );
   const [filesTick, setFilesTick] = useState(0);
   const bumpFiles = useCallback(() => setFilesTick((n) => n + 1), []);
 
   const requestIdRef = useRef(0);
   const inflightMoreRef = useRef(false);
-  const filesInflightRef = useRef(new Set<string>());
+  const filesInflightRef = useLazyRef<Set<string>>(() => new Set<string>());
   const scrollRef = useRef<HTMLDivElement>(null);
   const graphCacheRef = useRef<{
     rows: GraphRow[];
@@ -921,7 +924,7 @@ function CommitFiles({
 }) {
   if (!filesEntry || filesEntry.state === "loading") {
     return (
-      <div className="flex items-center gap-2 px-3 py-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 p-3 text-[11px] text-muted-foreground">
         <Spinner className="size-3" />
         Loading files…
       </div>
@@ -929,7 +932,7 @@ function CommitFiles({
   }
   if (filesEntry.state === "error") {
     return (
-      <div className="flex items-center justify-between gap-2 px-3 py-3 text-[11px] text-destructive">
+      <div className="flex items-center justify-between gap-2 p-3 text-[11px] text-destructive">
         <span className="truncate">{filesEntry.error}</span>
         <Button
           size="xs"
@@ -944,7 +947,7 @@ function CommitFiles({
   }
   if (filesEntry.files.length === 0) {
     return (
-      <div className="px-3 py-3 text-[11px] text-muted-foreground">
+      <div className="p-3 text-[11px] text-muted-foreground">
         No file changes.
       </div>
     );

@@ -140,7 +140,7 @@ export function AiDiffPane({
       <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
         <div className="flex min-w-0 items-center gap-2">
           <Badge
-            className="text-[11px] px-2.5 py-2.5"
+            className="text-[11px] p-2.5"
             variant={STATUS_BADGE[status]}
           >
             {STATUS_LABEL[status]}

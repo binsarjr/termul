@@ -73,7 +73,7 @@ function EntryRowImpl(props: EntryRowProps) {
   const createTarget = isDir ? path : path.slice(0, path.lastIndexOf("/")) || rootPath;
   const paddingLeft = 6 + depth * 12;
 
-  const handleClick = () => {
+  const activateRow = () => {
     if (tree.renaming) return;
     onSelectPath(path);
     if (isDir) tree.toggle(path);
@@ -104,7 +104,7 @@ function EntryRowImpl(props: EntryRowProps) {
           <button
             type="button"
             data-fs-path={path}
-            onClick={handleClick}
+            onClick={activateRow}
             onDoubleClick={() => !isDir && tree.beginRename(path)}
             className={cn(
               "group flex h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm px-1.5 text-left text-[13px] text-foreground/85 transition-colors hover:bg-accent/70",

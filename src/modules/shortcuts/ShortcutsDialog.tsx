@@ -85,7 +85,7 @@ export function ShortcutsDialog({ open, onOpenChange }: Props) {
                                 ) {
                                   label = "1…9";
                                 }
-                                return <Kbd key={i}>{label}</Kbd>;
+                                return <Kbd key={token}>{label}</Kbd>;
                               })}
                             </KbdGroup>
                           ) : (

@@ -31,10 +31,12 @@ export async function deleteCustomTheme(id: string): Promise<void> {
 }
 
 export async function onCustomThemesChange(cb: () => void): Promise<UnlistenFn> {
-  const unsubLocal = await store.onChange((key) => {
-    if (key === KEY) cb();
-  });
-  const unsubEvent = await listen(CHANGED_EVENT, () => cb());
+  const [unsubLocal, unsubEvent] = await Promise.all([
+    store.onChange((key) => {
+      if (key === KEY) cb();
+    }),
+    listen(CHANGED_EVENT, () => cb()),
+  ]);
   return () => {
     unsubLocal();
     unsubEvent();

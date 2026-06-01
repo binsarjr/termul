@@ -381,17 +381,19 @@ export function useSourceControlPanel(
 
   const stagedEntries = useMemo(
     () =>
-      (status?.changedFiles ?? [])
-        .filter((file) => file.staged)
-        .map((file) => makeEntry(file.path, "+", file)),
+      (status?.changedFiles ?? []).reduce<SourceControlEntry[]>((acc, file) => {
+        if (file.staged) acc.push(makeEntry(file.path, "+", file));
+        return acc;
+      }, []),
     [status],
   );
 
   const unstagedEntries = useMemo(
     () =>
-      (status?.changedFiles ?? [])
-        .filter((file) => file.unstaged)
-        .map((file) => makeEntry(file.path, "-", file)),
+      (status?.changedFiles ?? []).reduce<SourceControlEntry[]>((acc, file) => {
+        if (file.unstaged) acc.push(makeEntry(file.path, "-", file));
+        return acc;
+      }, []),
     [status],
   );
 

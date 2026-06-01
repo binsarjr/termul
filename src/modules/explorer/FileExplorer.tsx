@@ -16,7 +16,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -144,19 +143,16 @@ function buildRows(
   return { rows, entryIndexByPath };
 }
 
-export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
-  function FileExplorer(
-    {
-      rootPath,
-      onOpenFile,
-      onPathRenamed,
-      onPathDeleted,
-      onRevealInTerminal,
-      onAttachToAgent,
-      onOpenMarkdownPreview,
-    },
-    ref,
-  ) {
+export function FileExplorer({
+  rootPath,
+  onOpenFile,
+  onPathRenamed,
+  onPathDeleted,
+  onRevealInTerminal,
+  onAttachToAgent,
+  onOpenMarkdownPreview,
+  ref,
+}: Props & { ref?: React.Ref<FileExplorerHandle> }) {
     const tree = useFileTree(rootPath, { onPathRenamed, onPathDeleted });
     const git = useExplorerGitStatus(rootPath);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -169,7 +165,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
     const { rows, entryIndexByPath } = useMemo(() => {
       if (!rootPath) return { rows: [] as Row[], entryIndexByPath: new Map<string, number>() };
       return buildRows(rootPath, tree);
-    }, [rootPath, tree.nodes, tree.expanded, tree.renaming, tree.pendingCreate, tree]);
+    }, [rootPath, tree]);
 
     const entryPaths = useMemo<string[]>(() => {
       const out: string[] = [];
@@ -370,6 +366,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
       <div
         ref={containerRef}
         className="flex h-full flex-col outline-none"
+        role="tree"
+        aria-label="File explorer"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >
@@ -564,5 +562,4 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
         ) : null}
       </div>
     );
-  },
-);
+}

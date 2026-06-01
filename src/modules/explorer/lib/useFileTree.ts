@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { currentWorkspaceEnv } from "@/modules/workspace";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { listenFsChanged, watchAdd, watchRemove } from "./watch";
 
@@ -24,12 +25,12 @@ export type PendingCreate = {
   kind: "file" | "dir";
 };
 
-export function joinPath(parent: string, name: string): string {
+function joinPath(parent: string, name: string): string {
   if (parent.endsWith("/")) return `${parent}${name}`;
   return `${parent}/${name}`;
 }
 
-export function dirname(path: string): string {
+function dirname(path: string): string {
   const i = path.lastIndexOf("/");
   if (i <= 0) return "/";
   return path.slice(0, i);
@@ -77,7 +78,7 @@ export function useFileTree(rootPath: string | null, options?: Options) {
 
   const expandedRef = useRef(expanded);
   const nodesRef = useRef(nodes);
-  const watchedRef = useRef<Set<string>>(new Set());
+  const watchedRef = useLazyRef<Set<string>>(() => new Set());
 
   useEffect(() => {
     showHiddenRef.current = showHidden;
@@ -111,9 +112,10 @@ export function useFileTree(rootPath: string | null, options?: Options) {
         workspace: currentWorkspaceEnv(),
       });
 
-      const liveDirs = new Set(
-        entries.filter((e) => e.kind === "dir").map((e) => joinPath(path, e.name)),
-      );
+      const liveDirs = new Set<string>();
+      for (const e of entries) {
+        if (e.kind === "dir") liveDirs.add(joinPath(path, e.name));
+      }
       const removedRoots: string[] = [];
       for (const key of Object.keys(nodesRef.current)) {
         if (dirname(key) === path && !liveDirs.has(key)) removedRoots.push(key);
@@ -212,9 +214,13 @@ export function useFileTree(rootPath: string | null, options?: Options) {
 
   useEffect(() => {
     if (!rootPath) return;
-    const loadedPaths = Object.entries(nodes)
-      .filter(([, state]) => state.status === "loaded")
-      .map(([path]) => path);
+    const loadedPaths = Object.entries(nodes).reduce<string[]>(
+      (acc, [path, state]) => {
+        if (state.status === "loaded") acc.push(path);
+        return acc;
+      },
+      [],
+    );
     for (const path of loadedPaths) void fetchChildren(path);
     // Re-list loaded directories when the visibility preference changes.
     // `nodes` is intentionally omitted so ordinary tree edits don't refetch

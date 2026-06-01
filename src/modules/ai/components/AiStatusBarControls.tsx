@@ -110,6 +110,7 @@ export function AiStatusBarControls() {
         type="file"
         multiple
         accept={ACCEPTED_FILES}
+        aria-label="Attach file or image"
         className="hidden"
         onChange={(e) => {
           void c.addFiles(e.target.files);
@@ -335,6 +336,7 @@ function ModelDropdown() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.stopPropagation()}
+            aria-label="Search models"
             placeholder="Search models, providers, capabilities…"
             className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
           />

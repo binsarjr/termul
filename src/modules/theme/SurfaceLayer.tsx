@@ -3,7 +3,7 @@ import {
   usePreferencesStore,
 } from "@/modules/settings/preferences";
 import { BG_OPACITY_RENDER_FACTOR } from "@/modules/settings/store";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const OVERLAY_Z = 2147483646;
@@ -71,32 +71,35 @@ function BackgroundImage({ fastImageId }: { fastImageId: string | null }) {
     };
   }, []);
 
-  if (!state || typeof document === "undefined") return null;
-  const { url, animated } = state;
+  const url = state?.url ?? "";
+  const animated = state?.animated ?? false;
 
   const suspendAnimated = animated && (resizing || docHidden);
   const blurActive = !animated && blur > 0 && !resizing;
   const renderedOpacity =
     visible && !suspendAnimated ? opacity * BG_OPACITY_RENDER_FACTOR : 0;
 
+  const surfaceStyle = useMemo(
+    () => ({
+      position: "fixed" as const,
+      inset: 0,
+      zIndex: OVERLAY_Z,
+      pointerEvents: "none" as const,
+      backgroundImage: suspendAnimated ? "none" : `url(${url})`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      opacity: renderedOpacity,
+      filter: blurActive ? `blur(${blur}px)` : undefined,
+      transform: "translateZ(0)",
+      transition: `opacity ${FADE_IN_MS}ms ease-out`,
+    }),
+    [suspendAnimated, url, renderedOpacity, blurActive, blur],
+  );
+
+  if (!state || typeof document === "undefined") return null;
+
   return createPortal(
-    <div
-      aria-hidden
-      className="ijt-bg-surface"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: OVERLAY_Z,
-        pointerEvents: "none",
-        backgroundImage: suspendAnimated ? "none" : `url(${url})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        opacity: renderedOpacity,
-        filter: blurActive ? `blur(${blur}px)` : undefined,
-        transform: "translateZ(0)",
-        transition: `opacity ${FADE_IN_MS}ms ease-out`,
-      }}
-    />,
+    <div aria-hidden className="ijt-bg-surface" style={surfaceStyle} />,
     document.body,
   );
 }
