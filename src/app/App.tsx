@@ -885,15 +885,45 @@ export default function App() {
 
   const copyLastCommand = useCallback(() => {
     if (activeLeafId === null) return;
-    const block = terminalRefs.current.get(activeLeafId)?.getLastBlock();
+    const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
     const command = block?.command?.trim();
     if (command) void navigator.clipboard.writeText(command).catch(() => {});
   }, [activeLeafId]);
 
   const copyLastCommandOutput = useCallback(() => {
     if (activeLeafId === null) return;
-    const block = terminalRefs.current.get(activeLeafId)?.getLastBlock();
+    const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
     if (block?.output) void navigator.clipboard.writeText(block.output).catch(() => {});
+  }, [activeLeafId]);
+
+  const copyLastCommandBoth = useCallback(() => {
+    if (activeLeafId === null) return;
+    const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
+    if (!block) return;
+    const command = block.command.trim();
+    const text = [command, block.output].filter(Boolean).join("\n");
+    if (text) void navigator.clipboard.writeText(text).catch(() => {});
+  }, [activeLeafId]);
+
+  const reinputLastCommand = useCallback(() => {
+    if (activeLeafId === null) return;
+    const term = terminalRefs.current.get(activeLeafId);
+    const command = term?.getActiveBlock()?.command.trim();
+    if (!term || !command) return;
+    // Type the command back at the prompt without a trailing CR so the user
+    // can edit/run it — matching Warp's "reinput", not an auto re-run.
+    term.write(command);
+    term.focus();
+  }, [activeLeafId]);
+
+  const selectPrevBlock = useCallback(() => {
+    if (activeLeafId === null) return;
+    terminalRefs.current.get(activeLeafId)?.selectPrevBlock();
+  }, [activeLeafId]);
+
+  const selectNextBlock = useCallback(() => {
+    if (activeLeafId === null) return;
+    terminalRefs.current.get(activeLeafId)?.selectNextBlock();
   }, [activeLeafId]);
 
   const cdInNewTab = useCallback(
@@ -1129,6 +1159,10 @@ export default function App() {
       },
       "block.copyCommand": copyLastCommand,
       "block.copyOutput": copyLastCommandOutput,
+      "block.copyBoth": copyLastCommandBoth,
+      "block.reinput": reinputLastCommand,
+      "block.selectPrev": selectPrevBlock,
+      "block.selectNext": selectNextBlock,
       "search.focus": () => searchInlineRef.current?.focus(),
       "ai.toggle": togglePanelAndFocus,
       "ai.askSelection": askFromSelection,
@@ -1159,6 +1193,10 @@ export default function App() {
       toggleExplorerFocus,
       copyLastCommand,
       copyLastCommandOutput,
+      copyLastCommandBoth,
+      reinputLastCommand,
+      selectPrevBlock,
+      selectNextBlock,
       zoomIn,
       zoomOut,
       zoomReset,
@@ -1183,6 +1221,13 @@ export default function App() {
       if (id === "terminal.clear") {
         // Only intercept ⌘K while a terminal is focused; elsewhere let the key
         // fall through (we never preventDefault when disabled).
+        const target =
+          (e.target as HTMLElement | null) ?? document.activeElement;
+        return !(target as HTMLElement | null)?.closest?.(".xterm");
+      }
+      if (id === "block.selectPrev" || id === "block.selectNext") {
+        // Block navigation (Cmd+↑/↓) only applies inside a focused terminal —
+        // elsewhere let the arrows behave normally (editor, AI panel, lists).
         const target =
           (e.target as HTMLElement | null) ?? document.activeElement;
         return !(target as HTMLElement | null)?.closest?.(".xterm");

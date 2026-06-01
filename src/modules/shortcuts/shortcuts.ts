@@ -21,6 +21,10 @@ export type ShortcutId =
   | "terminal.clear"
   | "block.copyCommand"
   | "block.copyOutput"
+  | "block.copyBoth"
+  | "block.reinput"
+  | "block.selectPrev"
+  | "block.selectNext"
   | "search.focus"
   | "explorer.search"
   | "explorer.focus"
@@ -154,17 +158,54 @@ export const SHORTCUTS: Shortcut[] = [
   },
   {
     id: "block.copyCommand",
-    label: "Copy last command",
+    label: "Copy command",
     group: "Terminal",
     // Unbound by default: runnable from the command palette or the block
     // affordance, bindable in settings. Avoids clashing with shell/readline keys.
+    // Targets the selected block when navigating, else the most recent one.
     defaultBindings: [],
   },
   {
     id: "block.copyOutput",
-    label: "Copy last command output",
+    label: "Copy command output",
     group: "Terminal",
     defaultBindings: [],
+  },
+  {
+    id: "block.copyBoth",
+    label: "Copy command and output",
+    group: "Terminal",
+    // Unbound by default like the other copy actions; reachable from the
+    // palette, the block pill, and the right-click menu.
+    defaultBindings: [],
+  },
+  {
+    id: "block.reinput",
+    label: "Reinput command",
+    group: "Terminal",
+    // Types the block's command back at the prompt without running it.
+    defaultBindings: [],
+  },
+  {
+    id: "block.selectPrev",
+    label: "Select previous block",
+    group: "Terminal",
+    // Cmd+Up/Down on macOS is free (keymap only maps Cmd+Left/Right). Elsewhere
+    // Ctrl+Up/Down can collide with apps, so we require Shift. Gated to a
+    // focused terminal pane in App's shortcutsDisabled.
+    defaultBindings: IS_MAC
+      ? [{ meta: true, key: "ArrowUp" }]
+      : [{ ctrl: true, shift: true, key: "ArrowUp" }],
+    allowRepeat: true,
+  },
+  {
+    id: "block.selectNext",
+    label: "Select next block",
+    group: "Terminal",
+    defaultBindings: IS_MAC
+      ? [{ meta: true, key: "ArrowDown" }]
+      : [{ ctrl: true, shift: true, key: "ArrowDown" }],
+    allowRepeat: true,
   },
   {
     id: "tab.next",

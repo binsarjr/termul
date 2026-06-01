@@ -2,6 +2,7 @@ import { ensureMonoFontsLoaded } from "@/lib/fonts";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { BlockDecorations } from "./blockDecorations";
 import { DormantRing } from "./dormantRing";
 import {
   type CommandBlock,
@@ -57,6 +58,9 @@ type Session = {
   // slot. Set when a slot binds (registerOsc), cleared on release. Lets the
   // block accessors reach the live ring; null when no slot is bound.
   blocks: CommandBlockRing | null;
+  // Decoration + selection controller for the bound slot's block ring. Lives
+  // and dies with `blocks` (created on bind, disposed on release).
+  blockDeco: BlockDecorations | null;
   // True if the slot was in alt-screen mode (TUI like vim, htop, dofek)
   // at the most recent release. Read once on the next bind to trigger a
   // SIGWINCH-driven repaint instead of replaying dormant bytes.
@@ -189,6 +193,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     dormantRing: new DormantRing(),
     hasSlot: false,
     blocks: null,
+    blockDeco: null,
     altScreenAtRelease: false,
   };
   sessions.set(leafId, session);
@@ -259,6 +264,8 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // getBlocks can read it. The prompt tracker disposes the ring on its own
       // disposer (returned below), so we only need to drop our reference.
       s.blocks = prompt.blocks;
+      const blockDeco = new BlockDecorations(term, prompt.blocks);
+      s.blockDeco = blockDeco;
       const cwd = registerCwdHandler(
         term,
         (next) => {
@@ -269,7 +276,14 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         },
         shellState,
       );
-      return [prompt.dispose, cwd];
+      return [
+        () => {
+          blockDeco.dispose();
+          if (s.blockDeco === blockDeco) s.blockDeco = null;
+        },
+        prompt.dispose,
+        cwd,
+      ];
     },
     onSearchReady: (addon) => s.callbacks.onSearchReady?.(addon),
   });
@@ -292,9 +306,11 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
     if (out.rows > 0) s.rows = out.rows;
     s.altScreenAtRelease = out.altScreen;
   }
-  // releaseSlot ran the prompt-tracker disposer, which disposed the ring's
-  // markers. Drop our reference so the accessors report no blocks until rebind.
+  // releaseSlot ran the prompt-tracker disposer, which disposed the block
+  // controller + the ring's markers. Drop our references so the accessors
+  // report no blocks until rebind.
   s.blocks = null;
+  s.blockDeco = null;
   s.hasSlot = false;
 }
 
@@ -555,6 +571,42 @@ export function useTerminalSession({
     return out;
   }, [leafId, readBlock]);
 
+  // The block targeted by copy / reinput / the pill: the keyboard-selected
+  // block when one is active, otherwise the most recent block.
+  const getActiveBlock = useCallback((): CommandBlockView | null => {
+    const s = sessions.get(leafId);
+    const selected = s?.blockDeco?.getSelected() ?? null;
+    return readBlock(selected ?? s?.blocks?.last() ?? null);
+  }, [leafId, readBlock]);
+
+  const selectPrevBlock = useCallback(() => {
+    sessions.get(leafId)?.blockDeco?.selectRelative(-1);
+  }, [leafId]);
+
+  const selectNextBlock = useCallback(() => {
+    sessions.get(leafId)?.blockDeco?.selectRelative(1);
+  }, [leafId]);
+
+  const clearBlockSelection = useCallback(() => {
+    sessions.get(leafId)?.blockDeco?.clearSelection();
+  }, [leafId]);
+
+  // Select the block under a right-click (or clear when the click misses every
+  // block) so the context menu acts on it.
+  const selectBlockAtClientY = useCallback((clientY: number) => {
+    const deco = sessions.get(leafId)?.blockDeco;
+    if (deco) deco.select(deco.blockAtClientY(clientY));
+  }, [leafId]);
+
+  const getBlockSelection = useCallback((): BlockSelection | null => {
+    const s = sessions.get(leafId);
+    const selected = s?.blockDeco?.getSelected();
+    if (!selected) return null;
+    const index = s?.blocks?.all().indexOf(selected) ?? -1;
+    if (index < 0) return null;
+    return { index, total: s?.blocks?.all().length ?? 0 };
+  }, [leafId]);
+
   const applyTheme = useCallback(() => {
     applyPoolTheme();
   }, []);
@@ -567,9 +619,29 @@ export function useTerminalSession({
       getSelection,
       getLastBlock,
       getBlocks,
+      getActiveBlock,
+      selectPrevBlock,
+      selectNextBlock,
+      clearBlockSelection,
+      selectBlockAtClientY,
+      getBlockSelection,
       applyTheme,
     }),
-    [write, focus, getBuffer, getSelection, getLastBlock, getBlocks, applyTheme],
+    [
+      write,
+      focus,
+      getBuffer,
+      getSelection,
+      getLastBlock,
+      getBlocks,
+      getActiveBlock,
+      selectPrevBlock,
+      selectNextBlock,
+      clearBlockSelection,
+      selectBlockAtClientY,
+      getBlockSelection,
+      applyTheme,
+    ],
   );
 }
 
@@ -579,6 +651,10 @@ export type CommandBlockView = {
   output: string;
   exitCode: number | null;
 };
+
+/** Which block is keyboard-selected, and how many blocks exist. `index` is
+ * 0-based oldest-first into the ring. */
+export type BlockSelection = { index: number; total: number };
 
 /**
  * Translate a block's `[startMarker.line, endMarker.line)` range into output
