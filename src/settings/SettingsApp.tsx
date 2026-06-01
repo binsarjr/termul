@@ -1,8 +1,12 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WindowControls } from "@/components/WindowControls";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
-import type { SettingsTab } from "@/modules/settings/openSettingsWindow";
+import {
+  toggleSettingsWindow,
+  type SettingsTab,
+} from "@/modules/settings/openSettingsWindow";
 import { usePreferencesStore } from "@/modules/settings/preferences";
+import { matchBinding, SHORTCUTS } from "@/modules/shortcuts/shortcuts";
 import {
   AiScanIcon,
   InformationCircleIcon,
@@ -53,6 +57,7 @@ function readInitialTab(): SettingsTab {
 export function SettingsApp() {
   const [active, setActive] = useState<SettingsTab>(readInitialTab);
   const init = usePreferencesStore((s) => s.init);
+  const userShortcuts = usePreferencesStore((s) => s.shortcuts);
   const ActiveSection = TABS.find(t => t.id === active)?.component;
 
   useEffect(() => {
@@ -77,6 +82,34 @@ export function SettingsApp() {
       void unlistenPromise.then((un) => un());
     };
   }, []);
+
+  // Close from inside the settings webview. While settings is focused the main
+  // window's global shortcuts do not fire, so the toggle key (and Escape) are
+  // handled here to make the settings shortcut a real open/close toggle.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inEditable = !!target?.closest(
+        "input, textarea, [contenteditable='true']",
+      );
+      const bindings =
+        userShortcuts["settings.open"] ||
+        SHORTCUTS.find((s) => s.id === "settings.open")?.defaultBindings ||
+        [];
+      const matchesToggle = bindings.some((b) =>
+        matchBinding(e, b, "settings.open"),
+      );
+      if (matchesToggle || (e.key === "Escape" && !inEditable)) {
+        e.preventDefault();
+        // Route through the toggle command so the window is hidden (kept alive)
+        // rather than destroyed, matching the instant open/close from the main
+        // window. Hiding from JS would need a capability the window lacks.
+        void toggleSettingsWindow();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [userShortcuts]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground select-none">
