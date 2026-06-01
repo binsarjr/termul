@@ -71,13 +71,13 @@ export const SearchInline = forwardRef<SearchInlineHandle, Props>(
 
     const baseLabel = target?.kind === "git-history" ? "Git search" : "Search";
 
-    const placeholder = useMemo(() => {
-      return shortcutText ? `${baseLabel} (${shortcutText})` : baseLabel;
-    }, [baseLabel, shortcutText]);
+    const placeholder = shortcutText
+      ? `${baseLabel} (${shortcutText})`
+      : baseLabel;
 
-    const tooltipTitle = useMemo(() => {
-      return shortcutText ? `${baseLabel} (${shortcutText})` : baseLabel;
-    }, [baseLabel, shortcutText]);
+    const tooltipTitle = shortcutText
+      ? `${baseLabel} (${shortcutText})`
+      : baseLabel;
 
     const expanded = !compact || openInCompact;
 

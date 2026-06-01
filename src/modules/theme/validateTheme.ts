@@ -21,6 +21,8 @@ const COLOR_KEYS: readonly (keyof ThemeColors)[] = [
   "radius",
 ];
 
+const COLOR_KEY_SET = new Set<string>(COLOR_KEYS);
+
 const ID_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -36,7 +38,7 @@ function parseColors(raw: unknown, path: string): ThemeColors | string {
   if (!isObj(raw)) return `${path} must be an object`;
   const out: ThemeColors = {};
   for (const k of Object.keys(raw)) {
-    if (!(COLOR_KEYS as string[]).includes(k)) {
+    if (!COLOR_KEY_SET.has(k)) {
       return `${path}.${k} is not a recognized color key`;
     }
     const v = raw[k];

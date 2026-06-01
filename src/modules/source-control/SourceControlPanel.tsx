@@ -845,7 +845,7 @@ function DivergedBanner() {
         <span className="font-medium text-foreground/85">
           Diverged from upstream
         </span>
-        <span className="ml-1 opacity-75">— resolve in terminal</span>
+        <span className="ml-1 opacity-75">: resolve in terminal</span>
       </span>
     </div>
   );

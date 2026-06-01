@@ -111,9 +111,10 @@ export function useFileTree(rootPath: string | null, options?: Options) {
         workspace: currentWorkspaceEnv(),
       });
 
-      const liveDirs = new Set(
-        entries.filter((e) => e.kind === "dir").map((e) => joinPath(path, e.name)),
-      );
+      const liveDirs = new Set<string>();
+      for (const e of entries) {
+        if (e.kind === "dir") liveDirs.add(joinPath(path, e.name));
+      }
       const removedRoots: string[] = [];
       for (const key of Object.keys(nodesRef.current)) {
         if (dirname(key) === path && !liveDirs.has(key)) removedRoots.push(key);
@@ -212,9 +213,13 @@ export function useFileTree(rootPath: string | null, options?: Options) {
 
   useEffect(() => {
     if (!rootPath) return;
-    const loadedPaths = Object.entries(nodes)
-      .filter(([, state]) => state.status === "loaded")
-      .map(([path]) => path);
+    const loadedPaths = Object.entries(nodes).reduce<string[]>(
+      (acc, [path, state]) => {
+        if (state.status === "loaded") acc.push(path);
+        return acc;
+      },
+      [],
+    );
     for (const path of loadedPaths) void fetchChildren(path);
     // Re-list loaded directories when the visibility preference changes.
     // `nodes` is intentionally omitted so ordinary tree edits don't refetch

@@ -220,7 +220,7 @@ export function PdfViewerPane({ path, visible }: Props) {
           <div className="flex flex-col items-start gap-2 text-[12px] text-muted-foreground">
             <p>
               This PDF is {formatBytes(status.size)} (limit{" "}
-              {formatBytes(status.limit)}) — too large to preview inline.
+              {formatBytes(status.limit)}): too large to preview inline.
             </p>
             <button
               type="button"

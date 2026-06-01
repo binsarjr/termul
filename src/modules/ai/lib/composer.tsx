@@ -250,18 +250,22 @@ export function AiComposerProvider({ children }: ProviderProps) {
     }
 
     const parts: MessagePart[] = [];
-    const fileBlocks = files
-      .filter((f) => f.kind === "text")
-      .map(
-        (f) =>
+    const fileBlocks: string[] = [];
+    for (const f of files) {
+      if (f.kind === "text") {
+        fileBlocks.push(
           `<file name="${f.name}" mediaType="${f.mediaType}">\n${f.text ?? ""}\n</file>`,
-      );
-    const selectionBlocks = files
-      .filter((f) => f.kind === "selection")
-      .map(
-        (f) =>
+        );
+      }
+    }
+    const selectionBlocks: string[] = [];
+    for (const f of files) {
+      if (f.kind === "selection") {
+        selectionBlocks.push(
           `<selection source="${f.source ?? "terminal"}">\n${f.text ?? ""}\n</selection>`,
-      );
+        );
+      }
+    }
     const { body: bodyAfterTokens, blocks: snippetBlocks } = expandSnippetTokens(
       effectiveText,
       useSnippetsStore.getState().snippets,

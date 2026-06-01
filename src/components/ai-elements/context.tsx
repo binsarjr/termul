@@ -19,6 +19,18 @@ const ICON_VIEWBOX = 24;
 const ICON_CENTER = 12;
 const ICON_STROKE_WIDTH = 2;
 
+const percentFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 1,
+  style: "percent",
+});
+const compactFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+});
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  style: "currency",
+});
+
 type ModelId = string;
 
 interface ContextSchema {
@@ -107,10 +119,7 @@ export type ContextTriggerProps = ComponentProps<typeof Button>;
 export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
   const { usedTokens, maxTokens } = useContextValue();
   const usedPercent = usedTokens / maxTokens;
-  const renderedPercent = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 1,
-    style: "percent",
-  }).format(usedPercent);
+  const renderedPercent = percentFormatter.format(usedPercent);
 
   return (
     <HoverCardTrigger asChild>
@@ -147,16 +156,9 @@ export const ContextContentHeader = ({
 }: ContextContentHeaderProps) => {
   const { usedTokens, maxTokens } = useContextValue();
   const usedPercent = usedTokens / maxTokens;
-  const displayPct = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 1,
-    style: "percent",
-  }).format(usedPercent);
-  const used = new Intl.NumberFormat("en-US", {
-    notation: "compact",
-  }).format(usedTokens);
-  const total = new Intl.NumberFormat("en-US", {
-    notation: "compact",
-  }).format(maxTokens);
+  const displayPct = percentFormatter.format(usedPercent);
+  const used = compactFormatter.format(usedTokens);
+  const total = compactFormatter.format(maxTokens);
 
   return (
     <div className={cn("w-full space-y-2 p-3", className)} {...props}>
@@ -206,10 +208,7 @@ export const ContextContentFooter = ({
         },
       }).costUSD?.totalUSD
     : undefined;
-  const totalCost = new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    style: "currency",
-  }).format(costUSD ?? 0);
+  const totalCost = currencyFormatter.format(costUSD ?? 0);
 
   return (
     <div
@@ -237,11 +236,7 @@ const TokensWithCost = ({
   costText?: string;
 }) => (
   <span>
-    {tokens === undefined
-      ? "—"
-      : new Intl.NumberFormat("en-US", {
-          notation: "compact",
-        }).format(tokens)}
+    {tokens === undefined ? "—" : compactFormatter.format(tokens)}
     {costText ? (
       <span className="ml-2 text-muted-foreground">• {costText}</span>
     ) : null}
@@ -272,10 +267,7 @@ export const ContextInputUsage = ({
         usage: { input: inputTokens, output: 0 },
       }).costUSD?.totalUSD
     : undefined;
-  const inputCostText = new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    style: "currency",
-  }).format(inputCost ?? 0);
+  const inputCostText = currencyFormatter.format(inputCost ?? 0);
 
   return (
     <div
@@ -312,10 +304,7 @@ export const ContextOutputUsage = ({
         usage: { input: 0, output: outputTokens },
       }).costUSD?.totalUSD
     : undefined;
-  const outputCostText = new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    style: "currency",
-  }).format(outputCost ?? 0);
+  const outputCostText = currencyFormatter.format(outputCost ?? 0);
 
   return (
     <div
@@ -352,10 +341,7 @@ export const ContextReasoningUsage = ({
         usage: { reasoningTokens },
       }).costUSD?.totalUSD
     : undefined;
-  const reasoningCostText = new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    style: "currency",
-  }).format(reasoningCost ?? 0);
+  const reasoningCostText = currencyFormatter.format(reasoningCost ?? 0);
 
   return (
     <div
@@ -392,10 +378,7 @@ export const ContextCacheUsage = ({
         usage: { cacheReads: cacheTokens, input: 0, output: 0 },
       }).costUSD?.totalUSD
     : undefined;
-  const cacheCostText = new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    style: "currency",
-  }).format(cacheCost ?? 0);
+  const cacheCostText = currencyFormatter.format(cacheCost ?? 0);
 
   return (
     <div

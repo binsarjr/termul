@@ -64,6 +64,16 @@ const AUTO_SAVE_STEP = 100;
 const AUTO_SAVE_MIN = 100;
 const AUTO_SAVE_MAX = 60000;
 
+const onToggleAutostart = async (next: boolean) => {
+  try {
+    if (next) await enable();
+    else await disable();
+    await setAutostart(next);
+  } catch (e) {
+    console.error("autostart toggle failed", e);
+  }
+};
+
 export function GeneralSection() {
   const { mode, setMode } = useTheme();
 
@@ -99,16 +109,6 @@ export function GeneralSection() {
       alive = false;
     };
   }, []);
-
-  const onToggleAutostart = async (next: boolean) => {
-    try {
-      if (next) await enable();
-      else await disable();
-      await setAutostart(next);
-    } catch (e) {
-      console.error("autostart toggle failed", e);
-    }
-  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -228,7 +228,7 @@ export function GeneralSection() {
                     xterm's WebGL renderer caches glyphs in a GPU texture
                     atlas. On some macOS setups (especially with Nerd Fonts),
                     the atlas corrupts and terminal text becomes unreadable.
-                    Turn this off as a fallback — performance dips slightly,
+                    Turn this off as a fallback: performance dips slightly,
                     but text renders correctly via the DOM renderer.
                   </TooltipContent>
                 </Tooltip>

@@ -545,7 +545,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
           Ask Its Just Terminal anything
         </p>
         <p className="max-w-[18rem] text-[11.5px] leading-relaxed text-muted-foreground">
-          Its Just Terminal sees the active terminal — cwd, recent commands, and output.
+          Its Just Terminal sees the active terminal: cwd, recent commands, and output.
         </p>
       </div>
       <div className="flex w-full flex-col gap-2.5">

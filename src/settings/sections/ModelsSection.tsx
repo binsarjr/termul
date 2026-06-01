@@ -75,6 +75,11 @@ type KeysMap = Record<ProviderId, string | null>;
 
 const isLocalProvider = (id: ProviderId): boolean => !providerNeedsKey(id);
 
+const setAutocompleteModel = (id: string, providerId: ProviderId) => {
+  void setAutocompleteProvider(providerId);
+  void setAutocompleteModelId(isLocalProvider(providerId) ? "" : id);
+};
+
 type LocalMeta = {
   urlPlaceholder: string;
   modelPlaceholder: string;
@@ -90,7 +95,7 @@ const LOCAL_META: Partial<Record<ProviderId, LocalMeta>> = {
       "Run GGUF models via LM Studio's HTTP server (Developer tab → enable).",
     modelHint: (
       <>
-        The model id loaded in LM Studio — see the server's{" "}
+        The model id loaded in LM Studio, see the server's{" "}
         <span className="font-mono">/v1/models</span> page.
       </>
     ),
@@ -296,9 +301,8 @@ export function ModelsSection() {
     return <div className="text-[12px] text-muted-foreground">Loading…</div>;
   }
 
-  const configuredIds = new Set(
-    PROVIDERS.filter((p) => isConfigured(p.id)).map((p) => p.id),
-  );
+  const configuredIds = new Set<ProviderId>();
+  for (const p of PROVIDERS) if (isConfigured(p.id)) configuredIds.add(p.id);
   const visibleIds = new Set<ProviderId>(configuredIds);
   for (const id of adding) visibleIds.add(id);
   const visibleProviders = PROVIDERS.filter(
@@ -614,9 +618,8 @@ function AutocompleteRow({
 
   // Fast cloud tiers + any configured local provider (one model id each).
   const items = useMemo(() => {
-    const local = PROVIDERS.filter(
-      (p) => isLocalProvider(p.id) && configuredIds.has(p.id),
-    ).flatMap((p) => {
+    const local = PROVIDERS.flatMap((p) => {
+      if (!isLocalProvider(p.id) || !configuredIds.has(p.id)) return [];
       const m = MODELS.find((x) => x.provider === p.id);
       return m ? [m] : [];
     });
@@ -633,11 +636,6 @@ function AutocompleteRow({
       eligible[0]
     );
   }, [eligible, provider, modelId]);
-
-  const setModel = (id: string, providerId: ProviderId) => {
-    void setAutocompleteProvider(providerId);
-    void setAutocompleteModelId(isLocalProvider(providerId) ? "" : id);
-  };
 
   const grouped = useMemo(() => {
     const map = new Map<ProviderId, (typeof items)[number][]>();
@@ -705,7 +703,7 @@ function AutocompleteRow({
                       <DropdownMenuItem
                         key={m.id}
                         disabled={!pConfigured}
-                        onSelect={() => pConfigured && setModel(m.id, p.id)}
+                        onSelect={() => pConfigured && setAutocompleteModel(m.id, p.id)}
                         className={cn(
                           "text-[11.5px]",
                           m.id === modelId && "bg-accent/50",
@@ -728,7 +726,7 @@ function AutocompleteRow({
       </FieldRow>
       {enabled && !hasKey ? (
         <p className="pl-19 text-[10.5px] text-muted-foreground">
-          {getProvider(provider).label} isn't connected — add it below.
+          {getProvider(provider).label} isn't connected. Add it below.
         </p>
       ) : null}
     </>
@@ -1196,7 +1194,7 @@ function StatusLine({
     return (
       <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground">
         <HugeiconsIcon icon={CheckmarkCircle02Icon} size={11} strokeWidth={2} />
-        Reachable — server responded.
+        Reachable: server responded.
       </span>
     );
   }

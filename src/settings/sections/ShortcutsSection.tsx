@@ -321,7 +321,7 @@ function Recorder({
 
   return (
     <div className="flex items-center gap-2 rounded bg-accent/50 px-2 py-1 text-[11px] ring-1 ring-accent">
-      <span className="animate-pulse font-medium">Recording...</span>
+      <span className="animate-pulse font-medium">Recording…</span>
       <span className="text-muted-foreground">(Esc to cancel)</span>
     </div>
   );

@@ -282,7 +282,7 @@ const CompactionNotice = memo(function CompactionNotice({
     <div className="flex items-center gap-2 rounded-md border border-border/40 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground">
       <span className="size-1.5 shrink-0 rounded-full bg-amber-500/80" />
       <span className="flex-1 truncate">
-        Context compacted — {droppedCount} older tool result
+        Context compacted: {droppedCount} older tool result
         {droppedCount === 1 ? "" : "s"} elided to save tokens.
       </span>
       <button
@@ -309,6 +309,7 @@ const ContinueRow = memo(function ContinueRow({
       <button
         type="button"
         onClick={onContinue}
+        aria-label="Continue the task from the step limit"
         className="rounded-md border border-border/60 bg-background px-2 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
       >
         Continue

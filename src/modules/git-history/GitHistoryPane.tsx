@@ -921,7 +921,7 @@ function CommitFiles({
 }) {
   if (!filesEntry || filesEntry.state === "loading") {
     return (
-      <div className="flex items-center gap-2 px-3 py-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 p-3 text-[11px] text-muted-foreground">
         <Spinner className="size-3" />
         Loading files…
       </div>
@@ -929,7 +929,7 @@ function CommitFiles({
   }
   if (filesEntry.state === "error") {
     return (
-      <div className="flex items-center justify-between gap-2 px-3 py-3 text-[11px] text-destructive">
+      <div className="flex items-center justify-between gap-2 p-3 text-[11px] text-destructive">
         <span className="truncate">{filesEntry.error}</span>
         <Button
           size="xs"
@@ -944,7 +944,7 @@ function CommitFiles({
   }
   if (filesEntry.files.length === 0) {
     return (
-      <div className="px-3 py-3 text-[11px] text-muted-foreground">
+      <div className="p-3 text-[11px] text-muted-foreground">
         No file changes.
       </div>
     );

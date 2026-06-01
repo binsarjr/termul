@@ -47,7 +47,7 @@ function StatusRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent"
+      className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors hover:bg-accent"
     >
       <AgentIcon
         agent={agent}
@@ -85,7 +85,7 @@ function NotificationRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent"
+      className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors hover:bg-accent"
     >
       <span className="flex w-4 shrink-0 items-center justify-center">
         {n.kind === "finished" ? (
