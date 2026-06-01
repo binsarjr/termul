@@ -56,8 +56,19 @@ export type CommandBlock = {
 export class CommandBlockRing {
   private blocks: CommandBlock[] = [];
   private open: CommandBlock | null = null;
+  private listeners = new Set<() => void>();
 
   constructor(private readonly capacity = 50) {}
+
+  /** Notified whenever the set of closed blocks changes (push/evict/dispose). */
+  onChange(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  private emit(): void {
+    for (const cb of this.listeners) cb();
+  }
 
   /** OSC 133 C: command line is known and output is about to start. */
   beginCommand(command: string, startMarker: IMarker | null): void {
@@ -91,6 +102,7 @@ export class CommandBlockRing {
       evicted?.startMarker?.dispose();
       evicted?.endMarker?.dispose();
     }
+    this.emit();
   }
 
   last(): CommandBlock | null {
@@ -109,6 +121,7 @@ export class CommandBlockRing {
     this.blocks = [];
     this.open?.startMarker?.dispose();
     this.open = null;
+    this.listeners.clear();
   }
 }
 

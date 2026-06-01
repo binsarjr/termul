@@ -1,8 +1,9 @@
 import { useTheme } from "@/modules/theme";
 import type { SearchAddon } from "@xterm/addon-search";
-import { useEffect, useImperativeHandle, useRef } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { BlockAffordance } from "./BlockAffordance";
 import {
+  type BlockSelection,
   type CommandBlockView,
   useTerminalSession,
 } from "./lib/useTerminalSession";
@@ -14,6 +15,12 @@ export type TerminalPaneHandle = {
   getSelection: () => string | null;
   getLastBlock: () => CommandBlockView | null;
   getBlocks: () => CommandBlockView[];
+  /** Selected block when navigating, else the most recent block. */
+  getActiveBlock: () => CommandBlockView | null;
+  selectPrevBlock: () => void;
+  selectNextBlock: () => void;
+  clearBlockSelection: () => void;
+  getBlockSelection: () => BlockSelection | null;
 };
 
 type Props = {
@@ -68,9 +75,35 @@ export function TerminalPane({
       getSelection: () => session.getSelection(),
       getLastBlock: () => session.getLastBlock(),
       getBlocks: () => session.getBlocks(),
+      getActiveBlock: () => session.getActiveBlock(),
+      selectPrevBlock: () => session.selectPrevBlock(),
+      selectNextBlock: () => session.selectNextBlock(),
+      clearBlockSelection: () => session.clearBlockSelection(),
+      getBlockSelection: () => session.getBlockSelection(),
     }),
     [session],
   );
+
+  const reinputActiveBlock = useCallback(() => {
+    const command = session.getActiveBlock()?.command.trim();
+    if (!command) return;
+    // Type it back at the prompt without a CR — the user runs it themselves.
+    session.write(command);
+    session.focus();
+  }, [session]);
+
+  // A primary click in the grid returns focus to the live prompt, so drop any
+  // keyboard block selection. Bound imperatively (the grid is a non-semantic
+  // container, not a control) and scoped so right-click keeps the selection.
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const onDown = (e: MouseEvent) => {
+      if (e.button === 0) session.clearBlockSelection();
+    };
+    node.addEventListener("mousedown", onDown);
+    return () => node.removeEventListener("mousedown", onDown);
+  }, [session]);
 
   return (
     <>
@@ -84,7 +117,9 @@ export function TerminalPane({
       />
       <BlockAffordance
         active={visible && focused}
-        getLastBlock={() => session.getLastBlock()}
+        getActiveBlock={session.getActiveBlock}
+        getSelection={session.getBlockSelection}
+        onReinput={reinputActiveBlock}
       />
     </>
   );
