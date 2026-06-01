@@ -11,3 +11,7 @@ export type SettingsTab =
 export async function openSettingsWindow(tab?: SettingsTab): Promise<void> {
   await invoke("open_settings_window", { tab: tab ?? null });
 }
+
+export async function toggleSettingsWindow(tab?: SettingsTab): Promise<void> {
+  await invoke("toggle_settings_window", { tab: tab ?? null });
+}

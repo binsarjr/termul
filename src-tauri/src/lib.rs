@@ -34,11 +34,6 @@ fn parse_launch_dir() -> Option<String> {
 
 #[tauri::command]
 async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Result<(), String> {
-    let url_path = match tab.as_deref() {
-        Some(t) if !t.is_empty() => format!("settings.html?tab={}", t),
-        _ => "settings.html".to_string(),
-    };
-
     if let Some(window) = app.get_webview_window("settings") {
         let _ = window.set_always_on_top(true);
         let _ = window.show();
@@ -51,7 +46,26 @@ async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Res
         return Ok(());
     }
 
-    let builder = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App(url_path.into()))
+    build_settings_window(&app, tab).await
+}
+
+#[tauri::command]
+async fn toggle_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.close();
+        return Ok(());
+    }
+
+    build_settings_window(&app, tab).await
+}
+
+async fn build_settings_window(app: &tauri::AppHandle, tab: Option<String>) -> Result<(), String> {
+    let url_path = match tab.as_deref() {
+        Some(t) if !t.is_empty() => format!("settings.html?tab={}", t),
+        _ => "settings.html".to_string(),
+    };
+
+    let builder = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App(url_path.into()))
         .title("Settings")
         .inner_size(900.0, 700.0)
         .min_inner_size(820.0, 620.0)
@@ -223,6 +237,7 @@ pub fn run() {
             workspace::workspace_current_dir,
             get_launch_dir,
             open_settings_window,
+            toggle_settings_window,
             agent::agent_enable_claude_hooks,
             agent::agent_claude_hooks_status,
             secrets::secrets_get,
