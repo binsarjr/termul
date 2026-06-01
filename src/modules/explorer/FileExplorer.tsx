@@ -370,6 +370,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
       <div
         ref={containerRef}
         className="flex h-full flex-col outline-none"
+        role="tree"
+        aria-label="File explorer"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >

@@ -197,7 +197,16 @@ function ShortcutRow({
         ) : (
           <>
             <div
+              role="button"
+              tabIndex={0}
+              aria-label={`Record shortcut for ${shortcut.label}`}
               onClick={onStartRecording}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onStartRecording();
+                }
+              }}
               className="flex min-w-[100px] cursor-pointer items-center justify-end gap-1"
             >
               {hasBindings ? (

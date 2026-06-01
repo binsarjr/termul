@@ -247,6 +247,7 @@ export function AiInputBar() {
             <div className="flex items-start gap-2">
               <textarea
                 ref={c.textareaRef}
+                aria-label="Message Its Just Terminal"
                 value={c.value}
                 onChange={(e) => c.setValue(e.target.value)}
                 onKeyUp={updateTrigger}

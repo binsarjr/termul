@@ -248,6 +248,7 @@ export function GeneralSection() {
         >
           <input
             type="text"
+            aria-label="Font family"
             value={terminalFontFamily}
             placeholder="Auto-detect"
             onChange={(e) => void setTerminalFontFamily(e.target.value)}
