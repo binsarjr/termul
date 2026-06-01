@@ -45,6 +45,19 @@ type Props = {
 
 type DragOver = { id: number; place: "before" | "after" };
 
+/** Hit-test the tab under the pointer and which half (left/right) it is over. */
+function dropTargetAt(clientX: number, clientY: number): DragOver | null {
+  const el = (
+    document.elementFromPoint(clientX, clientY) as HTMLElement | null
+  )?.closest<HTMLElement>("[data-tab-id]");
+  if (!el) return null;
+  const id = Number(el.dataset.tabId);
+  if (Number.isNaN(id)) return null;
+  const rect = el.getBoundingClientRect();
+  const place = clientX < rect.left + rect.width / 2 ? "before" : "after";
+  return { id, place };
+}
+
 export function TabBar({
   tabs,
   activeId,
@@ -59,7 +72,17 @@ export function TabBar({
   compact,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const dragIdRef = useRef<number | null>(null);
+  // Pointer-based reorder. HTML5 drag-and-drop does not fire inside the Tauri
+  // webview (native drag-drop is enabled for the terminal file-drop feature),
+  // so the gesture is tracked with pointer events instead.
+  const dragRef = useRef<{
+    id: number;
+    startX: number;
+    pointerId: number;
+    active: boolean;
+  } | null>(null);
+  // Swallows the click synthesized after a reorder so it does not select a tab.
+  const justDraggedRef = useRef(false);
   const [dragOver, setDragOver] = useState<DragOver | null>(null);
 
   // Horizontal wheel scroll without holding shift.
@@ -93,7 +116,11 @@ export function TabBar({
       <div className="flex w-max items-center gap-0.5">
         <Tabs
           value={String(activeId)}
-          onValueChange={(v) => onSelect(Number(v))}
+          onValueChange={(v) => {
+            // Ignore the click synthesized at the end of a drag reorder.
+            if (justDraggedRef.current) return;
+            onSelect(Number(v));
+          }}
         >
           <TabsList className="h-7 w-max gap-0.5 bg-transparent p-0">
             {tabs.map((t) => {
@@ -103,49 +130,52 @@ export function TabBar({
                   key={t.id}
                   value={String(t.id)}
                   data-tab-id={t.id}
-                  draggable
-                  onDragStart={(e) => {
-                    dragIdRef.current = t.id;
-                    e.dataTransfer.effectAllowed = "move";
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    dragRef.current = {
+                      id: t.id,
+                      startX: e.clientX,
+                      pointerId: e.pointerId,
+                      active: false,
+                    };
                   }}
-                  onDragOver={(e) => {
-                    if (dragIdRef.current === null) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    if (dragIdRef.current === t.id) {
-                      setDragOver(null);
-                      return;
+                  onPointerMove={(e) => {
+                    const st = dragRef.current;
+                    if (!st) return;
+                    if (!st.active) {
+                      // Distinguish a drag from a click before capturing.
+                      if (Math.abs(e.clientX - st.startX) < 4) return;
+                      st.active = true;
+                      e.currentTarget.setPointerCapture?.(st.pointerId);
                     }
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const place =
-                      e.clientX < rect.left + rect.width / 2
-                        ? "before"
-                        : "after";
+                    const over = dropTargetAt(e.clientX, e.clientY);
+                    const next = over && over.id !== st.id ? over : null;
                     setDragOver((prev) =>
-                      prev && prev.id === t.id && prev.place === place
+                      prev?.id === next?.id && prev?.place === next?.place
                         ? prev
-                        : { id: t.id, place },
+                        : next,
                     );
                   }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const dragId = dragIdRef.current;
-                    const place = dragOver?.place ?? "before";
-                    if (dragId !== null && dragId !== t.id) {
-                      onReorder(dragId, t.id, place);
+                  onPointerUp={(e) => {
+                    const st = dragRef.current;
+                    dragRef.current = null;
+                    if (!st?.active) return;
+                    e.currentTarget.releasePointerCapture?.(st.pointerId);
+                    const over = dragOver;
+                    setDragOver(null);
+                    if (over && over.id !== st.id) {
+                      onReorder(st.id, over.id, over.place);
                     }
-                    dragIdRef.current = null;
-                    setDragOver(null);
+                    // The browser fires a click after pointerup; suppress the
+                    // tab selection it would otherwise trigger.
+                    justDraggedRef.current = true;
+                    window.setTimeout(() => {
+                      justDraggedRef.current = false;
+                    }, 0);
                   }}
-                  onDragEnd={() => {
-                    dragIdRef.current = null;
+                  onPointerCancel={() => {
+                    dragRef.current = null;
                     setDragOver(null);
-                  }}
-                  onDragLeave={(e) => {
-                    // Ignore dragleave bubbling up from child elements.
-                    if (e.currentTarget.contains(e.relatedTarget as Node))
-                      return;
-                    setDragOver((prev) => (prev?.id === t.id ? null : prev));
                   }}
                   onDoubleClick={() => isPreview && onPin(t.id)}
                   onAuxClick={(e) => {
@@ -202,7 +232,7 @@ export function TabBar({
                       role="button"
                       tabIndex={0}
                       aria-label="Close tab"
-                      draggable={false}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         onClose(t.id);
