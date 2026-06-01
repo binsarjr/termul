@@ -71,10 +71,18 @@ import { usePreferencesStore } from "@/modules/settings/preferences";
 import { onKeysChanged, setThemeId as persistThemeId } from "@/modules/settings/store";
 import {
   ShortcutsDialog,
+  SHORTCUTS,
+  getBindingTokens,
   useGlobalShortcuts,
   type ShortcutHandlers,
   type ShortcutId,
 } from "@/modules/shortcuts";
+import {
+  CommandPalette,
+  type PaletteCommand,
+  type PaletteFile,
+} from "@/modules/command-palette";
+import { useWorkspaceFiles } from "@/modules/ai/hooks/useWorkspaceFiles";
 import { SidebarRail, type SidebarViewId } from "@/modules/sidebar";
 import {
   SourceControlPanel,
@@ -184,6 +192,16 @@ function readSidebarView(): SidebarViewId {
   }
   return "explorer";
 }
+
+/** Shortcuts that don't belong in the command palette's Commands group:
+ * `tab.selectByIndex` needs a digit key, `palette.open` would re-toggle the
+ * palette, and the editor undo/redo entries are handled natively by CodeMirror. */
+const PALETTE_EXCLUDED_SHORTCUTS = new Set<ShortcutId>([
+  "tab.selectByIndex",
+  "palette.open",
+  "editor.undo",
+  "editor.redo",
+]);
 
 export default function App() {
   const {
@@ -413,6 +431,8 @@ export default function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [newEditorOpen, setNewEditorOpen] = useState(false);
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const userShortcuts = usePreferencesStore((s) => s.shortcuts);
   const miniOpen = useChatStore((s) => s.mini.open);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const openMini = useChatStore((s) => s.openMini);
@@ -1093,6 +1113,7 @@ export default function App() {
       "search.focus": () => searchInlineRef.current?.focus(),
       "ai.toggle": togglePanelAndFocus,
       "ai.askSelection": askFromSelection,
+      "palette.open": () => setPaletteOpen((v) => !v),
       "shortcuts.open": () => setShortcutsOpen((v) => !v),
       "settings.open": () => void openSettingsWindow(),
       "sidebar.toggle": toggleSidebar,
@@ -1151,6 +1172,48 @@ export default function App() {
   );
 
   useGlobalShortcuts(shortcutHandlers, { isDisabled: shortcutsDisabled });
+
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const out: PaletteCommand[] = [];
+    for (const s of SHORTCUTS) {
+      if (PALETTE_EXCLUDED_SHORTCUTS.has(s.id)) continue;
+      const run = shortcutHandlers[s.id];
+      if (!run) continue;
+      const binding = (userShortcuts[s.id] ?? s.defaultBindings)[0];
+      out.push({
+        id: s.id,
+        label: s.label,
+        bindingTokens: getBindingTokens(binding),
+        run: () => {
+          setPaletteOpen(false);
+          // Handlers ignore the event except the excluded ones; pass a synthetic
+          // keydown so the (e) => void signature is satisfied without a real key.
+          run(new KeyboardEvent("keydown"));
+        },
+      });
+    }
+    return out;
+  }, [shortcutHandlers, userShortcuts]);
+
+  // Flat workspace file list for the palette's Files group. Loaded lazily when
+  // the palette opens (fs_list_files caps at 2000 relative paths by default).
+  const { files: paletteRelFiles } = useWorkspaceFiles(
+    explorerRoot,
+    paletteOpen,
+  );
+  const paletteFiles = useMemo<PaletteFile[]>(() => {
+    if (!explorerRoot) return [];
+    const root = explorerRoot.endsWith("/")
+      ? explorerRoot
+      : `${explorerRoot}/`;
+    return paletteRelFiles.map((rel) => {
+      const slash = rel.lastIndexOf("/");
+      return {
+        path: `${root}${rel}`,
+        name: slash === -1 ? rel : rel.slice(slash + 1),
+      };
+    });
+  }, [explorerRoot, paletteRelFiles]);
 
   const registerTerminalHandle = useCallback(
     (leafId: number, h: TerminalPaneHandle | null) => {
@@ -1624,6 +1687,17 @@ export default function App() {
             onSelect={switchToTab}
             open={tabSearchOpen}
             onOpenChange={setTabSearchOpen}
+          />
+
+          <CommandPalette
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+            tabs={tabs}
+            activeId={activeId}
+            onSelectTab={switchToTab}
+            commands={paletteCommands}
+            files={paletteFiles}
+            onOpenFile={(path) => openFileTab(path)}
           />
 
           <AlertDialog

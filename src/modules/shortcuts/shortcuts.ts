@@ -27,6 +27,7 @@ export type ShortcutId =
   | "view.zoomReset"
   | "ai.toggle"
   | "ai.askSelection"
+  | "palette.open"
   | "shortcuts.open"
   | "settings.open"
   | "sidebar.toggle"
@@ -67,10 +68,18 @@ export const SHORTCUTS: Shortcut[] = [
     defaultBindings: [{ [MOD_PROP]: true, key: "," }],
   },
   {
+    id: "palette.open",
+    label: "Command palette",
+    group: "General",
+    defaultBindings: [{ [MOD_PROP]: true, key: "k" }],
+  },
+  {
     id: "shortcuts.open",
     label: "Show keyboard shortcuts",
     group: "General",
-    defaultBindings: [{ [MOD_PROP]: true, key: "k" }],
+    // Reachable via the command palette and Settings; no default key so it no
+    // longer shadows the macOS terminal.clear ⌘K binding.
+    defaultBindings: [],
   },
   {
     id: "tab.new",
