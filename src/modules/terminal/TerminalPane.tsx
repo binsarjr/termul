@@ -167,14 +167,16 @@ export function TerminalPane({
         getSelection={session.getBlockSelection}
         onReinput={reinputActiveBlock}
       />
-      <BlockFilterDialog
-        open={!!filterTarget}
-        onOpenChange={(o) => {
-          if (!o) setFilterTarget(null);
-        }}
-        command={filterTarget?.command ?? ""}
-        output={filterTarget?.output ?? ""}
-      />
+      {filterTarget ? (
+        <BlockFilterDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setFilterTarget(null);
+          }}
+          command={filterTarget.command}
+          output={filterTarget.output}
+        />
+      ) : null}
     </>
   );
 }

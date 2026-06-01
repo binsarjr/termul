@@ -38,13 +38,12 @@ export function BlockFilterDialog({
   const [useRegex, setUseRegex] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Mounted fresh each time it opens (TerminalPane renders it only while open),
+  // so query/regex start clean without a reset effect — just grab focus.
   useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setUseRegex(false);
     const t = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(t);
-  }, [open]);
+  }, []);
 
   const result = useMemo(
     () => filterBlockOutput(output, query, useRegex),
@@ -77,10 +76,14 @@ export function BlockFilterDialog({
             placeholder={useRegex ? "regex…" : "filter lines…"}
             className="flex-1"
           />
-          <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <Switch checked={useRegex} onCheckedChange={setUseRegex} />
-            Regex
-          </label>
+          <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <Switch
+              id="block-filter-regex"
+              checked={useRegex}
+              onCheckedChange={setUseRegex}
+            />
+            <label htmlFor="block-filter-regex">Regex</label>
+          </div>
         </div>
 
         <div className="text-xs text-muted-foreground">

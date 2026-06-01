@@ -885,7 +885,7 @@ export default function App() {
 
   const copyLastCommand = useCallback(() => {
     if (activeLeafId === null) return;
-    const block = terminalRefs.current.get(activeLeafId)?.getLastBlock();
+    const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
     const command = block?.command?.trim();
     if (command) void navigator.clipboard.writeText(command).catch(() => {});
   }, [activeLeafId]);

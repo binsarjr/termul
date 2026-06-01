@@ -158,15 +158,16 @@ export const SHORTCUTS: Shortcut[] = [
   },
   {
     id: "block.copyCommand",
-    label: "Copy last command",
+    label: "Copy command",
     group: "Terminal",
     // Unbound by default: runnable from the command palette or the block
     // affordance, bindable in settings. Avoids clashing with shell/readline keys.
+    // Targets the selected block when navigating, else the most recent one.
     defaultBindings: [],
   },
   {
     id: "block.copyOutput",
-    label: "Copy last command output",
+    label: "Copy command output",
     group: "Terminal",
     defaultBindings: [],
   },
