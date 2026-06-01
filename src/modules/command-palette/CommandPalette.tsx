@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/command";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { labelFor, TabIcon, type Tab } from "@/modules/tabs";
+import { useDeferredValue, useMemo, useState } from "react";
 
 export type PaletteCommand = {
   id: string;
@@ -37,6 +38,10 @@ type Props = {
   onOpenFile: (path: string) => void;
 };
 
+/** The workspace can hold thousands of files; only ever render the top matches
+ * so a keystroke never has to lay out the whole list. */
+const MAX_FILE_RESULTS = 50;
+
 /** Secondary line under a tab label: the path/cwd that disambiguates
  * same-named tabs and feeds the fuzzy filter. Mirrors TabSearch. */
 function tabSubtitle(t: Tab): string {
@@ -57,6 +62,34 @@ function tabSubtitle(t: Tab): string {
   }
 }
 
+/** Cheap match used in place of cmdk's built-in scorer so we control when
+ * filtering runs (via useDeferredValue). `q` is already lowercased. Returns a
+ * rank where lower is better, or -1 for no match. A contiguous substring beats
+ * a scattered subsequence. */
+function fuzzyScore(text: string, q: string): number {
+  const t = text.toLowerCase();
+  const sub = t.indexOf(q);
+  if (sub !== -1) return sub;
+  let ti = 0;
+  for (let i = 0; i < q.length; i++) {
+    ti = t.indexOf(q[i], ti);
+    if (ti === -1) return -1;
+    ti += 1;
+  }
+  return 500 + t.length;
+}
+
+function rankList<T>(items: T[], q: string, key: (item: T) => string): T[] {
+  if (!q) return items;
+  const scored: { item: T; score: number }[] = [];
+  for (const item of items) {
+    const score = fuzzyScore(key(item), q);
+    if (score >= 0) scored.push({ item, score });
+  }
+  scored.sort((a, b) => a.score - b.score);
+  return scored.map((s) => s.item);
+}
+
 export function CommandPalette({
   open,
   onOpenChange,
@@ -67,85 +100,134 @@ export function CommandPalette({
   files,
   onOpenFile,
 }: Props) {
+  const [query, setQuery] = useState("");
+  // Defer the query the filters read so rapid typing stays responsive: the
+  // input updates immediately while the (potentially large) list re-filters in
+  // a non-blocking transition. This is the debounce the search needed.
+  const q = useDeferredValue(query).trim().toLowerCase();
+
+  const visibleTabs = useMemo(
+    () =>
+      rankList(tabs, q, (t) => `${labelFor(t)} ${tabSubtitle(t)} ${t.kind}`),
+    [tabs, q],
+  );
+  const visibleCommands = useMemo(
+    () => rankList(commands, q, (c) => c.label),
+    [commands, q],
+  );
+  const visibleFiles = useMemo(
+    () =>
+      rankList(files, q, (f) => `${f.name} ${f.path}`).slice(0, MAX_FILE_RESULTS),
+    [files, q],
+  );
+
+  const isEmpty =
+    visibleTabs.length === 0 &&
+    visibleCommands.length === 0 &&
+    visibleFiles.length === 0;
+
+  const close = () => {
+    setQuery("");
+    onOpenChange(false);
+  };
+
   return (
     <CommandDialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(o) => {
+        if (!o) setQuery("");
+        onOpenChange(o);
+      }}
       title="Command palette"
       description="Jump to a tab, run a command, or open a file"
     >
-      <Command>
-        <CommandInput placeholder="Search tabs, commands, files…" />
+      {/* We filter ourselves (above) so cmdk does not re-score every row on each
+          keystroke; shouldFilter={false} hands rendering of only the matches to
+          cmdk. */}
+      <Command shouldFilter={false}>
+        <CommandInput
+          placeholder="Search tabs, commands, files…"
+          value={query}
+          onValueChange={setQuery}
+        />
         <CommandList>
-          <CommandEmpty>No results found.</CommandEmpty>
+          {isEmpty ? <CommandEmpty>No results found.</CommandEmpty> : null}
 
-          <CommandGroup heading="Tabs">
-            {tabs.map((t) => {
-              const subtitle = tabSubtitle(t);
-              return (
+          {visibleTabs.length > 0 && (
+            <CommandGroup heading="Tabs">
+              {visibleTabs.map((t) => {
+                const subtitle = tabSubtitle(t);
+                return (
+                  <CommandItem
+                    key={`tab-${t.id}`}
+                    value={`tab-${t.id}`}
+                    onSelect={() => {
+                      close();
+                      onSelectTab(t.id);
+                    }}
+                  >
+                    <TabIcon tab={t} />
+                    <span className="shrink-0 truncate">{labelFor(t)}</span>
+                    {subtitle ? (
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        {subtitle}
+                      </span>
+                    ) : (
+                      <span className="flex-1" />
+                    )}
+                    {t.id === activeId ? (
+                      <CommandShortcut>current</CommandShortcut>
+                    ) : null}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          )}
+
+          {visibleCommands.length > 0 && (
+            <CommandGroup heading="Commands">
+              {visibleCommands.map((c) => (
                 <CommandItem
-                  key={`tab-${t.id}`}
-                  // cmdk fuzzy-matches the query against this value; the `#id`
-                  // suffix keeps it unique so duplicate labels stay selectable.
-                  value={`tab ${labelFor(t)} ${subtitle} ${t.kind} #${t.id}`}
+                  key={`cmd-${c.id}`}
+                  value={`cmd-${c.id}`}
                   onSelect={() => {
-                    onOpenChange(false);
-                    onSelectTab(t.id);
+                    close();
+                    c.run();
                   }}
                 >
-                  <TabIcon tab={t} />
-                  <span className="shrink-0 truncate">{labelFor(t)}</span>
-                  {subtitle ? (
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {subtitle}
-                    </span>
-                  ) : (
-                    <span className="flex-1" />
-                  )}
-                  {t.id === activeId ? (
-                    <CommandShortcut>current</CommandShortcut>
+                  <span className="min-w-0 flex-1 truncate">{c.label}</span>
+                  {c.bindingTokens.length > 0 ? (
+                    <CommandShortcut>{c.bindingTokens.join("")}</CommandShortcut>
                   ) : null}
                 </CommandItem>
-              );
-            })}
-          </CommandGroup>
+              ))}
+            </CommandGroup>
+          )}
 
-          <CommandGroup heading="Commands">
-            {commands.map((c) => (
-              <CommandItem
-                key={`cmd-${c.id}`}
-                value={`command ${c.label} #${c.id}`}
-                onSelect={() => {
-                  onOpenChange(false);
-                  c.run();
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate">{c.label}</span>
-                {c.bindingTokens.length > 0 ? (
-                  <CommandShortcut>{c.bindingTokens.join("")}</CommandShortcut>
-                ) : null}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-
-          <CommandGroup heading="Files">
-            {files.map((f) => (
-              <CommandItem
-                key={`file-${f.path}`}
-                value={`file ${f.name} ${f.path} #${f.path}`}
-                onSelect={() => {
-                  onOpenChange(false);
-                  onOpenFile(f.path);
-                }}
-              >
-                <img src={fileIconUrl(f.name)} alt="" className="size-3.5 shrink-0" />
-                <span className="shrink-0 truncate">{f.name}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  {f.path}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+          {visibleFiles.length > 0 && (
+            <CommandGroup heading="Files">
+              {visibleFiles.map((f) => (
+                <CommandItem
+                  key={`file-${f.path}`}
+                  value={`file-${f.path}`}
+                  onSelect={() => {
+                    close();
+                    onOpenFile(f.path);
+                  }}
+                >
+                  <img
+                    src={fileIconUrl(f.name)}
+                    alt=""
+                    className="size-3.5 shrink-0"
+                  />
+                  <span className="shrink-0 truncate">{f.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {f.path}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
         </CommandList>
       </Command>
     </CommandDialog>
