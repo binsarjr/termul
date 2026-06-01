@@ -2,6 +2,8 @@ export { ShortcutsDialog } from "./ShortcutsDialog";
 export {
   SHORTCUTS,
   SHORTCUT_GROUPS,
+  getBindingTokens,
+  type KeyBinding,
   type Shortcut,
   type ShortcutGroup,
   type ShortcutId,

@@ -1,4 +1,4 @@
-export { TabBar } from "./TabBar";
+export { TabBar, TabIcon, labelFor } from "./TabBar";
 export { TabSearch } from "./TabSearch";
 export {
   MAX_PANES_PER_TAB,
