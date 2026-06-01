@@ -154,11 +154,8 @@ export function AiComposerProvider({ children }: ProviderProps) {
 
   const addFiles = async (list: FileList | null) => {
     if (!list) return;
-    const next: FileAttachment[] = [];
-    for (const f of Array.from(list)) {
-      const att = await readAttachment(f);
-      if (att) next.push(att);
-    }
+    const results = await Promise.all(Array.from(list).map(readAttachment));
+    const next = results.filter((att): att is FileAttachment => att != null);
     if (next.length) setFiles((prev) => [...prev, ...next]);
   };
 

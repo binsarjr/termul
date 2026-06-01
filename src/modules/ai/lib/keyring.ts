@@ -149,9 +149,10 @@ export async function getAllCustomEndpointKeys(
       out[e.id] = v && v.length > 0 ? v : null;
     });
   } catch {
-    for (const e of endpoints) {
-      out[e.id] = await getCustomEndpointKey(e.id);
-    }
+    const entries = await Promise.all(
+      endpoints.map(async (e) => [e.id, await getCustomEndpointKey(e.id)] as const),
+    );
+    for (const [id, v] of entries) out[id] = v;
   }
   return out;
 }
