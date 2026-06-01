@@ -5,6 +5,7 @@ import "@fontsource/jetbrains-mono/cyrillic-700.css";
 import "../styles/globals.css";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { MotionConfig } from "motion/react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "@/modules/theme";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
@@ -17,9 +18,11 @@ if (USE_CUSTOM_WINDOW_CONTROLS) {
 ReactDOM.createRoot(
   document.getElementById("settings-root") as HTMLElement,
 ).render(
-  <ThemeProvider>
-    <SettingsApp />
-  </ThemeProvider>,
+  <MotionConfig reducedMotion="user">
+    <ThemeProvider>
+      <SettingsApp />
+    </ThemeProvider>
+  </MotionConfig>,
 );
 
 const showWindow = () => {

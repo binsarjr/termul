@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import type { LanguageModelUsage } from "ai";
 import type { ComponentProps } from "react";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, use, useMemo } from "react";
 import { getUsage } from "tokenlens";
 
 const PERCENT_MAX = 100;
@@ -43,7 +43,7 @@ interface ContextSchema {
 const ContextContext = createContext<ContextSchema | null>(null);
 
 const useContextValue = () => {
-  const context = useContext(ContextContext);
+  const context = use(ContextContext);
 
   if (!context) {
     throw new Error("Context components must be used within Context");

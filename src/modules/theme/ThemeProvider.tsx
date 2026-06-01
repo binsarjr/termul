@@ -1,7 +1,7 @@
 import {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -180,7 +180,7 @@ export function ThemeProvider({ children, defaultMode = "system" }: ThemeProvide
 }
 
 export function useTheme(): ThemeProviderState {
-  const ctx = useContext(ThemeProviderContext);
+  const ctx = use(ThemeProviderContext);
   if (!ctx) throw new Error("useTheme must be used within a <ThemeProvider>");
   return ctx;
 }

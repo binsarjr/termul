@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   createContext,
-  useContext,
+  use,
   useEffect,
   useRef,
   useState,
@@ -60,7 +60,7 @@ type ComposerCtx = {
 const Ctx = createContext<ComposerCtx | null>(null);
 
 export function useComposer(): ComposerCtx {
-  const ctx = useContext(Ctx);
+  const ctx = use(Ctx);
   if (!ctx)
     throw new Error("useComposer must be used inside <AiComposerProvider>");
   return ctx;

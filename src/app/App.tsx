@@ -121,7 +121,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { SearchAddon } from "@xterm/addon-search";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
@@ -1671,5 +1671,9 @@ export default function App() {
     </ThemeProvider>
   );
 
-  return <AiComposerProvider>{shell}</AiComposerProvider>;
+  return (
+    <MotionConfig reducedMotion="user">
+      <AiComposerProvider>{shell}</AiComposerProvider>
+    </MotionConfig>
+  );
 }

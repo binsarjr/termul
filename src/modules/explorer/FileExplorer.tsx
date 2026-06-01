@@ -16,7 +16,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -144,19 +143,16 @@ function buildRows(
   return { rows, entryIndexByPath };
 }
 
-export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
-  function FileExplorer(
-    {
-      rootPath,
-      onOpenFile,
-      onPathRenamed,
-      onPathDeleted,
-      onRevealInTerminal,
-      onAttachToAgent,
-      onOpenMarkdownPreview,
-    },
-    ref,
-  ) {
+export function FileExplorer({
+  rootPath,
+  onOpenFile,
+  onPathRenamed,
+  onPathDeleted,
+  onRevealInTerminal,
+  onAttachToAgent,
+  onOpenMarkdownPreview,
+  ref,
+}: Props & { ref?: React.Ref<FileExplorerHandle> }) {
     const tree = useFileTree(rootPath, { onPathRenamed, onPathDeleted });
     const git = useExplorerGitStatus(rootPath);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -566,5 +562,4 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
         ) : null}
       </div>
     );
-  },
-);
+}

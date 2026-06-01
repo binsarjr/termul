@@ -234,7 +234,7 @@ export function PdfViewerPane({ path, visible }: Props) {
         {status.kind === "ready" &&
           status.sizes.map((size, i) => (
             <PdfPage
-              key={i}
+              key={`page-${i + 1}`}
               pdf={status.pdf}
               pageNumber={i + 1}
               size={size}
