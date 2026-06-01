@@ -1,7 +1,10 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WindowControls } from "@/components/WindowControls";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
-import type { SettingsTab } from "@/modules/settings/openSettingsWindow";
+import {
+  toggleSettingsWindow,
+  type SettingsTab,
+} from "@/modules/settings/openSettingsWindow";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { matchBinding, SHORTCUTS } from "@/modules/shortcuts/shortcuts";
 import {
@@ -98,7 +101,10 @@ export function SettingsApp() {
       );
       if (matchesToggle || (e.key === "Escape" && !inEditable)) {
         e.preventDefault();
-        void getCurrentWebviewWindow().close();
+        // Route through the toggle command so the window is hidden (kept alive)
+        // rather than destroyed, matching the instant open/close from the main
+        // window. Hiding from JS would need a capability the window lacks.
+        void toggleSettingsWindow();
       }
     };
     window.addEventListener("keydown", onKey);

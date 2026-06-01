@@ -52,7 +52,16 @@ async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Res
 #[tauri::command]
 async fn toggle_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.close();
+        // Hide/show rather than close/rebuild: rebuilding reloads settings.html
+        // and reboots React, which is the visible delay on every toggle. Keeping
+        // the webview alive makes the toggle instant after the first open.
+        if window.is_visible().unwrap_or(true) {
+            let _ = window.hide();
+        } else {
+            let _ = window.set_always_on_top(true);
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
         return Ok(());
     }
 
