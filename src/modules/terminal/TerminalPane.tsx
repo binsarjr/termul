@@ -1,13 +1,19 @@
 import { useTheme } from "@/modules/theme";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useEffect, useImperativeHandle, useRef } from "react";
-import { useTerminalSession } from "./lib/useTerminalSession";
+import { BlockAffordance } from "./BlockAffordance";
+import {
+  type CommandBlockView,
+  useTerminalSession,
+} from "./lib/useTerminalSession";
 
 export type TerminalPaneHandle = {
   write: (data: string) => void;
   focus: () => void;
   getBuffer: (maxLines?: number) => string | null;
   getSelection: () => string | null;
+  getLastBlock: () => CommandBlockView | null;
+  getBlocks: () => CommandBlockView[];
 };
 
 type Props = {
@@ -60,18 +66,26 @@ export function TerminalPane({
       focus: () => session.focus(),
       getBuffer: (max?: number) => session.getBuffer(max),
       getSelection: () => session.getSelection(),
+      getLastBlock: () => session.getLastBlock(),
+      getBlocks: () => session.getBlocks(),
     }),
     [session],
   );
 
   return (
-    <div
-      ref={containerRef}
-      className="zoom-exempt h-full w-full"
-      style={{
-        visibility: visible ? "visible" : "hidden",
-        pointerEvents: visible ? "auto" : "none",
-      }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className="zoom-exempt h-full w-full"
+        style={{
+          visibility: visible ? "visible" : "hidden",
+          pointerEvents: visible ? "auto" : "none",
+        }}
+      />
+      <BlockAffordance
+        active={visible && focused}
+        getLastBlock={() => session.getLastBlock()}
+      />
+    </>
   );
 }

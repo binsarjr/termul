@@ -859,6 +859,19 @@ export default function App() {
     [activeLeafId],
   );
 
+  const copyLastCommand = useCallback(() => {
+    if (activeLeafId === null) return;
+    const block = terminalRefs.current.get(activeLeafId)?.getLastBlock();
+    const command = block?.command?.trim();
+    if (command) void navigator.clipboard.writeText(command).catch(() => {});
+  }, [activeLeafId]);
+
+  const copyLastCommandOutput = useCallback(() => {
+    if (activeLeafId === null) return;
+    const block = terminalRefs.current.get(activeLeafId)?.getLastBlock();
+    if (block?.output) void navigator.clipboard.writeText(block.output).catch(() => {});
+  }, [activeLeafId]);
+
   const cdInNewTab = useCallback(
     (path: string) => {
       const tabId = newTab(path);
@@ -1090,6 +1103,8 @@ export default function App() {
       "terminal.clear": () => {
         clearFocusedTerminal();
       },
+      "block.copyCommand": copyLastCommand,
+      "block.copyOutput": copyLastCommandOutput,
       "search.focus": () => searchInlineRef.current?.focus(),
       "ai.toggle": togglePanelAndFocus,
       "ai.askSelection": askFromSelection,
@@ -1117,6 +1132,8 @@ export default function App() {
       askFromSelection,
       toggleSidebar,
       toggleExplorerFocus,
+      copyLastCommand,
+      copyLastCommandOutput,
       zoomIn,
       zoomOut,
       zoomReset,
@@ -1624,6 +1641,8 @@ export default function App() {
             onSelect={switchToTab}
             open={tabSearchOpen}
             onOpenChange={setTabSearchOpen}
+            onCopyLastCommand={copyLastCommand}
+            onCopyLastCommandOutput={copyLastCommandOutput}
           />
 
           <AlertDialog
