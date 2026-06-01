@@ -130,6 +130,17 @@ function basename(path: string): string {
   return parts.length ? parts[parts.length - 1] : path;
 }
 
+/** Returns a new array with the element at `from` moved to index `to`.
+ * No-op (returns the original array) when indices are equal or out of range. */
+export function moveItem<T>(arr: T[], from: number, to: number): T[] {
+  if (from === to) return arr;
+  if (from < 0 || from >= arr.length || to < 0 || to >= arr.length) return arr;
+  const next = arr.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 export function useTabs(initial?: Partial<TerminalTab>) {
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const tabId = 1;
@@ -781,6 +792,24 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     return closedTab;
   }, []);
 
+  /** Reorder `draggedId` to sit before/after `targetId`. Order-only change:
+   * `activeId` is keyed by id, so the active tab is preserved. */
+  const reorderTab = useCallback(
+    (draggedId: number, targetId: number, place: "before" | "after") => {
+      if (draggedId === targetId) return;
+      setTabs((curr) => {
+        const from = curr.findIndex((t) => t.id === draggedId);
+        const targetIdx = curr.findIndex((t) => t.id === targetId);
+        if (from === -1 || targetIdx === -1) return curr;
+        let to = place === "after" ? targetIdx + 1 : targetIdx;
+        // Removing the dragged tab first shifts every later index down by one.
+        if (from < to) to -= 1;
+        return moveItem(curr, from, to);
+      });
+    },
+    [],
+  );
+
   const resetWorkspace = useCallback((cwd?: string) => {
     const tabId = nextIdRef.current++;
     const leafId = nextIdRef.current++;
@@ -831,6 +860,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     splitActivePane,
     closeActivePane,
     closePaneByLeaf,
+    reorderTab,
     resetWorkspace,
   };
 }

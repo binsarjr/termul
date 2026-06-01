@@ -42,6 +42,12 @@ type Props = {
   onClose: (id: number) => void;
   /** Promote a preview (transient) tab to persistent. */
   onPin: (id: number) => void;
+  /** Reorder a dragged tab before/after the target tab. */
+  onReorder: (
+    draggedId: number,
+    targetId: number,
+    place: "before" | "after",
+  ) => void;
   onToggleSidebar: () => void;
   onSplit: (dir: "row" | "col") => void;
   /** Active tab is a terminal and below the per-tab pane cap. */
@@ -65,6 +71,7 @@ export function Header({
   onNewGitGraph,
   onClose,
   onPin,
+  onReorder,
   onToggleSidebar,
   onSplit,
   canSplit,
@@ -197,6 +204,7 @@ export function Header({
           onNewGitGraph={onNewGitGraph}
           onClose={onClose}
           onPin={onPin}
+          onReorder={onReorder}
           compact={compact}
         />
         <div data-tauri-drag-region className="h-full min-w-2 flex-1" />

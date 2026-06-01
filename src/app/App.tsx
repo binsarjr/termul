@@ -212,6 +212,7 @@ export default function App() {
     splitActivePane,
     closeActivePane,
     closePaneByLeaf,
+    reorderTab,
     resetWorkspace,
   } = useTabs(getLaunchDir() ? { cwd: getLaunchDir() } : undefined);
 
@@ -1469,6 +1470,7 @@ export default function App() {
             onNewGitGraph={openGitGraphFromContext}
             onClose={handleClose}
             onPin={pinTab}
+            onReorder={reorderTab}
             onToggleSidebar={toggleSidebar}
             onSplit={splitActivePaneInActiveTab}
             canSplit={
