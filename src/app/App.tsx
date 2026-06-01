@@ -66,7 +66,10 @@ import {
 import { ImageStack, IMAGE_EXT_RE } from "@/modules/image";
 import { MarkdownStack } from "@/modules/markdown";
 import { PdfStack } from "@/modules/pdf";
-import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
+import {
+  openSettingsWindow,
+  toggleSettingsWindow,
+} from "@/modules/settings/openSettingsWindow";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { onKeysChanged, setThemeId as persistThemeId } from "@/modules/settings/store";
 import {
@@ -1116,7 +1119,7 @@ export default function App() {
       "ai.askSelection": askFromSelection,
       "palette.open": () => setPaletteOpen((v) => !v),
       "shortcuts.open": () => setShortcutsOpen((v) => !v),
-      "settings.open": () => void openSettingsWindow(),
+      "settings.open": () => void toggleSettingsWindow(),
       "sidebar.toggle": toggleSidebar,
       "explorer.focus": toggleExplorerFocus,
       "view.zoomIn": zoomIn,
