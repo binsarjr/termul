@@ -20,7 +20,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EditorTab, Tab } from "./lib/useTabs";
 
 type Props = {
@@ -34,8 +34,16 @@ type Props = {
   onClose: (id: number) => void;
   /** Pin (promote) a preview tab to persistent on double-click. */
   onPin: (id: number) => void;
+  /** Reorder a dragged tab before/after the target tab. */
+  onReorder: (
+    draggedId: number,
+    targetId: number,
+    place: "before" | "after",
+  ) => void;
   compact?: boolean;
 };
+
+type DragOver = { id: number; place: "before" | "after" };
 
 export function TabBar({
   tabs,
@@ -47,9 +55,12 @@ export function TabBar({
   onNewGitGraph,
   onClose,
   onPin,
+  onReorder,
   compact,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragIdRef = useRef<number | null>(null);
+  const [dragOver, setDragOver] = useState<DragOver | null>(null);
 
   // Horizontal wheel scroll without holding shift.
   useEffect(() => {
@@ -92,6 +103,50 @@ export function TabBar({
                   key={t.id}
                   value={String(t.id)}
                   data-tab-id={t.id}
+                  draggable
+                  onDragStart={(e) => {
+                    dragIdRef.current = t.id;
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    if (dragIdRef.current === null) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragIdRef.current === t.id) {
+                      setDragOver(null);
+                      return;
+                    }
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const place =
+                      e.clientX < rect.left + rect.width / 2
+                        ? "before"
+                        : "after";
+                    setDragOver((prev) =>
+                      prev && prev.id === t.id && prev.place === place
+                        ? prev
+                        : { id: t.id, place },
+                    );
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const dragId = dragIdRef.current;
+                    const place = dragOver?.place ?? "before";
+                    if (dragId !== null && dragId !== t.id) {
+                      onReorder(dragId, t.id, place);
+                    }
+                    dragIdRef.current = null;
+                    setDragOver(null);
+                  }}
+                  onDragEnd={() => {
+                    dragIdRef.current = null;
+                    setDragOver(null);
+                  }}
+                  onDragLeave={(e) => {
+                    // Ignore dragleave bubbling up from child elements.
+                    if (e.currentTarget.contains(e.relatedTarget as Node))
+                      return;
+                    setDragOver((prev) => (prev?.id === t.id ? null : prev));
+                  }}
                   onDoubleClick={() => isPreview && onPin(t.id)}
                   onAuxClick={(e) => {
                     if (e.button === 1 && tabs.length > 1) {
@@ -104,7 +159,7 @@ export function TabBar({
                     if (e.button === 1) e.preventDefault();
                   }}
                   className={cn(
-                    "group h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors data-[state=active]:bg-accent data-[state=active]:text-foreground hover:text-foreground/80 justify-between",
+                    "group relative h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors data-[state=active]:bg-accent data-[state=active]:text-foreground hover:text-foreground/80 justify-between",
                     compact
                       ? "px-1.5!"
                       : tabs.length === 1
@@ -112,6 +167,17 @@ export function TabBar({
                         : "ps-2! pe-1!",
                   )}
                 >
+                  {dragOver?.id === t.id && (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "pointer-events-none absolute inset-y-1 w-0.5 rounded-full bg-primary",
+                        dragOver.place === "before"
+                          ? "-left-px"
+                          : "-right-px",
+                      )}
+                    />
+                  )}
                   <span
                     className={cn(
                       "flex items-center gap-1.5 truncate",
@@ -136,6 +202,7 @@ export function TabBar({
                       role="button"
                       tabIndex={0}
                       aria-label="Close tab"
+                      draggable={false}
                       onClick={(e) => {
                         e.stopPropagation();
                         onClose(t.id);
