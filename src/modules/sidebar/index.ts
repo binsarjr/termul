@@ -1,2 +1,2 @@
-export { SidebarRail, SIDEBAR_RAIL_HEIGHT } from "./SidebarRail";
+export { SidebarRail } from "./SidebarRail";
 export type { SidebarViewId } from "./types";

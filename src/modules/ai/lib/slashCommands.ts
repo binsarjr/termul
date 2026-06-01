@@ -72,10 +72,6 @@ export const SLASH_COMMANDS: Record<string, SlashCommandMeta> = {
 export const IJT_CMD_RE =
   /^<ijt-command\s+name="([a-z0-9-]+)"(?:\s+state="([a-z]+)")?\s*\/>(?:\n+|$)/;
 
-export function wrapWithCommandMarker(prompt: string, name: string): string {
-  return `<ijt-command name="${name}" />\n\n${prompt}`;
-}
-
 export function tryRunSlashCommand(input: string): SlashOutcome {
   const trimmed = input.trim();
   const lead = trimmed[0];

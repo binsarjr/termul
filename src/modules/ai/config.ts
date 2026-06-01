@@ -581,7 +581,7 @@ export const DEFAULT_MODEL_ID: ModelId = "gpt-5.4-mini";
 /** Approximate context window (in tokens) per model. Used for the
  *  context-usage indicator in the AI mini-window header. Conservative
  *  estimates — actual provider limits may shift. */
-export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
+const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   "gpt-5.5": 1_050_000,
   "gpt-5.4-mini": 400_000,
   "gpt-5.4-nano": 400_000,
@@ -636,7 +636,7 @@ export type ModelPricing = {
   cacheRead?: number;
 };
 
-export const MODEL_PRICING: Record<string, ModelPricing> = {
+const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.5": { input: 5, output: 15, cacheRead: 0.5 },
   "gpt-5.4-mini": { input: 0.4, output: 1.6, cacheRead: 0.04 },
   "gpt-5.4-nano": { input: 0.1, output: 0.4, cacheRead: 0.01 },
@@ -676,7 +676,7 @@ export function estimateCost(
 }
 
 /** Providers that do not require an API key (local servers, key-optional). */
-export const KEYLESS_PROVIDERS: readonly ProviderId[] = [
+const KEYLESS_PROVIDERS: readonly ProviderId[] = [
   "lmstudio",
   "mlx",
   "ollama",
@@ -725,9 +725,8 @@ export const MLX_DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1";
 export const OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434/v1";
 export const OPENAI_COMPATIBLE_DEFAULT_BASE_URL = "";
 export const MAX_AGENT_STEPS = 24;
-export const TERMINAL_BUFFER_LINES = 300;
 
-export const SYSTEM_PROMPT = `You are Its Just Terminal, an AI agent embedded in a developer terminal emulator. You are a hands-on engineer, not a chat bot — your job is to *do* the work, not narrate it.
+const SYSTEM_PROMPT = `You are Its Just Terminal, an AI agent embedded in a developer terminal emulator. You are a hands-on engineer, not a chat bot — your job is to *do* the work, not narrate it.
 
 # Environment
 Every turn carries a short <env> block (prepended to the latest user message): workspace_root, active_terminal_cwd, optionally active_file. Treat it as ground truth — never ask the user where they are. The terminal scrollback is NOT auto-injected; call get_terminal_output only when the user references "this error" / "the last command" or you genuinely need to interpret recent output.
@@ -778,7 +777,7 @@ Every turn carries a short <env> block (prepended to the latest user message): w
 - Code blocks always carry a language fence.
 - Refused reads on sensitive files (.env, .ssh, credentials) are final — don't retry.`;
 
-export const SYSTEM_PROMPT_LITE = `You are Its Just Terminal, an AI agent in a developer terminal. Each turn carries an <env> block (workspace_root, active_terminal_cwd, optional active_file) prepended to the user's message — treat as ground truth.
+const SYSTEM_PROMPT_LITE = `You are Its Just Terminal, an AI agent in a developer terminal. Each turn carries an <env> block (workspace_root, active_terminal_cwd, optional active_file) prepended to the user's message — treat as ground truth.
 
 Tools: read_file, list_directory, grep, glob, get_terminal_output, edit, multi_edit, write_file, create_directory, bash_run, bash_background, bash_logs, bash_list, bash_kill, suggest_command.
 

@@ -65,14 +65,6 @@ export function configureRendererPool(a: SlotAdapter): void {
   adapter = a;
 }
 
-export function forEachSlot(fn: (slot: Slot) => void): void {
-  for (const s of slots) fn(s);
-}
-
-export function poolSize(): number {
-  return slots.length;
-}
-
 function getRecycler(): HTMLDivElement {
   if (recyclerEl && recyclerEl.isConnected) return recyclerEl;
   const el = document.createElement("div");

@@ -54,11 +54,6 @@ export function createProxyFetch(
   return async (input, init) => proxyFetchImpl(input, init, allowPrivate);
 }
 
-/** Backwards-compatible default — refuses private networks unless the caller
- *  explicitly opts in via {@link createProxyFetch}. */
-export const proxyFetch: typeof fetch = (input, init) =>
-  proxyFetchImpl(input, init, false);
-
 async function proxyFetchImpl(
   input: RequestInfo | URL,
   init: RequestInit | undefined,

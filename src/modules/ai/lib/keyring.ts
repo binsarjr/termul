@@ -95,7 +95,7 @@ function compatKeyringAccount(endpointId: string): string {
   return `compat-${endpointId}-api-key`;
 }
 
-export async function getCustomEndpointKey(
+async function getCustomEndpointKey(
   endpointId: string,
 ): Promise<string | null> {
   try {

@@ -189,9 +189,3 @@ export async function resolveLanguage(
   cache.set(key, ext);
   return ext;
 }
-
-export function preloadLanguages(filenames: string[]): void {
-  for (const f of filenames) {
-    void resolveLanguage(f).catch(() => {});
-  }
-}
