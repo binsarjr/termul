@@ -169,7 +169,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(
     const { rows, entryIndexByPath } = useMemo(() => {
       if (!rootPath) return { rows: [] as Row[], entryIndexByPath: new Map<string, number>() };
       return buildRows(rootPath, tree);
-    }, [rootPath, tree.nodes, tree.expanded, tree.renaming, tree.pendingCreate, tree]);
+    }, [rootPath, tree]);
 
     const entryPaths = useMemo<string[]>(() => {
       const out: string[] = [];

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { currentWorkspaceEnv } from "@/modules/workspace";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { listenFsChanged, watchAdd, watchRemove } from "./watch";
 
@@ -77,7 +78,7 @@ export function useFileTree(rootPath: string | null, options?: Options) {
 
   const expandedRef = useRef(expanded);
   const nodesRef = useRef(nodes);
-  const watchedRef = useRef<Set<string>>(new Set());
+  const watchedRef = useLazyRef<Set<string>>(() => new Set());
 
   useEffect(() => {
     showHiddenRef.current = showHidden;

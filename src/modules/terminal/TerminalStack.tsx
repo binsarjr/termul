@@ -1,6 +1,7 @@
 import type { Tab } from "@/modules/tabs";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useEffect, useMemo, useRef } from "react";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { PaneTreeView } from "./PaneTreeView";
 import type { TerminalPaneHandle } from "./TerminalPane";
 import { leafIds } from "./lib/panes";
@@ -54,7 +55,7 @@ export function TerminalStack({
     exitRef.current = onExit;
   }, [onExit]);
 
-  const bundles = useRef(new Map<number, Bundle>());
+  const bundles = useLazyRef<Map<number, Bundle>>(() => new Map<number, Bundle>());
   const getBundle = (leafId: number): Bundle => {
     let b = bundles.current.get(leafId);
     if (!b) {

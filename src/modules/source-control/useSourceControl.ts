@@ -4,6 +4,7 @@ import {
   type GitStatusSnapshot,
 } from "@/modules/ai/lib/native";
 import { useWorkspaceEnvStore, workspaceScopeKey } from "@/modules/workspace";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const AUTO_FETCH_THROTTLE_MS = 5 * 60_000;
@@ -162,7 +163,9 @@ export function useSourceControl(
   const requestIdRef = useRef(0);
   const inflightRef = useRef<Promise<void> | null>(null);
   const inflightModeRef = useRef<SourceControlRefreshMode>("never");
-  const autoFetchByRepoRef = useRef(new Map<string, number>());
+  const autoFetchByRepoRef = useLazyRef<Map<string, number>>(
+    () => new Map(),
+  );
   const enabledRef = useRef(enabled);
   const lastRefreshAtRef = useRef(0);
 
@@ -338,7 +341,7 @@ export function useSourceControl(
         lastRefreshAtRef.current = Date.now();
       }
     },
-    [contextPath, workspaceKey],
+    [contextPath],
   );
 
   const refresh = useCallback(

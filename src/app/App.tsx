@@ -49,6 +49,7 @@ import {
 } from "@/modules/git-history";
 import { getLaunchDir } from "@/lib/launchDir";
 import { quoteShellArg } from "@/lib/shellQuote";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { useZoom } from "@/lib/useZoom";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
 import {
@@ -223,12 +224,14 @@ export default function App() {
   }, [tabs, activeId]);
   const activeLeafId = activeTerminalTab?.activeLeafId ?? null;
 
-  const searchAddons = useRef<Map<number, SearchAddon>>(new Map());
+  const searchAddons = useLazyRef<Map<number, SearchAddon>>(() => new Map());
   const [activeSearchAddon, setActiveSearchAddon] =
     useState<SearchAddon | null>(null);
   const searchInlineRef = useRef<SearchInlineHandle | null>(null);
-  const terminalRefs = useRef<Map<number, TerminalPaneHandle>>(new Map());
-  const editorRefs = useRef<Map<number, EditorPaneHandle>>(new Map());
+  const terminalRefs = useLazyRef<Map<number, TerminalPaneHandle>>(
+    () => new Map(),
+  );
+  const editorRefs = useLazyRef<Map<number, EditorPaneHandle>>(() => new Map());
   const [activeEditorHandle, setActiveEditorHandle] =
     useState<EditorPaneHandle | null>(null);
   const [gitHistoryHandle, setGitHistoryHandle] =
@@ -239,7 +242,7 @@ export default function App() {
   const explorerReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const sidebarRef = useRef<PanelImperativeHandle | null>(null);
-  const sidebarWidthRef = useRef(readSidebarWidth());
+  const sidebarWidthRef = useLazyRef(() => readSidebarWidth());
   const sidebarWidthWriteTimerRef = useRef(0);
   const [sidebarView, setSidebarViewState] = useState<SidebarViewId>(readSidebarView);
   const persistSidebarView = useCallback((view: SidebarViewId) => {
@@ -505,7 +508,7 @@ export default function App() {
   // open editor tabs for that path so the user sees the new content. We
   // track which approvalIds we've already handled to fire the reload only
   // once per applied diff.
-  const appliedDiffsRef = useRef<Set<string>>(new Set());
+  const appliedDiffsRef = useLazyRef<Set<string>>(() => new Set());
   useEffect(() => {
     for (const t of tabs) {
       if (t.kind !== "ai-diff") continue;
@@ -541,7 +544,7 @@ export default function App() {
     };
   }, []);
 
-  const editorWatchRef = useRef<Set<string>>(new Set());
+  const editorWatchRef = useLazyRef<Set<string>>(() => new Set());
   useEffect(() => {
     const want = new Set<string>();
     for (const t of tabs) if (t.kind === "editor") want.add(parentDir(t.path));
@@ -669,7 +672,7 @@ export default function App() {
 
   // Drives session disposal off the pane tree, not React lifecycles —
   // split/unsplit re-mount components but the leaf is still live.
-  const liveLeavesRef = useRef<Set<number>>(new Set());
+  const liveLeavesRef = useLazyRef<Set<number>>(() => new Set());
   useEffect(() => {
     const live = new Set<number>();
     for (const t of tabs) {
@@ -1159,7 +1162,7 @@ export default function App() {
     [activeId],
   );
 
-  const authorizedCwds = useRef(new Set<string>());
+  const authorizedCwds = useLazyRef(() => new Set<string>());
   const handleTerminalCwd = useCallback(
     (leafId: number, cwd: string) => {
       setLeafCwd(leafId, cwd);

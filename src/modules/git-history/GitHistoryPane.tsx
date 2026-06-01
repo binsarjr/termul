@@ -7,6 +7,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useLazyRef } from "@/lib/useLazyRef";
 import {
   native,
   type GitCommitFileChange,
@@ -219,13 +220,15 @@ export function GitHistoryPane({
     height: number;
   } | null>(null);
   const [remoteWeb, setRemoteWeb] = useState<RemoteWebInfo | null>(null);
-  const filesCacheRef = useRef(new Map<string, FilesEntry>());
+  const filesCacheRef = useLazyRef<Map<string, FilesEntry>>(
+    () => new Map<string, FilesEntry>(),
+  );
   const [filesTick, setFilesTick] = useState(0);
   const bumpFiles = useCallback(() => setFilesTick((n) => n + 1), []);
 
   const requestIdRef = useRef(0);
   const inflightMoreRef = useRef(false);
-  const filesInflightRef = useRef(new Set<string>());
+  const filesInflightRef = useLazyRef<Set<string>>(() => new Set<string>());
   const scrollRef = useRef<HTMLDivElement>(null);
   const graphCacheRef = useRef<{
     rows: GraphRow[];

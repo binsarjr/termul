@@ -1,6 +1,7 @@
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import type { ToolUIPart, UIMessagePart } from "ai";
 import { useEffect, useMemo, useRef } from "react";
+import { useLazyRef } from "@/lib/useLazyRef";
 import { native } from "../lib/native";
 import { checkReadable } from "../lib/security";
 import { resolvePath } from "../tools/tools";
@@ -127,7 +128,7 @@ function Bridge({
   // ---- AI diff tab management ----------------------------------------------
   // We track which approvalIds have already opened a tab so re-renders don't
   // open duplicates. Reset when the session changes.
-  const openedRef = useRef<Set<string>>(new Set());
+  const openedRef = useLazyRef<Set<string>>(() => new Set());
   const fileMutationFingerprintRef = useRef<string>("");
   useEffect(() => {
     openedRef.current = new Set();

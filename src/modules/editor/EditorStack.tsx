@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useLazyRef } from "@/lib/useLazyRef";
 import type { EditorTab, Tab } from "@/modules/tabs";
 import { useEffect, useRef } from "react";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
@@ -37,11 +38,13 @@ export function EditorStack({
     closeRef.current = onCloseTab;
   }, [onCloseTab]);
 
-  const refCallbacks = useRef(
-    new Map<number, (h: EditorPaneHandle | null) => void>(),
+  const refCallbacks = useLazyRef(
+    () => new Map<number, (h: EditorPaneHandle | null) => void>(),
   );
-  const dirtyCallbacks = useRef(new Map<number, (dirty: boolean) => void>());
-  const closeCallbacks = useRef(new Map<number, () => void>());
+  const dirtyCallbacks = useLazyRef(
+    () => new Map<number, (dirty: boolean) => void>(),
+  );
+  const closeCallbacks = useLazyRef(() => new Map<number, () => void>());
 
   const getRefCallback = (id: number) => {
     let cb = refCallbacks.current.get(id);
