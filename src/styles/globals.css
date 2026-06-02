@@ -212,6 +212,14 @@ html[data-chrome="borderless"] #settings-root {
 .xterm-viewport {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
+  /* xterm.css hardcodes the viewport background to #000. The viewport sits behind
+   * the canvas spanning the full width, so anywhere the canvas doesn't paint — our
+   * left gutter (padding below), a partial last row, the right margin — that raw
+   * black shows through and clashes with the theme. Paint it with the terminal
+   * background so those areas blend. The background image is a separate fixed
+   * full-window overlay (SurfaceLayer), not terminal transparency, so matching the
+   * opaque terminal bg here keeps the gutter seamless in image mode too. */
+  background-color: var(--terminal-background) !important;
 }
 .xterm .xterm-viewport::-webkit-scrollbar,
 .xterm-viewport::-webkit-scrollbar {
@@ -224,6 +232,16 @@ html[data-chrome="borderless"] #settings-root {
 .xterm:focus,
 .xterm.focus {
   outline: none !important;
+}
+/*
+ * Left gutter so a command block's error accent bar has room to sit beside the
+ * text instead of on top of the first glyph. FitAddon reads padding off .xterm
+ * and subtracts it, so the column count stays correct; .xterm-screen and its
+ * canvas shift right together, keeping the block overlay (which positions off
+ * .xterm-screen's bounding rect) aligned with the glyphs.
+ */
+.xterm {
+  padding-left: 12px;
 }
 
 .cm-editor,
