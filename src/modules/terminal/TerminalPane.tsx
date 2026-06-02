@@ -11,6 +11,7 @@ import {
 import { BlockContextMenu } from "./BlockContextMenu";
 import { BlockFilterDialog } from "./BlockFilterDialog";
 import { BlockHoverLayer } from "./BlockHoverLayer";
+import { TerminalAutocompleteLayer } from "./TerminalAutocompleteLayer";
 import {
   type CommandBlockView,
   useTerminalSession,
@@ -175,6 +176,13 @@ export function TerminalPane({
     };
   }, [session]);
 
+  // Re-resolve the controller each frame so a rebind after hibernation is
+  // transparent; stable identity keeps the overlay's rAF effect from resetting.
+  const getAutocompleteRender = useCallback(
+    () => session.getAutocomplete()?.getRender() ?? null,
+    [session],
+  );
+
   return (
     <>
       <BlockContextMenu
@@ -207,6 +215,11 @@ export function TerminalPane({
             onMenuOpenChange={(open) => {
               if (open) session.pinActiveBlock();
             }}
+          />
+          <TerminalAutocompleteLayer
+            active={visible && focused}
+            zoom={zoom}
+            getRender={getAutocompleteRender}
           />
         </div>
       </BlockContextMenu>

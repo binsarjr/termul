@@ -27,6 +27,9 @@ export type SlotAdapter = {
 
 export type LeafBridge = {
   writeToPty(data: string): void;
+  /** Give inline autocomplete first crack at a keydown. Returns true when it
+   * consumed the key (the pool then drops it). Absent on non-terminal leaves. */
+  handleAutocompleteKey?(event: KeyboardEvent): boolean;
   resizePty(cols: number, rows: number): void;
   // Force a SIGWINCH on the underlying PTY at the given dims. Implemented
   // as a +1 row / restore bump because the Linux kernel suppresses winsize
@@ -165,6 +168,13 @@ function createSlot(): Slot {
     if (leafId === null) return false;
     const bridge = adapter?.resolveLeaf(leafId);
     if (!bridge) return true;
+    // Inline autocomplete gets first crack at keydown (Ctrl+Space, dropdown
+    // nav, Right-to-accept). It only consumes keys it actually handles; for
+    // everything else typing flows through onData as usual.
+    if (event.type === "keydown" && bridge.handleAutocompleteKey?.(event)) {
+      event.preventDefault();
+      return false;
+    }
     const lineNavigation = terminalLineNavigationSequence(event, {
       isMac: IS_MAC,
     });

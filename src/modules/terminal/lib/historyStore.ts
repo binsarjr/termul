@@ -19,6 +19,10 @@ type HistoryState = {
   /** Read the platform shell-history file. Cached after the first load; pass
    * `force` to re-read (e.g. after the user clears it elsewhere). */
   load: (force?: boolean) => Promise<void>;
+  /** Promote a just-run command to the front of the in-memory list so it's
+   * suggestable immediately, without waiting for the shell to flush it to disk.
+   * In-memory only — the shell owns the file. */
+  addRecent: (command: string) => void;
   /** Remove one command from both the in-memory list and the real history
    * file. Optimistic; re-syncs from disk if the backend write fails. */
   removeEntry: (command: string) => Promise<void>;
@@ -53,6 +57,15 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       set({ loading: false, loaded: true });
       console.warn("[its-just-terminal] read_shell_history failed:", e);
     }
+  },
+
+  addRecent: (command) => {
+    const cmd = command.trim();
+    if (!cmd) return;
+    set((s) => {
+      if (s.entries[0] === cmd) return s;
+      return { entries: [cmd, ...s.entries.filter((c) => c !== cmd)] };
+    });
   },
 
   removeEntry: async (command) => {
