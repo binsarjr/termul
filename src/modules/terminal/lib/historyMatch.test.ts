@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ghostSuffix, matchHistory, reduceTracked } from "./historyMatch";
-
-const T = (input: string) => ({ input, tracking: true });
+import { deriveInputFromRow, ghostSuffix, matchHistory } from "./historyMatch";
 
 const HIST = ["git status", "git stash pop", "git status -sb", "npm run dev"];
 
@@ -45,56 +43,34 @@ describe("ghostSuffix", () => {
   });
 });
 
-describe("reduceTracked", () => {
-  it("appends plain typed characters", () => {
-    expect(reduceTracked(T("git st"), "a")).toEqual(T("git sta"));
+describe("deriveInputFromRow", () => {
+  it("slices the row from startCol up to the cursor", () => {
+    expect(deriveInputFromRow("$ git status", 2, 9)).toBe("git sta");
   });
 
-  it("appends a multi-char paste of plain text", () => {
-    expect(reduceTracked(T("git "), "status")).toEqual(T("git status"));
+  it("works at startCol 0 (no prompt prefix)", () => {
+    expect(deriveInputFromRow("git status", 0, 3)).toBe("git");
   });
 
-  it("pops on backspace (DEL or BS)", () => {
-    expect(reduceTracked(T("gits"), "\x7f")).toEqual(T("git"));
-    expect(reduceTracked(T("gits"), "\b")).toEqual(T("git"));
+  it("returns the full typed text when the cursor is at end", () => {
+    expect(deriveInputFromRow("$ ls -la", 2, 8)).toBe("ls -la");
   });
 
-  it("backspace on empty stays empty", () => {
-    expect(reduceTracked(T(""), "\x7f")).toEqual(T(""));
+  it("keeps a trailing space when the cursor sits past it (untrimmed row)", () => {
+    // The caller must pass the untrimmed row; the cursor (6) is right of the
+    // typed space so the derived input includes it.
+    expect(deriveInputFromRow("$ git ", 2, 6)).toBe("git ");
   });
 
-  it("Enter starts a fresh tracked line", () => {
-    expect(reduceTracked(T("git status"), "\r")).toEqual(T(""));
+  it("is empty when the cursor sits at the start col (no-echo line)", () => {
+    expect(deriveInputFromRow("$ ", 2, 2)).toBe("");
   });
 
-  it("stops tracking on an arrow-key escape sequence", () => {
-    expect(reduceTracked(T("git status"), "\x1b[D")).toEqual({
-      input: "",
-      tracking: false,
-    });
+  it("is empty when the cursor is before the start col", () => {
+    expect(deriveInputFromRow("$ git", 2, 1)).toBe("");
   });
 
-  it("stops tracking on a Ctrl sequence", () => {
-    expect(reduceTracked(T("git status"), "\x03")).toEqual({
-      input: "",
-      tracking: false,
-    });
-  });
-
-  it("stops tracking on a paste containing a newline", () => {
-    expect(reduceTracked(T("a"), "b\nc")).toEqual({
-      input: "",
-      tracking: false,
-    });
-  });
-
-  it("does NOT build input while untracked (no partial-suffix matching)", () => {
-    const s = { input: "", tracking: false };
-    expect(reduceTracked(s, "x")).toEqual(s);
-    expect(reduceTracked(s, "\x7f")).toEqual(s);
-  });
-
-  it("re-enables tracking on the next Enter", () => {
-    expect(reduceTracked({ input: "", tracking: false }, "\r")).toEqual(T(""));
+  it("is empty when the start col is negative (invalid marker)", () => {
+    expect(deriveInputFromRow("git status", -1, 5)).toBe("");
   });
 });

@@ -115,8 +115,10 @@ describe("OSC 7 cwd handler — gated by OSC 133 in-command state", () => {
 function makeBlockTerm() {
   const handlers = new Map<number, OscHandler>();
   let line = 0;
+  let cursorX = 0;
   let altScreen = false;
-  const markers: { line: number; isDisposed: boolean }[] = [];
+  const markers: { line: number; isDisposed: boolean; dispose: () => void }[] =
+    [];
   const term = {
     parser: {
       registerOscHandler(code: number, handler: OscHandler) {
@@ -126,12 +128,14 @@ function makeBlockTerm() {
     },
     registerMarker: vi.fn(() => {
       const m = { line, isDisposed: false, dispose: vi.fn() } as unknown as IMarker;
-      markers.push(m as unknown as { line: number; isDisposed: boolean });
+      markers.push(
+        m as unknown as { line: number; isDisposed: boolean; dispose: () => void },
+      );
       return m;
     }),
     buffer: {
       get active() {
-        return { type: altScreen ? "alternate" : "normal" };
+        return { type: altScreen ? "alternate" : "normal", cursorX };
       },
     },
   } as unknown as Terminal;
@@ -141,6 +145,9 @@ function makeBlockTerm() {
     markers,
     advance: (n = 1) => {
       line += n;
+    },
+    setCursorX: (x: number) => {
+      cursorX = x;
     },
     setAltScreen: (v: boolean) => {
       altScreen = v;
@@ -282,6 +289,101 @@ describe("OSC 133 command-block capture", () => {
     tracker.dispose();
 
     // Every marker handed out (prompt + start + end) gets disposed.
+    for (const m of markers as unknown as IMarker[]) {
+      expect(m.dispose).toHaveBeenCalled();
+    }
+  });
+});
+
+describe("OSC 133 command-start tracking (autocomplete input source)", () => {
+  it("captures {line,col} at B from the prompt-end cursor", () => {
+    const { term, handlers, advance, setCursorX } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A"); // prompt row
+    advance(0);
+    setCursorX(2); // cursor sits just past the "$ " prompt
+    handlers.get(133)?.("B");
+
+    expect(tracker.getCommandStart()).toEqual({ line: 0, col: 2 });
+  });
+
+  it("is null before B (no live edit line yet)", () => {
+    const { term, handlers } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A");
+    expect(tracker.getCommandStart()).toBeNull();
+  });
+
+  it("clears on C (command submitted)", () => {
+    const { term, handlers, setCursorX } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A");
+    setCursorX(2);
+    handlers.get(133)?.("B");
+    expect(tracker.getCommandStart()).not.toBeNull();
+    handlers.get(133)?.("C;ls");
+    expect(tracker.getCommandStart()).toBeNull();
+  });
+
+  it("clears on D (command ended)", () => {
+    const { term, handlers, setCursorX } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A");
+    setCursorX(2);
+    handlers.get(133)?.("B");
+    handlers.get(133)?.("D;0");
+    expect(tracker.getCommandStart()).toBeNull();
+  });
+
+  it("clears on the next A (new prompt)", () => {
+    const { term, handlers, setCursorX } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A");
+    setCursorX(2);
+    handlers.get(133)?.("B");
+    expect(tracker.getCommandStart()).not.toBeNull();
+    handlers.get(133)?.("A"); // fresh prompt
+    expect(tracker.getCommandStart()).toBeNull();
+  });
+
+  it("does not capture on the alternate screen (TUIs)", () => {
+    const { term, handlers, setCursorX, setAltScreen } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A"); // live prompt marker, so only the alt guard can block
+    setAltScreen(true);
+    setCursorX(2);
+    handlers.get(133)?.("B");
+    expect(tracker.getCommandStart()).toBeNull();
+  });
+
+  it("ignores a B injected during command output (no live prompt marker)", () => {
+    const { term, handlers, setCursorX } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A");
+    setCursorX(2);
+    handlers.get(133)?.("B");
+    handlers.get(133)?.("C;ssh pi"); // submitted: A marker handed off, start cleared
+    setCursorX(40);
+    handlers.get(133)?.("B"); // spoofed by command output — no live A marker
+    expect(tracker.getCommandStart()).toBeNull();
+  });
+
+  it("disposes the command-start marker on tracker dispose", () => {
+    const { term, handlers, markers, setCursorX } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A");
+    setCursorX(2);
+    handlers.get(133)?.("B"); // command-start marker registered here
+    tracker.dispose();
+
     for (const m of markers as unknown as IMarker[]) {
       expect(m.dispose).toHaveBeenCalled();
     }

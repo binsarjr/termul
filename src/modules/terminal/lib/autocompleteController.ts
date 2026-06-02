@@ -1,12 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { useHistoryStore } from "./historyStore";
-import {
-  ghostSuffix,
-  type InputState,
-  matchHistory,
-  reduceTracked,
-} from "./historyMatch";
+import { deriveInputFromRow, ghostSuffix, matchHistory } from "./historyMatch";
 
 /** Max rows shown in the Ctrl+Space dropdown. */
 const DROPDOWN_MAX = 8;
@@ -28,20 +23,18 @@ export type AutocompleteRender = {
 
 /**
  * Per-terminal inline shell-history autocomplete: ghost text after the cursor
- * plus a Ctrl+Space dropdown. The current input line is reconstructed from
- * keystrokes ({@link reduceInput}) and cross-checked against the real xterm
- * buffer before anything is shown, so a tracking drift only ever costs a
- * suggestion — it never injects or displays a wrong one. All matching is local.
+ * plus a Ctrl+Space dropdown. The current input is derived straight from the
+ * xterm buffer using the OSC 133 prompt-end marker (B) the command-block feature
+ * already pins, so it stays correct in any editing state — arrows, mid-line
+ * edits, accepted suggestions — not just plain forward typing. All matching is
+ * local; a missing marker (shell without integration) simply yields no input,
+ * so we never show a wrong suggestion.
  *
  * The overlay polls {@link getRender} on an animation frame (mirroring the
  * block hover layer), so this controller stays a plain object — no emitter, and
  * re-resolving it each frame means a rebind after hibernation is transparent.
  */
 export class AutocompleteController {
-  private input = "";
-  /** False once we've lost track of the line (a control sequence we can't model);
-   * no input is built and no ghost shown until the next fresh prompt (Enter). */
-  private tracking = true;
   private dropdownOpen = false;
   private selectedIndex = 0;
   private disposers: (() => void)[] = [];
@@ -49,6 +42,10 @@ export class AutocompleteController {
   constructor(
     private readonly term: Terminal,
     private readonly write: (data: string) => void,
+    private readonly getCommandStart: () => {
+      line: number;
+      col: number;
+    } | null,
   ) {
     // Make sure history is loaded for matching (deduped in the store).
     void useHistoryStore.getState().load();
@@ -68,45 +65,39 @@ export class AutocompleteController {
     return useHistoryStore.getState().entries;
   }
 
-  private onData(d: string): void {
-    // A bare Enter submits the line: promote it so it's instantly suggestable —
-    // but only if we were tracking and it was actually visible (echoed), so
-    // no-echo input like a `read -s` password is never captured.
-    if (
-      d === "\r" &&
-      this.tracking &&
-      this.input.trim() &&
-      this.inputVisible()
-    ) {
-      useHistoryStore.getState().addRecent(this.input);
-    }
-    const next: InputState = reduceTracked(
-      { input: this.input, tracking: this.tracking },
-      d,
-    );
-    this.input = next.input;
-    this.tracking = next.tracking;
-    // Losing the line (arrow keys, Ctrl-*, paste with controls) also closes the
-    // dropdown, so a stale selection can never splice into a line we no longer
-    // recognise.
-    if (!next.tracking) this.dropdownOpen = false;
-    else if (this.dropdownOpen) this.clampSelection();
+  /** The current command input, read live from the buffer's prompt row. Empty
+   * when there's no live prompt marker, on the alt screen, on a wrapped/multi-row
+   * line, or when the cursor sits at/before the command-start column. */
+  private currentInput(): string {
+    const start = this.getCommandStart();
+    if (!start) return "";
+    const buf = this.term.buffer.active;
+    if (buf.type === "alternate") return "";
+    const cursorRow = buf.baseY + buf.cursorY;
+    // Multi-row / wrapped input — bail. Safe: only costs a suggestion.
+    if (cursorRow !== start.line) return "";
+    // Untrimmed (trimRight=false): translateToString(true) drops trailing
+    // whitespace, which would swallow a just-typed trailing space (e.g. "git ")
+    // and make the ghost double-space the next word. The slice is bounded by
+    // cursorX, so RPROMPT / right-aligned text past the cursor is still excluded.
+    const rowText = buf.getLine(start.line)?.translateToString(false) ?? "";
+    return deriveInputFromRow(rowText, start.col, buf.cursorX);
   }
 
-  /** True when the text on the cursor's row up to the cursor ends with our
-   * reconstructed input — i.e. the input is really sitting at the cursor. */
-  private inputVisible(): boolean {
-    if (this.input.length === 0) return false;
-    const buf = this.term.buffer.active;
-    if (buf.type === "alternate") return false;
-    const cy = buf.cursorY;
-    if (cy < 0 || cy >= this.term.rows) return false;
-    const line = buf.getLine(buf.baseY + cy)?.translateToString(true) ?? "";
-    return line.slice(0, buf.cursorX).endsWith(this.input);
+  private onData(d: string): void {
+    // A bare Enter submits the line: promote it so it's instantly suggestable.
+    // currentInput() reads the echoed row, so a no-echo `read -s` password keeps
+    // the cursor at the start col → empty → never captured (no-secret-capture).
+    if (d === "\r") {
+      const input = this.currentInput();
+      if (input.trim()) useHistoryStore.getState().addRecent(input);
+    }
+    if (this.dropdownOpen) this.clampSelection();
   }
 
   private clampSelection(): void {
-    const n = matchHistory(this.entries(), this.input, DROPDOWN_MAX).length;
+    const n = matchHistory(this.entries(), this.currentInput(), DROPDOWN_MAX)
+      .length;
     this.selectedIndex = n === 0 ? 0 : Math.min(this.selectedIndex, n - 1);
   }
 
@@ -115,7 +106,8 @@ export class AutocompleteController {
    * line is empty and the dropdown is closed. */
   getRender(): AutocompleteRender | null {
     if (!this.enabled()) return null;
-    if (this.input.length === 0 && !this.dropdownOpen) return null;
+    const input = this.currentInput();
+    if (input.length === 0 && !this.dropdownOpen) return null;
 
     const screen = this.term.element?.querySelector(
       ".xterm-screen",
@@ -134,9 +126,9 @@ export class AutocompleteController {
     if (cy < 0 || cy >= rows) return null;
 
     const entries = this.entries();
-    const ghost = this.inputVisible() ? ghostSuffix(entries, this.input) : "";
+    const ghost = input ? ghostSuffix(entries, input) : "";
     const items = this.dropdownOpen
-      ? matchHistory(entries, this.input, DROPDOWN_MAX)
+      ? matchHistory(entries, input, DROPDOWN_MAX)
       : [];
     const dropdown = items.length > 0 ? items : null;
     if (!ghost && !dropdown) return null;
@@ -156,26 +148,26 @@ export class AutocompleteController {
     };
   }
 
-  /** Accept the inline ghost suggestion (Right-arrow at end-of-line). */
+  /** Accept the inline ghost suggestion (Right-arrow at end-of-line). The next
+   * frame re-derives the input from the buffer once the shell echoes the write,
+   * so there's no local state to keep in sync. */
   private acceptGhost(): boolean {
-    if (!this.inputVisible()) return false;
-    const ghost = ghostSuffix(this.entries(), this.input);
+    const input = this.currentInput();
+    if (!input) return false;
+    const ghost = ghostSuffix(this.entries(), input);
     if (!ghost) return false;
     this.write(ghost);
-    this.input += ghost;
     return true;
   }
 
   private acceptSelected(): boolean {
-    const items = matchHistory(this.entries(), this.input, DROPDOWN_MAX);
+    const input = this.currentInput();
+    const items = matchHistory(this.entries(), input, DROPDOWN_MAX);
     const pick = items[this.selectedIndex];
     if (!pick) return false;
-    // Never splice into a line whose content we don't recognise. An empty input
-    // (blank-prompt dropdown) is fine — we just write the whole command.
-    if (this.input !== "" && !this.inputVisible()) return false;
-    const remainder = pick.slice(this.input.length);
+    // An empty input (blank-prompt dropdown) is fine — we write the whole pick.
+    const remainder = pick.slice(input.length);
     if (remainder) this.write(remainder);
-    this.input = pick;
     this.dropdownOpen = false;
     return true;
   }
@@ -206,12 +198,14 @@ export class AutocompleteController {
           this.dropdownOpen = false;
           return true;
         case "ArrowDown": {
-          const n = matchHistory(this.entries(), this.input, DROPDOWN_MAX).length;
+          const n = matchHistory(this.entries(), this.currentInput(), DROPDOWN_MAX)
+            .length;
           if (n > 0) this.selectedIndex = (this.selectedIndex + 1) % n;
           return true;
         }
         case "ArrowUp": {
-          const n = matchHistory(this.entries(), this.input, DROPDOWN_MAX).length;
+          const n = matchHistory(this.entries(), this.currentInput(), DROPDOWN_MAX)
+            .length;
           if (n > 0) this.selectedIndex = (this.selectedIndex - 1 + n) % n;
           return true;
         }

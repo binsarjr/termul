@@ -425,8 +425,12 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       s.blocks = prompt.blocks;
       const blockCtl = new BlockController(term, prompt.blocks);
       s.blockCtl = blockCtl;
-      const autocompleteCtl = new AutocompleteController(term, (data) =>
-        s.pty?.write(data),
+      // Pass the live accessor (not a snapshot) so it tracks the tracker that's
+      // rebuilt per slot bind after hibernation.
+      const autocompleteCtl = new AutocompleteController(
+        term,
+        (data) => s.pty?.write(data),
+        prompt.getCommandStart,
       );
       s.autocompleteCtl = autocompleteCtl;
       const cwd = registerCwdHandler(

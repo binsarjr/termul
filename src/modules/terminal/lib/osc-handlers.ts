@@ -154,6 +154,10 @@ export class CommandBlockRing {
 
 export type PromptTracker = {
   getMarker: () => IMarker | null;
+  /** Where the typed command starts (prompt-end row + column), or null when
+   * there's no live edit line — used by the inline history autocomplete to
+   * derive the current input straight from the buffer. */
+  getCommandStart: () => { line: number; col: number } | null;
   blocks: CommandBlockRing;
   dispose: () => void;
 };
@@ -163,20 +167,43 @@ export function registerPromptTracker(
   state?: ShellIntegrationState,
 ): PromptTracker {
   let marker: IMarker | null = null;
+  // Pins the row+col where the typed command begins, valid only across the edit
+  // window (B .. submit/new-prompt). Its own marker — the A marker is handed to
+  // the block at C and a multi-line prompt's A row isn't the command row.
+  let commandStart: { marker: IMarker | null; col: number } | null = null;
+  const clearCommandStart = () => {
+    commandStart?.marker?.dispose();
+    commandStart = null;
+  };
   const blocks = new CommandBlockRing();
   const d = term.parser.registerOscHandler(133, (data) => {
     // OSC 133 A — start of new prompt (between commands).
     if (data.startsWith("A")) {
       if (state) state.inCommand = false;
+      clearCommandStart();
       marker?.dispose();
       marker = term.registerMarker(0);
     } else if (data.startsWith("B")) {
       // OSC 133 B — command begins. From here on, treat all output as
       // untrusted until we see D (command exit) or the next A (new prompt).
       if (state) state.inCommand = true;
+      // The B marker sits at the prompt's tail, so the cursor is now exactly at
+      // the column where the typed command starts. Pin it for autocomplete —
+      // but only while this prompt's A marker is still live (between A and C).
+      // The A marker is nulled at C and absent during a running command, so a
+      // stray ESC]133;B injected by command output can't pin a start into output.
+      if (marker && !isAltScreen(term)) {
+        clearCommandStart();
+        commandStart = {
+          marker: registerMarkerSafe(term),
+          col: cursorColSafe(term),
+        };
+      }
     } else if (data.startsWith("C")) {
       // OSC 133 C — command pre-execution marker; still inside command.
       if (state) state.inCommand = true;
+      // Command submitted: the input line is final, no more editing.
+      clearCommandStart();
       // Skip block capture inside a TUI (vim/htop/less): the alt screen has no
       // scrollback and its incremental redraws would produce bogus ranges.
       if (!isAltScreen(term)) {
@@ -193,6 +220,7 @@ export function registerPromptTracker(
     } else if (data.startsWith("D")) {
       // OSC 133 D — command ends.
       if (state) state.inCommand = false;
+      clearCommandStart();
       if (!isAltScreen(term)) {
         const exitCode = parseExitCode(data);
         blocks.endCommand(exitCode, registerMarkerSafe(term));
@@ -202,11 +230,17 @@ export function registerPromptTracker(
   });
   return {
     getMarker: () => (marker && !marker.isDisposed ? marker : null),
+    getCommandStart: () => {
+      const m = commandStart?.marker;
+      if (!m || m.isDisposed) return null;
+      return { line: m.line, col: commandStart!.col };
+    },
     blocks,
     dispose: () => {
       d.dispose();
       marker?.dispose();
       marker = null;
+      clearCommandStart();
       blocks.dispose();
     },
   };
@@ -232,6 +266,14 @@ function registerMarkerSafe(term: Terminal): IMarker | null {
     return term.registerMarker(0) ?? null;
   } catch {
     return null;
+  }
+}
+
+function cursorColSafe(term: Terminal): number {
+  try {
+    return term.buffer.active.cursorX;
+  } catch {
+    return 0;
   }
 }
 
