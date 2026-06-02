@@ -18,6 +18,7 @@ import {
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
 import type { useFileTree } from "./lib/useFileTree";
+import { isMarkdownPath } from "@/modules/markdown/lib/isMarkdownPath";
 import { statusTextClass } from "@/modules/source-control/statusDecoration";
 
 type Tree = ReturnType<typeof useFileTree>;
@@ -42,10 +43,6 @@ export type EntryRowProps = {
   onAttachToAgent?: (path: string) => void;
   onOpenMarkdownPreview?: (path: string) => void;
 };
-
-function isMarkdownPath(path: string): boolean {
-  return /\.(md|markdown|mdx)$/i.test(path);
-}
 
 function EntryRowImpl(props: EntryRowProps) {
   const {

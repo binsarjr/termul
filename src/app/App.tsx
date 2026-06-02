@@ -1141,6 +1141,14 @@ export default function App() {
     [newMarkdownTab],
   );
 
+  // "Plain Text" side of the markdown view toggle: open/focus the editor tab.
+  const openMarkdownEditor = useCallback(
+    (path: string) => {
+      openFileTab(path);
+    },
+    [openFileTab],
+  );
+
   const splitActivePaneInActiveTab = useCallback(
     (dir: "row" | "col") => {
       const t = tabsRef.current.find((x) => x.id === activeId);
@@ -1548,6 +1556,7 @@ export default function App() {
           registerHandle={registerEditorHandle}
           onDirtyChange={handleEditorDirty}
           onCloseTab={disposeTab}
+          onOpenPreview={openMarkdownPreview}
         />
       </div>
       <div
@@ -1557,7 +1566,11 @@ export default function App() {
         )}
         aria-hidden={!isMarkdownTab}
       >
-        <MarkdownStack tabs={tabs} activeId={activeId} />
+        <MarkdownStack
+          tabs={tabs}
+          activeId={activeId}
+          onOpenEditor={openMarkdownEditor}
+        />
       </div>
       <div
         className={cn(

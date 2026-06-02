@@ -5,9 +5,11 @@ import { MarkdownPreviewPane } from "./MarkdownPreviewPane";
 type Props = {
   tabs: Tab[];
   activeId: number;
+  /** Open/focus the editor for this markdown file (top-right toggle). */
+  onOpenEditor: (path: string) => void;
 };
 
-export function MarkdownStack({ tabs, activeId }: Props) {
+export function MarkdownStack({ tabs, activeId, onOpenEditor }: Props) {
   const markdowns = tabs.filter((t): t is MarkdownTab => t.kind === "markdown");
   if (markdowns.length === 0) return null;
   return (
@@ -23,7 +25,11 @@ export function MarkdownStack({ tabs, activeId }: Props) {
             )}
             aria-hidden={!visible}
           >
-            <MarkdownPreviewPane path={t.path} visible={visible} />
+            <MarkdownPreviewPane
+              path={t.path}
+              visible={visible}
+              onOpenEditor={() => onOpenEditor(t.path)}
+            />
           </div>
         );
       })}

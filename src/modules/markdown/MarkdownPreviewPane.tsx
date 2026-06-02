@@ -6,6 +6,7 @@ import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import { useEffect, useRef, useState } from "react";
 import { Streamdown, type PluginConfig } from "streamdown";
+import { MarkdownViewToggle } from "./MarkdownViewToggle";
 import { PreviewCode } from "./PreviewCode";
 import { Toc, type TocItem } from "./Toc";
 import "katex/dist/katex.min.css";
@@ -25,6 +26,8 @@ type Status =
 type Props = {
   path: string;
   visible: boolean;
+  /** Open/focus the editor for this file (top-right "Plain Text" toggle). */
+  onOpenEditor: () => void;
 };
 
 const components = { code: PreviewCode };
@@ -40,7 +43,7 @@ const plugins: PluginConfig = {
   },
 };
 
-export function MarkdownPreviewPane({ path, visible }: Props) {
+export function MarkdownPreviewPane({ path, visible, onOpenEditor }: Props) {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [toc, setToc] = useState<TocItem[]>([]);
   const [showToc, setShowToc] = useState(true);
@@ -111,8 +114,8 @@ export function MarkdownPreviewPane({ path, visible }: Props) {
         !visible && "pointer-events-none",
       )}
     >
-      {hasToc && (
-        <div className="flex h-8 shrink-0 items-center justify-end border-b border-border/60 px-2">
+      <div className="flex h-8 shrink-0 items-center justify-end gap-1 border-b border-border/60 px-2">
+        {hasToc && (
           <button
             type="button"
             onClick={() => setShowToc((v) => !v)}
@@ -120,8 +123,13 @@ export function MarkdownPreviewPane({ path, visible }: Props) {
           >
             {showToc ? "Hide outline" : "Outline"}
           </button>
-        </div>
-      )}
+        )}
+        <MarkdownViewToggle
+          mode="preview"
+          onPlainText={onOpenEditor}
+          onPreview={() => {}}
+        />
+      </div>
       <div className="flex min-h-0 flex-1">
         <div ref={scrollRef} className="relative flex-1 overflow-auto px-6 py-4">
           {status.kind === "loading" && (
