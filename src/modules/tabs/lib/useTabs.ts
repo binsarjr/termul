@@ -31,6 +31,13 @@ export type TerminalTab = {
   kind: "terminal";
   title: string;
   cwd?: string;
+  /**
+   * Remote (SSH) working directory of the active pane, when the shell has
+   * roamed onto another host via OSC 7. Display-only: it drives the tab label
+   * and a status-bar pill, but never the local file explorer (which stays at
+   * the last local `cwd`). Cleared when the shell returns to a local cwd.
+   */
+  remoteCwd?: string;
   paneTree: PaneNode;
   activeLeafId: number;
   /** AI agent cannot read buffer / context of this terminal. */
@@ -790,6 +797,32 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     });
   }, []);
 
+  /** Reflect the active pane's remote (SSH) cwd on its tab. Display-only — the
+   * explorer keeps using `cwd` (the last local dir). Passing null/"" clears it
+   * (shell returned home). Same keystroke-rate guard as setLeafCwd: bail when
+   * nothing changed, and only the active leaf drives the tab. */
+  const setRemoteCwd = useCallback(
+    (leafId: number, remoteCwd: string | null) => {
+      const nextRemote = remoteCwd || undefined;
+      setTabs((curr) => {
+        let changed = false;
+        const next = curr.map((t) => {
+          if (
+            t.kind !== "terminal" ||
+            t.activeLeafId !== leafId ||
+            !hasLeaf(t.paneTree, leafId)
+          )
+            return t;
+          if (t.remoteCwd === nextRemote) return t;
+          changed = true;
+          return { ...t, remoteCwd: nextRemote };
+        });
+        return changed ? next : curr;
+      });
+    },
+    [],
+  );
+
   const focusPane = useCallback((tabId: number, leafId: number) => {
     setTabs((curr) =>
       curr.map((t) => {
@@ -1077,6 +1110,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     updateTab,
     selectByIndex,
     setLeafCwd,
+    setRemoteCwd,
     focusPane,
     focusNextPaneInTab,
     splitActivePane,

@@ -12,7 +12,7 @@ type Props = {
   /** Register/unregister handle by leaf id (not tab id). */
   registerHandle: (leafId: number, handle: TerminalPaneHandle | null) => void;
   onSearchReady: (leafId: number, addon: SearchAddon) => void;
-  onCwd: (leafId: number, cwd: string) => void;
+  onCwd: (leafId: number, cwd: string, remote: boolean) => void;
   onExit: (leafId: number, code: number) => void;
   onFocusLeaf: (tabId: number, leafId: number) => void;
 };
@@ -20,7 +20,7 @@ type Props = {
 type Bundle = {
   setRef: (h: TerminalPaneHandle | null) => void;
   onSearch: (addon: SearchAddon) => void;
-  onCwd: (cwd: string) => void;
+  onCwd: (cwd: string, remote: boolean) => void;
   onExit: (code: number) => void;
 };
 
@@ -62,7 +62,7 @@ export function TerminalStack({
       b = {
         setRef: (h) => registerRef.current(leafId, h),
         onSearch: (addon) => searchReadyRef.current(leafId, addon),
-        onCwd: (cwd) => cwdRef.current(leafId, cwd),
+        onCwd: (cwd, remote) => cwdRef.current(leafId, cwd, remote),
         onExit: (code) => exitRef.current(leafId, code),
       };
       bundles.current.set(leafId, b);

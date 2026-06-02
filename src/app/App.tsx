@@ -233,6 +233,7 @@ export default function App() {
     updateTab,
     selectByIndex,
     setLeafCwd,
+    setRemoteCwd,
     focusPane,
     focusNextPaneInTab,
     splitActivePane,
@@ -1095,6 +1096,11 @@ export default function App() {
         null)
       : null;
 
+  // Remote (SSH) cwd of the active terminal, when the shell has roamed onto
+  // another host. Display-only — feeds the status-bar remote pill.
+  const activeRemoteCwd =
+    activeTab?.kind === "terminal" ? (activeTab.remoteCwd ?? null) : null;
+
   const activeFilePath = (() => {
     if (activeTab?.kind === "editor") return activeTab.path;
     if (activeTab?.kind === "git-diff") {
@@ -1395,7 +1401,15 @@ export default function App() {
 
   const authorizedCwds = useLazyRef(() => new Set<string>());
   const handleTerminalCwd = useCallback(
-    (leafId: number, cwd: string) => {
+    (leafId: number, cwd: string, remote: boolean) => {
+      // A remote (SSH) cwd is for display only: reflect it on the tab, but
+      // never touch the local explorer or authorize it as a local workspace —
+      // the path doesn't exist on this machine.
+      if (remote) {
+        setRemoteCwd(leafId, cwd);
+        return;
+      }
+      setRemoteCwd(leafId, null);
       setLeafCwd(leafId, cwd);
       if (cwd && !authorizedCwds.current.has(cwd)) {
         authorizedCwds.current.add(cwd);
@@ -1404,7 +1418,7 @@ export default function App() {
         });
       }
     },
-    [setLeafCwd],
+    [setLeafCwd, setRemoteCwd],
   );
 
   const handleFocusLeaf = useCallback(
@@ -1814,6 +1828,7 @@ export default function App() {
 
           <StatusBar
             cwd={activeCwd}
+            remoteCwd={activeRemoteCwd}
             filePath={activeFilePath}
             home={home}
             onCd={sendCd}

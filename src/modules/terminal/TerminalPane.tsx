@@ -42,7 +42,7 @@ type Props = {
   initialCwd?: string;
   onSearchReady?: (leafId: number, addon: SearchAddon) => void;
   onExit?: (leafId: number, code: number) => void;
-  onCwd?: (leafId: number, cwd: string) => void;
+  onCwd?: (leafId: number, cwd: string, remote: boolean) => void;
 };
 
 export function TerminalPane({
@@ -70,7 +70,7 @@ export function TerminalPane({
     initialCwd,
     onSearchReady: (a) => onSearchReady?.(leafId, a),
     onExit: (c) => onExit?.(leafId, c),
-    onCwd: (c) => onCwd?.(leafId, c),
+    onCwd: (c, r) => onCwd?.(leafId, c, r),
   });
 
   useEffect(() => {

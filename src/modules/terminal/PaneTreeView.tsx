@@ -11,7 +11,7 @@ import type { PaneNode } from "./lib/panes";
 type LeafBundle = {
   setRef: (h: TerminalPaneHandle | null) => void;
   onSearch: (addon: SearchAddon) => void;
-  onCwd: (cwd: string) => void;
+  onCwd: (cwd: string, remote: boolean) => void;
   onExit: (code: number) => void;
 };
 
@@ -53,7 +53,7 @@ export function PaneTreeView({
           initialCwd={node.cwd}
           ref={b.setRef}
           onSearchReady={(_id, addon) => b.onSearch(addon)}
-          onCwd={(_id, cwd) => b.onCwd(cwd)}
+          onCwd={(_id, cwd, remote) => b.onCwd(cwd, remote)}
           onExit={(_id, code) => b.onExit(code)}
         />
       </div>
