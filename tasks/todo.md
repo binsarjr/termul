@@ -137,3 +137,16 @@ the first glyph — it needs **padding/gutter**.
 - GUI: requires a full `pnpm tauri dev` restart (controller + prompt tracker are
   instantiated at slot-bind, so Vite HMR doesn't re-instantiate them) + running a
   **new** command to see the unified highlight.
+
+### Batch 2 follow-up — black gutter (`465a8a7`)
+User screenshot showed the new 12px gutter as a full-height **black stripe** that
+didn't match the theme. Root cause: xterm.css hardcodes
+`.xterm-viewport { background-color: #000 }`; the viewport spans full width behind
+the canvas, and the `padding-left: 12px` shifts the canvas right but not the
+viewport, exposing the raw `#000` (the themed canvas is dark-gray, not black).
+Verified against installed v6.0.0 that `.xterm-viewport` is the created/appended
+gutter element. Fix: `.xterm-viewport { background-color: var(--terminal-background) !important }`
+(beats the stylesheet `#000` + any inline style). Chose the terminal-bg var over
+`transparent` — matches the *terminal* canvas even under a custom theme diverging
+from the app bg, and stays seamless under the fixed full-window image overlay.
+Also fixes latent black slivers at a partial last row / right margin. `build` ✓.
