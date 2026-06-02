@@ -18,17 +18,21 @@ export function createShellIntegrationState(): ShellIntegrationState {
 
 export function registerCwdHandler(
   term: Terminal,
-  onCwd: (cwd: string) => void,
+  onCwd: (cwd: string, host: string) => void,
   state?: ShellIntegrationState,
 ): () => void {
   const d = term.parser.registerOscHandler(7, (data) => {
     // Reject OSC 7 emitted while a command is running: command stdout/stderr
     // is untrusted (it can come from a remote shell, an SSH session, a `cat`
     // of attacker-controlled bytes). The local shell only emits OSC 7
-    // between commands via its precmd/PROMPT_COMMAND hook.
+    // between commands via its precmd/PROMPT_COMMAND hook. When the remote
+    // shell has its own OSC 133 integration it drives this command gate, so its
+    // between-command OSC 7 passes — `host` then lets the caller tell a remote
+    // cwd apart from a local one (we reflect the remote path but never point
+    // the local explorer at it).
     if (state?.inCommand) return true;
-    const cwd = parseOsc7(data);
-    if (cwd) onCwd(cwd);
+    const parsed = parseOsc7(data);
+    if (parsed) onCwd(parsed.path, parsed.host);
     return true;
   });
   return () => d.dispose();
@@ -231,14 +235,15 @@ function registerMarkerSafe(term: Terminal): IMarker | null {
   }
 }
 
-function parseOsc7(data: string): string | null {
-  const m = data.match(/^file:\/\/[^/]*(\/.*)$/);
+function parseOsc7(data: string): { host: string; path: string } | null {
+  const m = data.match(/^file:\/\/([^/]*)(\/.*)$/);
   if (!m) return null;
-  let path = m[1];
+  const host = m[1];
+  let path = m[2];
   try {
     path = decodeURIComponent(path);
   } catch {}
   // /C:/Users/foo -> C:/Users/foo so it's a valid Windows path.
   if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);
-  return path;
+  return { host, path };
 }

@@ -1,7 +1,9 @@
 import { ensureMonoFontsLoaded } from "@/lib/fonts";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
+import { hostname } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { isLocalHost } from "./remoteCwd";
 import { BlockController, type BlockFrame } from "./blockController";
 import {
   DEFAULT_BYTE_CAP,
@@ -36,7 +38,7 @@ import {
 type Callbacks = {
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
-  onCwd?: (cwd: string) => void;
+  onCwd?: (cwd: string, remote: boolean) => void;
 };
 
 type Session = {
@@ -44,6 +46,9 @@ type Session = {
   ptyOpening: boolean;
   initialCwd: string | undefined;
   lastCwd: string | null;
+  // Whether lastCwd came from a remote (SSH) shell. Display-only: a remote cwd
+  // updates the tab label/status pill but never the local explorer.
+  lastCwdRemote: boolean;
   pendingExit: number | null;
   shellExited: boolean;
   callbacks: Callbacks;
@@ -72,6 +77,16 @@ type Session = {
 };
 
 const sessions = new Map<number, Session>();
+
+// This machine's hostname, used to tell a remote (SSH) OSC 7 cwd apart from a
+// local one. Resolved once at startup; until it lands, every host is treated as
+// local (see isLocalHost) so the non-SSH case is never disrupted.
+let localHostname: string | null = null;
+void hostname()
+  .then((h) => {
+    localHostname = h;
+  })
+  .catch(() => {});
 
 const readyLeaves = new Set<number>();
 const readyWaiters = new Map<
@@ -182,6 +197,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     ptyOpening: false,
     initialCwd,
     lastCwd: null,
+    lastCwdRemote: false,
     pendingExit: null,
     shellExited: false,
     callbacks: {},
@@ -302,11 +318,13 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       s.blockCtl = blockCtl;
       const cwd = registerCwdHandler(
         term,
-        (next) => {
+        (next, host) => {
           markSessionReady(leafId);
-          if (s.lastCwd === next) return;
+          const remote = !isLocalHost(host, localHostname);
+          if (s.lastCwd === next && s.lastCwdRemote === remote) return;
           s.lastCwd = next;
-          s.callbacks.onCwd?.(next);
+          s.lastCwdRemote = remote;
+          s.callbacks.onCwd?.(next, remote);
         },
         shellState,
       );
@@ -323,7 +341,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
   });
   s.snapshot = null;
   s.hasSlot = true;
-  if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd);
+  if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd, s.lastCwdRemote);
   if (s.pendingExit !== null) {
     const code = s.pendingExit;
     s.pendingExit = null;
@@ -454,7 +472,7 @@ type Options = {
   initialCwd?: string;
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
-  onCwd?: (cwd: string) => void;
+  onCwd?: (cwd: string, remote: boolean) => void;
 };
 
 export function useTerminalSession({
@@ -480,7 +498,7 @@ export function useTerminalSession({
       attachSession(leafId, node, {
         onSearchReady: (a) => cbRef.current.onSearchReady?.(a),
         onExit: (c) => cbRef.current.onExit?.(c),
-        onCwd: (c) => cbRef.current.onCwd?.(c),
+        onCwd: (c, r) => cbRef.current.onCwd?.(c, r),
       });
       if (s.visibleNow && s.focusedNow) focusSlot(leafId);
     });

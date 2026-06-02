@@ -41,7 +41,7 @@ describe("OSC 7 cwd handler — gated by OSC 133 in-command state", () => {
     handlers.get(133)?.("A");
     handlers.get(7)?.("file://host/home/me/project");
 
-    expect(onCwd).toHaveBeenCalledWith("/home/me/project");
+    expect(onCwd).toHaveBeenCalledWith("/home/me/project", "host");
   });
 
   it("rejects OSC 7 emitted while a command is running", () => {
@@ -74,7 +74,7 @@ describe("OSC 7 cwd handler — gated by OSC 133 in-command state", () => {
     handlers.get(7)?.("file://host/home/me/new-cwd"); // legitimate post-cmd OSC 7
 
     expect(onCwd).toHaveBeenCalledTimes(1);
-    expect(onCwd).toHaveBeenCalledWith("/home/me/new-cwd");
+    expect(onCwd).toHaveBeenCalledWith("/home/me/new-cwd", "host");
   });
 
   it("works without state for backwards compatibility (legacy callers)", () => {
@@ -85,7 +85,7 @@ describe("OSC 7 cwd handler — gated by OSC 133 in-command state", () => {
     registerCwdHandler(term, onCwd);
 
     handlers.get(7)?.("file://host/home/me/project");
-    expect(onCwd).toHaveBeenCalledWith("/home/me/project");
+    expect(onCwd).toHaveBeenCalledWith("/home/me/project", "host");
   });
 
   it("normalizes Windows drive-letter OSC 7 paths", () => {
@@ -94,7 +94,16 @@ describe("OSC 7 cwd handler — gated by OSC 133 in-command state", () => {
     registerCwdHandler(term, onCwd);
 
     handlers.get(7)?.("file:///C:/Users/me/project");
-    expect(onCwd).toHaveBeenCalledWith("C:/Users/me/project");
+    expect(onCwd).toHaveBeenCalledWith("C:/Users/me/project", "");
+  });
+
+  it("forwards the OSC 7 host so a remote cwd can be told apart", () => {
+    const { term, handlers } = makeFakeTerm();
+    const onCwd = vi.fn();
+    registerCwdHandler(term, onCwd);
+
+    handlers.get(7)?.("file://prod.example.com/var/www");
+    expect(onCwd).toHaveBeenCalledWith("/var/www", "prod.example.com");
   });
 });
 

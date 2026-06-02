@@ -9,7 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { IncognitoIcon } from "@hugeicons/core-free-icons";
+import { CloudServerIcon, IncognitoIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CwdBreadcrumb } from "./CwdBreadcrumb";
 import { WorkspaceEnvSelector } from "./WorkspaceEnvSelector";
@@ -17,6 +17,9 @@ import type { WorkspaceEnv } from "@/modules/workspace";
 
 type Props = {
   cwd: string | null;
+  /** Remote (SSH) cwd of the active terminal; shown as a pill. The local
+   * breadcrumb keeps tracking `cwd` — only the shell is on the remote host. */
+  remoteCwd?: string | null;
   filePath?: string | null;
   home: string | null;
   onCd: (path: string) => void;
@@ -29,6 +32,7 @@ type Props = {
 
 export function StatusBar({
   cwd,
+  remoteCwd,
   filePath,
   home,
   onCd,
@@ -45,6 +49,27 @@ export function StatusBar({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <WorkspaceEnvSelector onSelect={onWorkspaceChange} />
         <CwdBreadcrumb cwd={cwd} filePath={filePath} home={home} onCd={onCd} />
+        {remoteCwd ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex min-w-0 shrink cursor-default items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10.5px] font-medium text-sky-700 dark:text-sky-400">
+                <HugeiconsIcon
+                  icon={CloudServerIcon}
+                  size={11}
+                  strokeWidth={2}
+                />
+                <span className="truncate">{remoteCwd}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="max-w-72 text-[11px] leading-relaxed"
+            >
+              Remote working directory over SSH. The file explorer stays on your
+              local machine — only this terminal's shell is on the remote host.
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         {privateActive ? (
           <Tooltip>
             <TooltipTrigger asChild>
