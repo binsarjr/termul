@@ -4,6 +4,7 @@ import type { SearchAddon } from "@xterm/addon-search";
 import { hostname } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { isLocalHost } from "./remoteCwd";
+import { AutocompleteController } from "./autocompleteController";
 import { BlockController, type BlockFrame } from "./blockController";
 import {
   DEFAULT_BYTE_CAP,
@@ -70,6 +71,10 @@ type Session = {
   // Hover/selection + geometry controller for the bound slot's block ring.
   // Lives and dies with `blocks` (created on bind, disposed on release).
   blockCtl: BlockController | null;
+  // Inline shell-history autocomplete for the bound slot. Created on bind,
+  // disposed on release. Reachable from the key handler (via resolveLeaf) and
+  // the overlay (via getAutocomplete).
+  autocompleteCtl: AutocompleteController | null;
   // True if the slot was in alt-screen mode (TUI like vim, htop, dofek)
   // at the most recent release. Read once on the next bind to trigger a
   // SIGWINCH-driven repaint instead of replaying dormant bytes.
@@ -159,6 +164,8 @@ configureRendererPool({
       writeToPty: (data) => {
         s.pty?.write(data);
       },
+      handleAutocompleteKey: (event) =>
+        s.autocompleteCtl?.handleKey(event) ?? false,
       resizePty: (cols, rows) => {
         s.cols = cols;
         s.rows = rows;
@@ -214,6 +221,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     hasSlot: false,
     blocks: null,
     blockCtl: null,
+    autocompleteCtl: null,
     altScreenAtRelease: false,
   };
   sessions.set(leafId, session);
@@ -316,6 +324,10 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       s.blocks = prompt.blocks;
       const blockCtl = new BlockController(term, prompt.blocks);
       s.blockCtl = blockCtl;
+      const autocompleteCtl = new AutocompleteController(term, (data) =>
+        s.pty?.write(data),
+      );
+      s.autocompleteCtl = autocompleteCtl;
       const cwd = registerCwdHandler(
         term,
         (next, host) => {
@@ -332,6 +344,10 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         () => {
           blockCtl.dispose();
           if (s.blockCtl === blockCtl) s.blockCtl = null;
+        },
+        () => {
+          autocompleteCtl.dispose();
+          if (s.autocompleteCtl === autocompleteCtl) s.autocompleteCtl = null;
         },
         prompt.dispose,
         cwd,
@@ -363,6 +379,7 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
   // report no blocks until rebind.
   s.blocks = null;
   s.blockCtl = null;
+  s.autocompleteCtl = null;
   s.hasSlot = false;
 }
 
@@ -674,6 +691,14 @@ export function useTerminalSession({
     [leafId],
   );
 
+  // The bound slot's autocomplete controller, for the overlay to subscribe to;
+  // null between bind/release.
+  const getAutocomplete = useCallback(
+    (): AutocompleteController | null =>
+      sessions.get(leafId)?.autocompleteCtl ?? null,
+    [leafId],
+  );
+
   const applyTheme = useCallback(() => {
     applyPoolTheme();
   }, []);
@@ -694,6 +719,7 @@ export function useTerminalSession({
       setBlockHoverAt,
       pinActiveBlock,
       getBlockHoverFrame,
+      getAutocomplete,
       applyTheme,
     }),
     [
@@ -711,6 +737,7 @@ export function useTerminalSession({
       setBlockHoverAt,
       pinActiveBlock,
       getBlockHoverFrame,
+      getAutocomplete,
       applyTheme,
     ],
   );
