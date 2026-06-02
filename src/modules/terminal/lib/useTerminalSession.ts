@@ -3,7 +3,11 @@ import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { BlockController, type BlockFrame } from "./blockController";
-import { DormantRing } from "./dormantRing";
+import {
+  DEFAULT_BYTE_CAP,
+  DEFAULT_CHUNK_CAP,
+  DormantRing,
+} from "./dormantRing";
 import {
   type CommandBlock,
   type CommandBlockRing,
@@ -190,7 +194,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     container: null,
     snapshot: null,
     searchQuery: null,
-    dormantRing: new DormantRing(),
+    dormantRing: makeDormantRing(),
     hasSlot: false,
     blocks: null,
     blockCtl: null,
@@ -205,6 +209,36 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
 
   return session;
 }
+
+/** The dormant-ring caps for a given `dropHibernatedOutput` choice: the default
+ * caps (drop old output past 256 KB / 256 chunks, with an overflow notice) when
+ * on, unbounded (keep every byte, replayed in full on wake — at the cost of
+ * unbounded memory for noisy background tabs) when off. */
+function ringCapsFor(dropHibernatedOutput: boolean): [number, number] {
+  return dropHibernatedOutput
+    ? [DEFAULT_BYTE_CAP, DEFAULT_CHUNK_CAP]
+    : [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
+}
+
+/** A dormant ring honoring the current `dropHibernatedOutput` preference. Read
+ * imperatively so each freshly created/reset ring picks up the live choice. */
+function makeDormantRing(): DormantRing {
+  return new DormantRing(
+    ...ringCapsFor(usePreferencesStore.getState().dropHibernatedOutput),
+  );
+}
+
+// Apply the trim preference to every live ring the moment it changes, so the
+// toggle takes effect on already-open (and already-hibernated) tabs — not just
+// sessions created afterward. Tightening caps evicts old buffered output now;
+// loosening them lets subsequent output accumulate.
+let lastDropPref = usePreferencesStore.getState().dropHibernatedOutput;
+usePreferencesStore.subscribe((state) => {
+  if (state.dropHibernatedOutput === lastDropPref) return;
+  lastDropPref = state.dropHibernatedOutput;
+  const caps = ringCapsFor(state.dropHibernatedOutput);
+  for (const s of sessions.values()) s.dormantRing.setCaps(...caps);
+});
 
 function deliverPtyBytes(leafId: number, bytes: Uint8Array): void {
   const s = sessions.get(leafId);
@@ -362,7 +396,7 @@ export async function respawnSession(
   s.pty?.close();
   s.pty = null;
   s.snapshot = null;
-  s.dormantRing = new DormantRing();
+  s.dormantRing = makeDormantRing();
   s.shellExited = false;
   s.pendingExit = null;
   s.altScreenAtRelease = false;

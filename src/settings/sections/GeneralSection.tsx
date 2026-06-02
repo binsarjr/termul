@@ -29,6 +29,7 @@ import {
   setTerminalFontFamily,
   setTerminalLetterSpacing,
   setTerminalFontSize,
+  setDropHibernatedOutput,
   setTerminalScrollback,
   setTerminalWebglEnabled,
   setVimMode,
@@ -85,6 +86,9 @@ export function GeneralSection() {
   const showHidden = usePreferencesStore((s) => s.showHidden);
   const terminalWebglEnabled = usePreferencesStore(
     (s) => s.terminalWebglEnabled,
+  );
+  const dropHibernatedOutput = usePreferencesStore(
+    (s) => s.dropHibernatedOutput,
   );
   const terminalFontFamily = usePreferencesStore((s) => s.terminalFontFamily);
   const terminalLetterSpacing = usePreferencesStore(
@@ -240,6 +244,15 @@ export function GeneralSection() {
           <Switch
             checked={terminalWebglEnabled}
             onCheckedChange={(v) => void setTerminalWebglEnabled(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Trim output for hibernated tabs"
+          description="Hidden tabs buffer their output capped at 256 KB; older output is dropped (shown as a notice on return). Turn off to keep everything — uses more memory for noisy background tabs."
+        >
+          <Switch
+            checked={dropHibernatedOutput}
+            onCheckedChange={(v) => void setDropHibernatedOutput(v)}
           />
         </SettingRow>
         <SettingRow

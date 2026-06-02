@@ -1,5 +1,5 @@
-const DEFAULT_BYTE_CAP = 256 * 1024;
-const DEFAULT_CHUNK_CAP = 256;
+export const DEFAULT_BYTE_CAP = 256 * 1024;
+export const DEFAULT_CHUNK_CAP = 256;
 
 const OVERFLOW_NOTICE = new TextEncoder().encode(
   "\x1bc\x1b[2m[ijt: dropped output during hibernation]\x1b[0m\r\n",
@@ -13,9 +13,20 @@ export class DormantRing {
   private overflowed = false;
 
   constructor(
-    private readonly byteCap = DEFAULT_BYTE_CAP,
-    private readonly chunkCap = DEFAULT_CHUNK_CAP,
+    private byteCap = DEFAULT_BYTE_CAP,
+    private chunkCap = DEFAULT_CHUNK_CAP,
   ) {}
+
+  /**
+   * Re-bound a live ring, e.g. when the user toggles the hibernation-trim
+   * preference. Tightening caps evicts the oldest output immediately;
+   * loosening them (to Infinity) lets subsequent output accumulate freely.
+   */
+  setCaps(byteCap: number, chunkCap: number): void {
+    this.byteCap = byteCap;
+    this.chunkCap = chunkCap;
+    this.evict();
+  }
 
   push(bytes: Uint8Array): void {
     if (bytes.length === 0) return;
@@ -30,6 +41,10 @@ export class DormantRing {
     this.chunks.push(bytes);
     this.size++;
     this.total += bytes.length;
+    this.evict();
+  }
+
+  private evict(): void {
     while (
       (this.total > this.byteCap || this.size > this.chunkCap) &&
       this.size > 1
