@@ -1,4 +1,10 @@
-export { TabBar, TabIcon, labelFor } from "./TabBar";
+export { TabBar, TabIcon, labelFor, type TabGroupControls } from "./TabBar";
+export {
+  visibleTabs,
+  type GroupColorId,
+  type TabGroup,
+  type TabGroupMap,
+} from "./lib/groups";
 export { TabSearch } from "./TabSearch";
 export {
   MAX_PANES_PER_TAB,

@@ -13,6 +13,15 @@ import {
 } from "@/modules/terminal/lib/panes";
 import { disposeSession } from "@/modules/terminal/lib/useTerminalSession";
 import type { SettingsSection } from "@/modules/settings/openSettings";
+import {
+  assignTabToGroup as assignTabToGroupPure,
+  detachTabFromGroup,
+  nextGroupColor,
+  visibleTabs,
+  type GroupColorId,
+  type TabGroup,
+  type TabGroupMap,
+} from "./groups";
 
 // Matches the renderer slot pool size — over this we'd evict an active leaf.
 export const MAX_PANES_PER_TAB = 4;
@@ -179,6 +188,20 @@ export function useTabs(initial?: Partial<TerminalTab>) {
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+
+  // Tab groups: lightweight metadata + a tabId->groupId map kept beside `tabs`
+  // (the Tab union is untouched). Refs mirror them so actions that reorder on
+  // assignment can read current values synchronously, like `tabsRef`.
+  const [groups, setGroups] = useState<TabGroup[]>([]);
+  const [tabGroupOf, setTabGroupOf] = useState<TabGroupMap>({});
+  const groupsRef = useRef(groups);
+  const tabGroupOfRef = useRef(tabGroupOf);
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
+  useEffect(() => {
+    tabGroupOfRef.current = tabGroupOf;
+  }, [tabGroupOf]);
 
   const newTab = useCallback((cwd?: string) => {
     const tabId = nextIdRef.current++;
@@ -654,6 +677,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
   }, []);
 
   const closeTab = useCallback((id: number) => {
+    if (tabsRef.current.length <= 1) return;
     let toDispose: number[] = [];
     setTabs((curr) => {
       if (curr.length <= 1) return curr;
@@ -668,6 +692,19 @@ export function useTabs(initial?: Partial<TerminalTab>) {
       );
       return next;
     });
+    // Drop the closed tab from its group, deleting the group if it emptied.
+    const { groupOf, emptiedGroupId } = detachTabFromGroup(
+      tabsRef.current,
+      tabGroupOfRef.current,
+      id,
+    );
+    if (groupOf !== tabGroupOfRef.current) {
+      tabGroupOfRef.current = groupOf;
+      setTabGroupOf(groupOf);
+      if (emptiedGroupId != null) {
+        setGroups((gs) => gs.filter((g) => g.id !== emptiedGroupId));
+      }
+    }
     for (const lid of toDispose) disposeSession(lid);
   }, []);
 
@@ -709,11 +746,28 @@ export function useTabs(initial?: Partial<TerminalTab>) {
 
   const selectByIndex = useCallback(
     (idx: number) => {
-      const t = tabs[idx];
+      // Index into the visible list so digit shortcuts skip tabs hidden inside
+      // a collapsed group.
+      const t = visibleTabs(tabs, groups, tabGroupOf)[idx];
       if (t) setActiveId(t.id);
     },
-    [tabs],
+    [tabs, groups, tabGroupOf],
   );
+
+  // Auto-expand a collapsed group when one of its members becomes active (via
+  // the command palette, a programmatic open, etc.). Keyed on `activeId` only,
+  // so deliberately collapsing the active tab's own group is respected — the
+  // expand fires only when navigation moves *into* a collapsed group.
+  useEffect(() => {
+    const gid = tabGroupOfRef.current[activeId];
+    if (gid == null) return;
+    const g = groupsRef.current.find((x) => x.id === gid);
+    if (g?.collapsed) {
+      setGroups((gs) =>
+        gs.map((x) => (x.id === gid ? { ...x, collapsed: false } : x)),
+      );
+    }
+  }, [activeId]);
 
   /** Update a leaf's cwd; mirror to the tab's `cwd` when the leaf is active.
    * Bails out without setTabs when nothing actually changed — shell integration
@@ -877,6 +931,101 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     [],
   );
 
+  // --- Tab groups ------------------------------------------------------------
+
+  /** Create a one-member group around `tabId`, cleaning up any group it leaves
+   * empty. Returns the new group id. */
+  const createGroupFromTab = useCallback((tabId: number, name?: string) => {
+    const groupId = nextIdRef.current++;
+    const prevGid = tabGroupOfRef.current[tabId];
+    setGroups((gs) => {
+      let next = gs;
+      if (prevGid != null) {
+        const stillUsed = tabsRef.current.some(
+          (t) => t.id !== tabId && tabGroupOfRef.current[t.id] === prevGid,
+        );
+        if (!stillUsed) next = next.filter((g) => g.id !== prevGid);
+      }
+      return [
+        ...next,
+        {
+          id: groupId,
+          name: name?.trim() || `Group ${next.length + 1}`,
+          color: nextGroupColor(next),
+          collapsed: false,
+        },
+      ];
+    });
+    const nextMap = { ...tabGroupOfRef.current, [tabId]: groupId };
+    tabGroupOfRef.current = nextMap;
+    setTabGroupOf(nextMap);
+    return groupId;
+  }, []);
+
+  /** Add a tab to an existing group, moving it adjacent to keep the run contiguous. */
+  const assignTabToGroup = useCallback((tabId: number, groupId: number) => {
+    const res = assignTabToGroupPure(
+      tabsRef.current,
+      tabGroupOfRef.current,
+      tabId,
+      groupId,
+    );
+    tabsRef.current = res.tabs;
+    tabGroupOfRef.current = res.groupOf;
+    setTabs(res.tabs);
+    setTabGroupOf(res.groupOf);
+  }, []);
+
+  const removeTabFromGroup = useCallback((tabId: number) => {
+    const { groupOf, emptiedGroupId } = detachTabFromGroup(
+      tabsRef.current,
+      tabGroupOfRef.current,
+      tabId,
+    );
+    if (groupOf === tabGroupOfRef.current) return;
+    tabGroupOfRef.current = groupOf;
+    setTabGroupOf(groupOf);
+    if (emptiedGroupId != null) {
+      setGroups((gs) => gs.filter((g) => g.id !== emptiedGroupId));
+    }
+  }, []);
+
+  const renameGroup = useCallback((groupId: number, name: string) => {
+    setGroups((gs) =>
+      gs.map((g) =>
+        g.id === groupId ? { ...g, name: name.trim() || g.name } : g,
+      ),
+    );
+  }, []);
+
+  const recolorGroup = useCallback((groupId: number, color: GroupColorId) => {
+    setGroups((gs) =>
+      gs.map((g) => (g.id === groupId ? { ...g, color } : g)),
+    );
+  }, []);
+
+  const toggleGroupCollapsed = useCallback((groupId: number) => {
+    setGroups((gs) =>
+      gs.map((g) =>
+        g.id === groupId ? { ...g, collapsed: !g.collapsed } : g,
+      ),
+    );
+  }, []);
+
+  /** Dissolve a group, keeping its member tabs (just ungrouped). */
+  const ungroup = useCallback((groupId: number) => {
+    setTabGroupOf((m) => {
+      const next: TabGroupMap = {};
+      for (const key of Object.keys(m)) {
+        const tid = Number(key);
+        if (m[tid] !== groupId) next[tid] = m[tid];
+      }
+      tabGroupOfRef.current = next;
+      return next;
+    });
+    setGroups((gs) => gs.filter((g) => g.id !== groupId));
+  }, []);
+
   const resetWorkspace = useCallback((cwd?: string) => {
     const tabId = nextIdRef.current++;
     const leafId = nextIdRef.current++;
@@ -897,6 +1046,10 @@ export function useTabs(initial?: Partial<TerminalTab>) {
       ];
     });
     setActiveId(tabId);
+    tabGroupOfRef.current = {};
+    groupsRef.current = [];
+    setTabGroupOf({});
+    setGroups([]);
     for (const lid of toDispose) disposeSession(lid);
   }, []);
 
@@ -931,5 +1084,14 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     closePaneByLeaf,
     reorderTab,
     resetWorkspace,
+    groups,
+    tabGroupOf,
+    createGroupFromTab,
+    assignTabToGroup,
+    removeTabFromGroup,
+    renameGroup,
+    recolorGroup,
+    toggleGroupCollapsed,
+    ungroup,
   };
 }

@@ -13,7 +13,7 @@ import {
   SHORTCUTS,
   type ShortcutId,
 } from "@/modules/shortcuts/shortcuts";
-import type { Tab } from "@/modules/tabs";
+import type { Tab, TabGroupControls } from "@/modules/tabs";
 import { TabBar } from "@/modules/tabs";
 import { NotificationBell } from "@/modules/agents";
 import {
@@ -50,6 +50,8 @@ type Props = {
     targetId: number,
     place: "before" | "after",
   ) => void;
+  /** Tab-group state and actions, forwarded to the TabBar. */
+  groupControls: TabGroupControls;
   onToggleSidebar: () => void;
   onSplit: (dir: "row" | "col") => void;
   /** Active tab is a terminal and below the per-tab pane cap. */
@@ -75,6 +77,7 @@ export function Header({
   onPin,
   onRename,
   onReorder,
+  groupControls,
   onToggleSidebar,
   onSplit,
   canSplit,
@@ -209,6 +212,7 @@ export function Header({
           onPin={onPin}
           onRename={onRename}
           onReorder={onReorder}
+          groupControls={groupControls}
           compact={compact}
         />
         <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
