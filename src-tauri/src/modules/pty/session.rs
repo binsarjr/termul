@@ -11,6 +11,7 @@ use tauri::{AppHandle, Emitter};
 use super::agent_detect::AgentDetector;
 use super::da_filter::DaFilter;
 use super::shell_init;
+use super::spill::SpillSink;
 use crate::modules::workspace::WorkspaceEnv;
 
 const AGENT_EVENT: &str = "ijt:agent-signal";
@@ -47,6 +48,10 @@ pub struct Session {
     pub killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub master: Mutex<Box<dyn MasterPty + Send>>,
+    // Disk spill for the per-tab "keep full output" mode. Shared with the
+    // flusher/waiter threads; on the last drop its RAII cleanup removes the
+    // segment files. Drop order is irrelevant here — it touches no PTY handle.
+    pub spill: Arc<Mutex<SpillSink>>,
 }
 
 impl Drop for Session {
@@ -142,12 +147,18 @@ pub fn spawn(
         None => None,
     };
 
+    // Spill files live under the app cache dir (transient, wiped at startup).
+    // If it can't be resolved, the sink is a permanent no-op.
+    let spill: Arc<Mutex<SpillSink>> =
+        Arc::new(Mutex::new(SpillSink::new(id, super::spill_dir(&app))));
+
     let session = Arc::new(Session {
         #[cfg(windows)]
         _job: job,
         killer: Mutex::new(killer),
         writer: writer.clone(),
         master: Mutex::new(pair.master),
+        spill: spill.clone(),
     });
 
     let pending: Arc<(Mutex<Vec<u8>>, Condvar)> = Arc::new((
@@ -218,6 +229,7 @@ pub fn spawn(
     let on_data_flush = on_data.clone();
     let pending_f = pending.clone();
     let done_f = done.clone();
+    let spill_f = spill.clone();
     thread::Builder::new()
         .name("ijt-pty-flusher".into())
         .spawn(move || {
@@ -239,6 +251,12 @@ pub fn spawn(
                 if chunk.is_empty() {
                     continue;
                 }
+                // Persist to disk first (buffered, ~memcpy) so a spilled tab can
+                // replay full scrollback on wake without holding it in RAM. A
+                // no-op unless the tab enabled "keep full output".
+                if let Ok(mut s) = spill_f.lock() {
+                    s.write(&chunk);
+                }
                 if let Err(e) = on_data_flush.send(Response::new(chunk)) {
                     log::debug!("pty flusher exiting, channel closed: {e}");
                     break;
@@ -250,6 +268,7 @@ pub fn spawn(
     let on_data_exit = on_data;
     let pending_e = pending;
     let done_e = done;
+    let spill_e = spill;
     thread::Builder::new()
         .name("ijt-pty-waiter".into())
         .spawn(move || {
@@ -276,6 +295,9 @@ pub fn spawn(
             let (lock, cv) = &*pending_e;
             let tail = std::mem::take(&mut *lock.lock().unwrap());
             if !tail.is_empty() {
+                if let Ok(mut s) = spill_e.lock() {
+                    s.write(&tail);
+                }
                 if let Err(e) = on_data_exit.send(Response::new(tail)) {
                     log::debug!("pty final-data send failed (channel closed): {e}");
                 }
@@ -321,6 +343,7 @@ mod tests {
             killer: Mutex::new(killer),
             writer,
             master: Mutex::new(pair.master),
+            spill: Arc::new(Mutex::new(SpillSink::new(0, None))),
         });
 
         assert!(
@@ -368,6 +391,7 @@ mod tests {
             killer: Mutex::new(killer),
             writer,
             master: Mutex::new(pair.master),
+            spill: Arc::new(Mutex::new(SpillSink::new(0, None))),
         });
 
         drop_session(session);
