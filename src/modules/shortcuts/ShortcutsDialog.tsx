@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Settings01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
+import { openSettings } from "@/modules/settings/openSettings";
 import {
   getBindingTokens,
   SHORTCUTS,
@@ -28,7 +28,7 @@ export function ShortcutsDialog({ open, onOpenChange }: Props) {
 
   const onOpenSettings = () => {
     onOpenChange(false);
-    void openSettingsWindow("shortcuts");
+    openSettings("shortcuts");
   };
 
   return (

@@ -67,9 +67,10 @@ import { ImageStack, IMAGE_EXT_RE } from "@/modules/image";
 import { MarkdownStack } from "@/modules/markdown";
 import { PdfStack } from "@/modules/pdf";
 import {
-  openSettingsWindow,
-  toggleSettingsWindow,
-} from "@/modules/settings/openSettingsWindow";
+  openSettings,
+  registerOpenSettings,
+} from "@/modules/settings/openSettings";
+import { SettingsStack } from "@/modules/settings/SettingsStack";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { onKeysChanged, setThemeId as persistThemeId } from "@/modules/settings/store";
 import {
@@ -224,6 +225,8 @@ export default function App() {
     openGitDiffTab,
     openCommitHistoryTab,
     openCommitFileDiffTab,
+    openSettingsTab,
+    setSettingsSection,
     closeTab,
     updateTab,
     selectByIndex,
@@ -241,6 +244,22 @@ export default function App() {
   // (e.g. cdInNewTab) read the latest pane state instead of a stale closure.
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+
+  // Back the free-function `openSettings(section?)` (called from the status bar,
+  // agent switcher, shortcuts dialog) with the tab store App owns here.
+  useEffect(() => {
+    registerOpenSettings((section) => openSettingsTab(section));
+    return () => registerOpenSettings(null);
+  }, [openSettingsTab]);
+
+  // Close the Settings tab. closeTab refuses to drop the last tab, so when
+  // Settings is the only tab, swap in a fresh terminal instead of no-op'ing.
+  const closeSettingsTab = useCallback(() => {
+    const st = tabsRef.current.find((t) => t.kind === "settings");
+    if (!st) return;
+    if (tabsRef.current.length > 1) closeTab(st.id);
+    else resetWorkspace();
+  }, [closeTab, resetWorkspace]);
 
   const activeTerminalTab = useMemo(() => {
     const t = tabs.find((x) => x.id === activeId);
@@ -530,6 +549,7 @@ export default function App() {
   const isGitDiffTab =
     activeTab?.kind === "git-diff" || activeTab?.kind === "git-commit-file";
   const isGitHistoryTab = activeTab?.kind === "git-history";
+  const isSettingsTab = activeTab?.kind === "settings";
 
   // When an AI diff is approved (write_file applied to disk), reload any
   // open editor tabs for that path so the user sees the new content. We
@@ -765,7 +785,7 @@ export default function App() {
 
   const togglePanelAndFocus = useCallback(() => {
     if (!hasComposer) {
-      void openSettingsWindow("models");
+      openSettings("models");
       return;
     }
     if (panelOpen) {
@@ -781,7 +801,7 @@ export default function App() {
   const handleAttachFileToAgent = useCallback(
     (path: string) => {
       if (!hasComposer) {
-        void openSettingsWindow("models");
+        openSettings("models");
         return;
       }
       // Dispatch a window event the composer listens for. Same pattern as
@@ -797,7 +817,7 @@ export default function App() {
 
   const askFromSelection = useCallback(() => {
     if (!hasComposer) {
-      void openSettingsWindow("models");
+      openSettings("models");
       return;
     }
     const selection = captureActiveSelection();
@@ -1168,7 +1188,12 @@ export default function App() {
       "ai.askSelection": askFromSelection,
       "palette.open": () => setPaletteOpen((v) => !v),
       "shortcuts.open": () => setShortcutsOpen((v) => !v),
-      "settings.open": () => void toggleSettingsWindow(),
+      "settings.open": () => {
+        const settingsTab = tabsRef.current.find((t) => t.kind === "settings");
+        if (!settingsTab) openSettingsTab();
+        else if (settingsTab.id === activeId) closeSettingsTab();
+        else setActiveId(settingsTab.id);
+      },
       "sidebar.toggle": toggleSidebar,
       "explorer.focus": toggleExplorerFocus,
       "view.zoomIn": zoomIn,
@@ -1183,6 +1208,9 @@ export default function App() {
       handleCloseTabOrPane,
       openNewTab,
       openNewPrivateTab,
+      openSettingsTab,
+      closeSettingsTab,
+      setActiveId,
       selectByIndex,
       splitActivePaneInActiveTab,
       focusNextPaneInTab,
@@ -1581,6 +1609,20 @@ export default function App() {
           onSearchHandle={setGitHistoryHandle}
         />
       </div>
+      <div
+        className={cn(
+          "absolute inset-0",
+          !isSettingsTab && "invisible pointer-events-none",
+        )}
+        aria-hidden={!isSettingsTab}
+      >
+        <SettingsStack
+          tabs={tabs}
+          activeId={activeId}
+          onSectionChange={setSettingsSection}
+          onRequestClose={closeSettingsTab}
+        />
+      </div>
     </div>
   );
 
@@ -1607,7 +1649,7 @@ export default function App() {
             }
             onActivateAgent={onActivateAgent}
             onActivateLocalAgent={onActivateLocalAgent}
-            onOpenSettings={() => void openSettingsWindow()}
+            onOpenSettings={() => openSettings()}
             searchTarget={searchTarget}
             searchRef={searchInlineRef}
           />
@@ -1681,7 +1723,7 @@ export default function App() {
                         <AiInputBar />
                       ) : (
                         <AiInputBarConnect
-                          onAdd={() => void openSettingsWindow("models")}
+                          onAdd={() => openSettings("models")}
                         />
                       )}
                     </motion.div>

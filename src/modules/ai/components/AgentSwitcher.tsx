@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
+import { openSettings } from "@/modules/settings/openSettings";
 import {
   AbsoluteIcon,
   ArrowDown01Icon,
@@ -158,7 +158,7 @@ export function AgentSwitcher({ isMiniWindow }: { isMiniWindow?: boolean }) {
         ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={() => void openSettingsWindow("agents")}
+          onSelect={() => openSettings("agents")}
           className="gap-2 text-[12px] text-muted-foreground"
         >
           <HugeiconsIcon icon={Settings01Icon} size={12} strokeWidth={1.75} />

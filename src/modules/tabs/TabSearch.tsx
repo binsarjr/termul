@@ -38,6 +38,8 @@ function subtitleFor(t: Tab): string {
       return `${t.path} @ ${t.shortSha}`;
     case "git-history":
       return t.repoRoot;
+    case "settings":
+      return "";
   }
 }
 

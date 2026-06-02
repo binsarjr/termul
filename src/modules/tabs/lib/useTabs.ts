@@ -12,6 +12,7 @@ import {
   type SplitDir,
 } from "@/modules/terminal/lib/panes";
 import { disposeSession } from "@/modules/terminal/lib/useTerminalSession";
+import type { SettingsSection } from "@/modules/settings/openSettings";
 
 // Matches the renderer slot pool size — over this we'd evict an active leaf.
 export const MAX_PANES_PER_TAB = 4;
@@ -107,6 +108,13 @@ export type GitCommitFileDiffTab = {
   originalPath: string | null;
 };
 
+export type SettingsTab = {
+  id: number;
+  kind: "settings";
+  title: string;
+  section: SettingsSection;
+};
+
 export type Tab =
   | TerminalTab
   | EditorTab
@@ -116,7 +124,8 @@ export type Tab =
   | AiDiffTab
   | GitDiffTab
   | GitHistoryTab
-  | GitCommitFileDiffTab;
+  | GitCommitFileDiffTab
+  | SettingsTab;
 
 export type TabPatch = Partial<{
   title: string;
@@ -589,6 +598,54 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     [],
   );
 
+  // Singleton: focus the existing Settings tab (re-pointing its section when a
+  // section is requested) or create it. Modeled on openCommitHistoryTab.
+  const openSettingsTab = useCallback((section?: SettingsSection) => {
+    const curr = tabsRef.current;
+    const existing = curr.find(
+      (t): t is SettingsTab => t.kind === "settings",
+    );
+    if (existing) {
+      if (section && section !== existing.section) {
+        const nextTabs = curr.map((t) =>
+          t.id === existing.id ? { ...t, section } : t,
+        );
+        tabsRef.current = nextTabs;
+        setTabs(nextTabs);
+      }
+      setActiveId(existing.id);
+      return existing.id;
+    }
+    const id = nextIdRef.current++;
+    const nextTabs = [
+      ...curr,
+      {
+        id,
+        kind: "settings",
+        title: "Settings",
+        section: section ?? "general",
+      } satisfies SettingsTab,
+    ];
+    tabsRef.current = nextTabs;
+    setTabs(nextTabs);
+    setActiveId(id);
+    return id;
+  }, []);
+
+  const setSettingsSection = useCallback((section: SettingsSection) => {
+    setTabs((curr) => {
+      const target = curr.find(
+        (t): t is SettingsTab => t.kind === "settings",
+      );
+      if (!target || target.section === section) return curr;
+      const next = curr.map((t) =>
+        t.kind === "settings" ? { ...t, section } : t,
+      );
+      tabsRef.current = next;
+      return next;
+    });
+  }, []);
+
   const closeTab = useCallback((id: number) => {
     let toDispose: number[] = [];
     setTabs((curr) => {
@@ -849,6 +906,8 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     openGitDiffTab,
     openCommitHistoryTab,
     openCommitFileDiffTab,
+    openSettingsTab,
+    setSettingsSection,
     setAiDiffStatus,
     closeAiDiffTab,
     closeTab,
