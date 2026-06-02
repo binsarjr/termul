@@ -2,6 +2,7 @@ import { ensureMonoFontsLoaded } from "@/lib/fonts";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { BlockController, type BlockFrame } from "./blockController";
 import { DormantRing } from "./dormantRing";
 import {
   type CommandBlock,
@@ -57,6 +58,9 @@ type Session = {
   // slot. Set when a slot binds (registerOsc), cleared on release. Lets the
   // block accessors reach the live ring; null when no slot is bound.
   blocks: CommandBlockRing | null;
+  // Hover/selection + geometry controller for the bound slot's block ring.
+  // Lives and dies with `blocks` (created on bind, disposed on release).
+  blockCtl: BlockController | null;
   // True if the slot was in alt-screen mode (TUI like vim, htop, dofek)
   // at the most recent release. Read once on the next bind to trigger a
   // SIGWINCH-driven repaint instead of replaying dormant bytes.
@@ -189,6 +193,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     dormantRing: new DormantRing(),
     hasSlot: false,
     blocks: null,
+    blockCtl: null,
     altScreenAtRelease: false,
   };
   sessions.set(leafId, session);
@@ -259,6 +264,8 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // getBlocks can read it. The prompt tracker disposes the ring on its own
       // disposer (returned below), so we only need to drop our reference.
       s.blocks = prompt.blocks;
+      const blockCtl = new BlockController(term, prompt.blocks);
+      s.blockCtl = blockCtl;
       const cwd = registerCwdHandler(
         term,
         (next) => {
@@ -269,7 +276,14 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         },
         shellState,
       );
-      return [prompt.dispose, cwd];
+      return [
+        () => {
+          blockCtl.dispose();
+          if (s.blockCtl === blockCtl) s.blockCtl = null;
+        },
+        prompt.dispose,
+        cwd,
+      ];
     },
     onSearchReady: (addon) => s.callbacks.onSearchReady?.(addon),
   });
@@ -292,9 +306,11 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
     if (out.rows > 0) s.rows = out.rows;
     s.altScreenAtRelease = out.altScreen;
   }
-  // releaseSlot ran the prompt-tracker disposer, which disposed the ring's
-  // markers. Drop our reference so the accessors report no blocks until rebind.
+  // releaseSlot ran the prompt-tracker disposer, which disposed the block
+  // controller + the ring's markers. Drop our references so the accessors
+  // report no blocks until rebind.
   s.blocks = null;
+  s.blockCtl = null;
   s.hasSlot = false;
 }
 
@@ -555,6 +571,57 @@ export function useTerminalSession({
     return out;
   }, [leafId, readBlock]);
 
+  // The block targeted by copy / reinput / the hover toolbar: the hovered
+  // block, else the keyboard-selected one, else the most recent block.
+  const getActiveBlock = useCallback((): CommandBlockView | null => {
+    const ctl = sessions.get(leafId)?.blockCtl;
+    if (!ctl) return null;
+    return readBlock(ctl.getActiveBlock() ?? ctl.lastBlock());
+  }, [leafId, readBlock]);
+
+  const selectPrevBlock = useCallback(() => {
+    sessions.get(leafId)?.blockCtl?.selectRelative(-1);
+  }, [leafId]);
+
+  const selectNextBlock = useCallback(() => {
+    sessions.get(leafId)?.blockCtl?.selectRelative(1);
+  }, [leafId]);
+
+  const clearBlockSelection = useCallback(() => {
+    sessions.get(leafId)?.blockCtl?.clearSelection();
+  }, [leafId]);
+
+  // Select the block under a right-click (or clear when the click misses every
+  // block) so the context menu acts on it.
+  const selectBlockAtClientY = useCallback((clientY: number) => {
+    const ctl = sessions.get(leafId)?.blockCtl;
+    if (ctl) ctl.select(ctl.blockAtClientY(clientY));
+  }, [leafId]);
+
+  // Hover the block under the cursor (pass null to clear) — drives which block
+  // the overlay highlights when the mouse moves over the grid.
+  const setBlockHoverAt = useCallback((clientY: number | null) => {
+    const ctl = sessions.get(leafId)?.blockCtl;
+    if (!ctl) return;
+    ctl.setHover(clientY === null ? null : ctl.blockAtClientY(clientY));
+  }, [leafId]);
+
+  // Pin the overlay's active block as the selection so its toolbar actions
+  // still resolve to it once the pointer leaves the block — e.g. moving into
+  // the ⋮ dropdown, which portals outside the grid and clears the hover.
+  const pinActiveBlock = useCallback(() => {
+    const ctl = sessions.get(leafId)?.blockCtl;
+    if (ctl) ctl.select(ctl.getActiveBlock());
+  }, [leafId]);
+
+  // Geometry + status of the block the overlay should paint, in client coords;
+  // null when nothing is active or it is scrolled out of view.
+  const getBlockHoverFrame = useCallback(
+    (): BlockFrame | null =>
+      sessions.get(leafId)?.blockCtl?.getActiveFrame() ?? null,
+    [leafId],
+  );
+
   const applyTheme = useCallback(() => {
     applyPoolTheme();
   }, []);
@@ -567,9 +634,33 @@ export function useTerminalSession({
       getSelection,
       getLastBlock,
       getBlocks,
+      getActiveBlock,
+      selectPrevBlock,
+      selectNextBlock,
+      clearBlockSelection,
+      selectBlockAtClientY,
+      setBlockHoverAt,
+      pinActiveBlock,
+      getBlockHoverFrame,
       applyTheme,
     }),
-    [write, focus, getBuffer, getSelection, getLastBlock, getBlocks, applyTheme],
+    [
+      write,
+      focus,
+      getBuffer,
+      getSelection,
+      getLastBlock,
+      getBlocks,
+      getActiveBlock,
+      selectPrevBlock,
+      selectNextBlock,
+      clearBlockSelection,
+      selectBlockAtClientY,
+      setBlockHoverAt,
+      pinActiveBlock,
+      getBlockHoverFrame,
+      applyTheme,
+    ],
   );
 }
 

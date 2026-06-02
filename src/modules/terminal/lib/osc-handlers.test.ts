@@ -158,6 +158,37 @@ describe("OSC 133 command-block capture", () => {
     expect(block?.endMarker?.line).toBe(3);
   });
 
+  it("captures the prompt line (OSC 133 A) distinct from the output start", () => {
+    const { term, handlers, advance } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A"); // prompt line = 0
+    handlers.get(133)?.("B");
+    advance(1); // user typed the command + Enter → cursor on the output line
+    handlers.get(133)?.("C;ls"); // output starts at line 1
+    advance(2);
+    handlers.get(133)?.("D;0"); // next prompt at line 3
+
+    const block = tracker.blocks.last();
+    expect(block?.promptMarker?.line).toBe(0); // the command line
+    expect(block?.startMarker?.line).toBe(1); // first output line
+    expect(block?.endMarker?.line).toBe(3);
+  });
+
+  it("transfers the A marker so the next prompt doesn't dispose it", () => {
+    const { term, handlers } = makeBlockTerm();
+    const tracker = registerPromptTracker(term);
+
+    handlers.get(133)?.("A"); // prompt marker
+    handlers.get(133)?.("C;ls"); // hands the A marker to the block
+    handlers.get(133)?.("D;0");
+    const promptMarker = tracker.blocks.last()?.promptMarker;
+    expect(promptMarker).toBeTruthy();
+
+    handlers.get(133)?.("A"); // a fresh prompt must NOT dispose the block's marker
+    expect(promptMarker?.dispose).not.toHaveBeenCalled();
+  });
+
   it("captures a nonzero exit code", () => {
     const { term, handlers } = makeBlockTerm();
     const tracker = registerPromptTracker(term);
@@ -171,7 +202,7 @@ describe("OSC 133 command-block capture", () => {
   it("evicts the oldest block past the ring capacity", () => {
     const ring = new CommandBlockRing(3);
     for (let i = 0; i < 5; i++) {
-      ring.beginCommand(`cmd-${i}`, null);
+      ring.beginCommand(`cmd-${i}`, null, null);
       ring.endCommand(0, null);
     }
     const all = ring.all();
@@ -236,6 +267,7 @@ describe("OSC 133 command-block capture", () => {
     const { term, handlers, markers } = makeBlockTerm();
     const tracker = registerPromptTracker(term);
 
+    handlers.get(133)?.("A"); // prompt marker (transferred to the block at C)
     handlers.get(133)?.("C;cmd");
     handlers.get(133)?.("D;0");
     tracker.dispose();
