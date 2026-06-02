@@ -90,6 +90,22 @@
 
 Latest installers are on the [Releases](https://github.com/binsarjr/its-just-terminal/releases/latest) page. The app auto-updates from there.
 
+### Quick install (script)
+
+**macOS / Linux** detects your platform and arch, downloads the matching asset from the latest release, and installs it. On macOS it also clears the quarantine flag and ad-hoc signs the app so Gatekeeper opens it (the builds are not notarized yet):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/binsarjr/its-just-terminal/main/install.sh | sh
+```
+
+On Linux it picks `.deb` / `.rpm` / `.AppImage` based on what your system uses.
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/binsarjr/its-just-terminal/main/install.ps1 | iex
+```
+
 ### Windows notes
 
 - On first launch Windows shows "Windows protected your PC" because the app isn't code-signed yet. Click **More info** then **Run anyway**.
