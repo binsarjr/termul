@@ -234,6 +234,7 @@ export default function App() {
     selectByIndex,
     setLeafCwd,
     setRemoteCwd,
+    setTabSpillToDisk,
     focusPane,
     focusNextPaneInTab,
     splitActivePane,
@@ -1732,6 +1733,7 @@ export default function App() {
             onClose={handleClose}
             onPin={pinTab}
             onRename={renameTab}
+            onToggleSpill={setTabSpillToDisk}
             onReorder={reorderTab}
             groupControls={groupControls}
             onToggleSidebar={toggleSidebar}

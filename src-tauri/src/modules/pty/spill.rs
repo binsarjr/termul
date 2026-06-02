@@ -42,15 +42,18 @@ impl SpillSink {
     }
 
     /// Turn spill on or off for this session. Turning it off drops the captured
-    /// transcript immediately (the user opted out of keeping it).
-    pub fn set_enabled(&mut self, on: bool) {
+    /// transcript immediately (the user opted out of keeping it). Returns true
+    /// when the state actually changed, so the caller can seed exactly once on
+    /// an off→on transition.
+    pub fn set_enabled(&mut self, on: bool) -> bool {
         if on == self.enabled {
-            return;
+            return false;
         }
         self.enabled = on;
         if !on {
             self.reset();
         }
+        true
     }
 
     /// Append one whole flushed chunk. Cheap on the hot path: buffered, with a
@@ -237,6 +240,27 @@ mod tests {
         }
         assert!(!SpillSink::seg_path(&dir, 7, 1).exists(), "files removed on drop");
         assert!(!SpillSink::seg_path(&dir, 7, 0).exists());
+    }
+
+    #[test]
+    fn set_enabled_reports_only_real_transitions() {
+        let tmp = TempDir::new().unwrap();
+        let mut s = sink(&tmp);
+        assert!(s.set_enabled(true), "off→on is a transition");
+        assert!(!s.set_enabled(true), "on→on is not");
+        assert!(s.set_enabled(false), "on→off is a transition");
+        assert!(!s.set_enabled(false), "off→off is not");
+    }
+
+    #[test]
+    fn seed_then_output_replays_in_order() {
+        // Mirrors how pty_set_spill seeds: write the snapshot first, then output.
+        let tmp = TempDir::new().unwrap();
+        let mut s = sink(&tmp);
+        assert!(s.set_enabled(true));
+        s.write(b"<snapshot>");
+        s.write(b"<live>");
+        assert_eq!(s.read_tail(), b"<snapshot><live>");
     }
 
     #[test]

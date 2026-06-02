@@ -202,9 +202,17 @@ pub fn pty_close_all(state: tauri::State<PtyState>) -> Result<usize, String> {
 }
 
 // Toggle the per-tab "keep full output" disk spill for a session. Enabling
-// starts capturing forward output to disk; disabling drops the transcript.
+// starts capturing forward output to disk; disabling drops the transcript. On
+// an off→on transition, `seed` (a serialized scrollback snapshot) is written as
+// the file's first bytes under the same lock — so it lands before any flusher
+// chunk — letting wake reconstruct pre-enable history with no loss or dup.
 #[tauri::command]
-pub fn pty_set_spill(state: tauri::State<PtyState>, id: u32, enabled: bool) -> Result<(), String> {
+pub fn pty_set_spill(
+    state: tauri::State<PtyState>,
+    id: u32,
+    enabled: bool,
+    seed: Option<String>,
+) -> Result<(), String> {
     let session = state
         .sessions
         .read()
@@ -215,7 +223,12 @@ pub fn pty_set_spill(state: tauri::State<PtyState>, id: u32, enabled: bool) -> R
             log::warn!("pty_set_spill: unknown id={id}");
             "no session".to_string()
         })?;
-    session.spill.lock().unwrap().set_enabled(enabled);
+    let mut sink = session.spill.lock().unwrap();
+    if sink.set_enabled(enabled) && enabled {
+        if let Some(seed) = seed {
+            sink.write(seed.as_bytes());
+        }
+    }
     log::info!("pty spill id={id} enabled={enabled}");
     Ok(())
 }

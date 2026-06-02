@@ -19,6 +19,8 @@ type Props = {
   node: PaneNode;
   tabVisible: boolean;
   activeLeafId: number;
+  /** Tab-level "keep full output to disk"; applies to every pane in the tab. */
+  spillToDisk: boolean;
   onFocusLeaf: (leafId: number) => void;
   getBundle: (leafId: number) => LeafBundle;
 };
@@ -27,6 +29,7 @@ export function PaneTreeView({
   node,
   tabVisible,
   activeLeafId,
+  spillToDisk,
   onFocusLeaf,
   getBundle,
 }: Props) {
@@ -51,6 +54,7 @@ export function PaneTreeView({
           visible={tabVisible}
           focused={focused}
           initialCwd={node.cwd}
+          spillToDisk={spillToDisk}
           ref={b.setRef}
           onSearchReady={(_id, addon) => b.onSearch(addon)}
           onCwd={(_id, cwd, remote) => b.onCwd(cwd, remote)}
@@ -72,6 +76,7 @@ export function PaneTreeView({
               node={child}
               tabVisible={tabVisible}
               activeLeafId={activeLeafId}
+              spillToDisk={spillToDisk}
               onFocusLeaf={onFocusLeaf}
               getBundle={getBundle}
             />

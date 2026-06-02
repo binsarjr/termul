@@ -43,6 +43,12 @@ export type TerminalTab = {
   /** AI agent cannot read buffer / context of this terminal. */
   private?: boolean;
   /**
+   * Keep this terminal's full output on disk (spill) so hibernation never drops
+   * scrollback, without holding it in RAM. Off by default; toggled from the tab
+   * context menu. Applies to every pane (leaf) in the tab; not persisted.
+   */
+  spillToDisk?: boolean;
+  /**
    * User-pinned name. When set it overrides the dynamic cwd-based label
    * (see `labelFor`); cleared (empty rename) reverts to the dynamic name.
    */
@@ -823,6 +829,21 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     [],
   );
 
+  /** Toggle a terminal tab's "keep full output to disk" spill. Applies to every
+   * pane in the tab; the sessions pick it up via a prop-driven effect. Stored
+   * as undefined when off so tab objects stay clean. */
+  const setTabSpillToDisk = useCallback((tabId: number, value: boolean) => {
+    setTabs((curr) =>
+      curr.map((t) =>
+        t.id === tabId &&
+        t.kind === "terminal" &&
+        (t.spillToDisk ?? false) !== value
+          ? { ...t, spillToDisk: value || undefined }
+          : t,
+      ),
+    );
+  }, []);
+
   const focusPane = useCallback((tabId: number, leafId: number) => {
     setTabs((curr) =>
       curr.map((t) => {
@@ -1111,6 +1132,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     selectByIndex,
     setLeafCwd,
     setRemoteCwd,
+    setTabSpillToDisk,
     focusPane,
     focusNextPaneInTab,
     splitActivePane,
