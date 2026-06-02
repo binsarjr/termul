@@ -26,6 +26,11 @@ export type TerminalTab = {
   activeLeafId: number;
   /** AI agent cannot read buffer / context of this terminal. */
   private?: boolean;
+  /**
+   * User-pinned name. When set it overrides the dynamic cwd-based label
+   * (see `labelFor`); cleared (empty rename) reverts to the dynamic name.
+   */
+  customTitle?: string;
 };
 
 export type EditorTab = {
@@ -132,6 +137,8 @@ export type TabPatch = Partial<{
   cwd: string;
   path: string;
   dirty: boolean;
+  /** Terminal tabs only. Empty/whitespace clears it (reverts to dynamic name). */
+  customTitle: string;
 }>;
 
 function basename(path: string): string {
@@ -673,6 +680,9 @@ export function useTabs(initial?: Partial<TerminalTab>) {
             ...x,
             ...(patch.title !== undefined && { title: patch.title }),
             ...(patch.cwd !== undefined && { cwd: patch.cwd }),
+            ...(patch.customTitle !== undefined && {
+              customTitle: patch.customTitle.trim() || undefined,
+            }),
           };
         }
         if (x.kind === "markdown" || x.kind === "pdf" || x.kind === "image") {

@@ -1382,6 +1382,11 @@ export default function App() {
     [updateTab],
   );
 
+  const renameTab = useCallback(
+    (id: number, name: string) => updateTab(id, { customTitle: name }),
+    [updateTab],
+  );
+
   const searchTarget = useMemo<SearchTarget>(() => {
     if (isTerminalTab && activeLeafId !== null && activeSearchAddon)
       return {
@@ -1640,6 +1645,7 @@ export default function App() {
             onNewGitGraph={openGitGraphFromContext}
             onClose={handleClose}
             onPin={pinTab}
+            onRename={renameTab}
             onReorder={reorderTab}
             onToggleSidebar={toggleSidebar}
             onSplit={splitActivePaneInActiveTab}
