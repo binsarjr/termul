@@ -225,6 +225,16 @@ html[data-chrome="borderless"] #settings-root {
 .xterm.focus {
   outline: none !important;
 }
+/*
+ * Left gutter so a command block's error accent bar has room to sit beside the
+ * text instead of on top of the first glyph. FitAddon reads padding off .xterm
+ * and subtracts it, so the column count stays correct; .xterm-screen and its
+ * canvas shift right together, keeping the block overlay (which positions off
+ * .xterm-screen's bounding rect) aligned with the glyphs.
+ */
+.xterm {
+  padding-left: 12px;
+}
 
 .cm-editor,
 .cm-scroller {

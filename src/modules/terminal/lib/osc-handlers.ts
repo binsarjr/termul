@@ -35,14 +35,18 @@ export function registerCwdHandler(
 }
 
 /**
- * One captured command block. `startMarker` pins the buffer line where the
- * command's output begins (registered on OSC 133 C), `endMarker` where it ends
- * (registered on OSC 133 D). xterm auto-disposes markers when their line
- * scrolls out of the buffer, so the line range must always be read back lazily
- * and guarded against disposal, never pre-snapshotted.
+ * One captured command block. `promptMarker` pins the prompt+command line
+ * (registered on OSC 133 A), `startMarker` the line where the command's output
+ * begins (OSC 133 C), `endMarker` where it ends (OSC 133 D). Output text is read
+ * from `[startMarker, endMarker)`; the whole-block highlight spans
+ * `[promptMarker, endMarker)` so the command and its output read as one unit.
+ * xterm auto-disposes markers when their line scrolls out of the buffer, so the
+ * line range must always be read back lazily and guarded against disposal,
+ * never pre-snapshotted.
  */
 export type CommandBlock = {
   command: string;
+  promptMarker: IMarker | null;
   startMarker: IMarker | null;
   endMarker: IMarker | null;
   exitCode: number | null;
@@ -71,11 +75,21 @@ export class CommandBlockRing {
   }
 
   /** OSC 133 C: command line is known and output is about to start. */
-  beginCommand(command: string, startMarker: IMarker | null): void {
+  beginCommand(
+    command: string,
+    promptMarker: IMarker | null,
+    startMarker: IMarker | null,
+  ): void {
     // A new C without an intervening D means the previous block never closed
     // (e.g. interrupted). Push it as-is so it isn't lost, then open the new one.
     if (this.open) this.push(this.open);
-    this.open = { command, startMarker, endMarker: null, exitCode: null };
+    this.open = {
+      command,
+      promptMarker,
+      startMarker,
+      endMarker: null,
+      exitCode: null,
+    };
   }
 
   /**
@@ -92,13 +106,20 @@ export class CommandBlockRing {
       this.open = null;
       return;
     }
-    this.push({ command: "", startMarker: null, endMarker, exitCode });
+    this.push({
+      command: "",
+      promptMarker: null,
+      startMarker: null,
+      endMarker,
+      exitCode,
+    });
   }
 
   private push(block: CommandBlock): void {
     this.blocks.push(block);
     while (this.blocks.length > this.capacity) {
       const evicted = this.blocks.shift();
+      evicted?.promptMarker?.dispose();
       evicted?.startMarker?.dispose();
       evicted?.endMarker?.dispose();
     }
@@ -115,10 +136,12 @@ export class CommandBlockRing {
 
   dispose(): void {
     for (const b of this.blocks) {
+      b.promptMarker?.dispose();
       b.startMarker?.dispose();
       b.endMarker?.dispose();
     }
     this.blocks = [];
+    this.open?.promptMarker?.dispose();
     this.open?.startMarker?.dispose();
     this.open = null;
     this.listeners.clear();
@@ -155,7 +178,13 @@ export function registerPromptTracker(
       if (!isAltScreen(term)) {
         // Payload is "C;<cmd>": everything after the first ";" is the command.
         const command = data.startsWith("C;") ? data.slice(2) : "";
-        blocks.beginCommand(command, registerMarkerSafe(term));
+        // Hand this prompt's A marker (the command line) to the block so its
+        // highlight spans the command, not just the output. Release ownership
+        // (marker = null) so the next A doesn't dispose it — the block owns it
+        // for its lifetime now and frees it on eviction / ring dispose.
+        const promptMarker = marker;
+        marker = null;
+        blocks.beginCommand(command, promptMarker, registerMarkerSafe(term));
       }
     } else if (data.startsWith("D")) {
       // OSC 133 D — command ends.

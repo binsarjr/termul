@@ -24,25 +24,27 @@ function makeFakeTerm() {
   return { term, scrolledTo };
 }
 
-/** Push `count` real closed blocks (lines 0,10,20,…) into a fresh ring. */
+/** Push `count` real closed blocks (prompt lines 0,10,20,…) into a fresh ring. */
 function ringWith(count: number): CommandBlockRing {
   const ring = new CommandBlockRing();
   for (let i = 0; i < count; i++) {
-    ring.beginCommand(`cmd${i}`, fakeMarker(i * 10));
+    // promptMarker = command line, startMarker = output line, endMarker = end.
+    ring.beginCommand(`cmd${i}`, fakeMarker(i * 10), fakeMarker(i * 10 + 1));
     ring.endCommand(0, fakeMarker(i * 10 + 5));
   }
   return ring;
 }
 
-/** One closed real-command block spanning buffer lines [startLine, endLine). */
+/** One closed real-command block whose highlight spans [promptLine, endLine):
+ * the command line at `promptLine`, output starting at `promptLine + 1`. */
 function ringWithBlock(
-  startLine: number,
+  promptLine: number,
   endLine: number,
   command = "build",
   exit = 0,
 ): CommandBlockRing {
   const ring = new CommandBlockRing();
-  ring.beginCommand(command, fakeMarker(startLine));
+  ring.beginCommand(command, fakeMarker(promptLine), fakeMarker(promptLine + 1));
   ring.endCommand(exit, fakeMarker(endLine));
   return ring;
 }
@@ -104,13 +106,13 @@ describe("CommandBlockRing.onChange", () => {
     const cb = vi.fn();
     const off = ring.onChange(cb);
 
-    ring.beginCommand("ls", fakeMarker(0));
-    ring.endCommand(0, fakeMarker(1));
+    ring.beginCommand("ls", fakeMarker(0), fakeMarker(1));
+    ring.endCommand(0, fakeMarker(2));
     expect(cb).toHaveBeenCalledTimes(1);
 
     off();
-    ring.beginCommand("pwd", fakeMarker(2));
-    ring.endCommand(0, fakeMarker(3));
+    ring.beginCommand("pwd", fakeMarker(3), fakeMarker(4));
+    ring.endCommand(0, fakeMarker(5));
     expect(cb).toHaveBeenCalledTimes(1);
   });
 });
@@ -125,17 +127,19 @@ describe("isInteractiveBlock", () => {
     expect(
       isInteractiveBlock({
         command: "  ",
-        startMarker: fakeMarker(0),
-        endMarker: fakeMarker(1),
+        promptMarker: fakeMarker(0),
+        startMarker: fakeMarker(1),
+        endMarker: fakeMarker(2),
         exitCode: 127,
       }),
     ).toBe(false);
   });
 
-  it("rejects a block with no / disposed start marker", () => {
+  it("rejects a block with no / disposed top markers", () => {
     expect(
       isInteractiveBlock({
         command: "ls",
+        promptMarker: null,
         startMarker: null,
         endMarker: fakeMarker(1),
         exitCode: 0,
@@ -144,11 +148,26 @@ describe("isInteractiveBlock", () => {
     expect(
       isInteractiveBlock({
         command: "ls",
+        promptMarker: fakeMarker(0, true),
         startMarker: fakeMarker(0, true),
         endMarker: null,
         exitCode: 0,
       }),
     ).toBe(false);
+  });
+
+  it("accepts a real command that has only an output (start) marker", () => {
+    // A shell that emits C but not A (or whose prompt marker scrolled off):
+    // the block still highlights from the output line.
+    expect(
+      isInteractiveBlock({
+        command: "ls",
+        promptMarker: null,
+        startMarker: fakeMarker(3),
+        endMarker: fakeMarker(5),
+        exitCode: 0,
+      }),
+    ).toBe(true);
   });
 });
 
@@ -189,12 +208,12 @@ describe("BlockController.selectRelative", () => {
   it("skips non-interactive blocks (empty Enter / empty command) during nav", () => {
     const { term } = makeFakeTerm();
     const ring = new CommandBlockRing();
-    ring.beginCommand("real1", fakeMarker(0));
+    ring.beginCommand("real1", fakeMarker(0), fakeMarker(1));
     ring.endCommand(0, fakeMarker(5));
-    ring.endCommand(0, fakeMarker(8)); // D with no C → null start, command ""
-    ring.beginCommand("", fakeMarker(10)); // start marker but empty command
-    ring.endCommand(127, fakeMarker(11));
-    ring.beginCommand("real2", fakeMarker(20));
+    ring.endCommand(0, fakeMarker(8)); // D with no C → null markers, command ""
+    ring.beginCommand("", fakeMarker(10), fakeMarker(11)); // markers but empty cmd
+    ring.endCommand(127, fakeMarker(12));
+    ring.beginCommand("real2", fakeMarker(20), fakeMarker(21));
     ring.endCommand(0, fakeMarker(25));
 
     const ctl = new BlockController(term, ring);
@@ -220,17 +239,17 @@ describe("BlockController.selectRelative", () => {
   it("drops a selection that was evicted from the ring", () => {
     const { term } = makeFakeTerm();
     const ring = new CommandBlockRing(2); // capacity 2
-    ring.beginCommand("a", fakeMarker(0));
-    ring.endCommand(0, fakeMarker(1));
+    ring.beginCommand("a", fakeMarker(0), fakeMarker(1));
+    ring.endCommand(0, fakeMarker(2));
     const ctl = new BlockController(term, ring);
     const oldest = ring.all()[0];
     ctl.selectRelative(-1);
     expect(ctl.getSelected()).toBe(oldest);
 
-    ring.beginCommand("b", fakeMarker(10));
-    ring.endCommand(0, fakeMarker(11));
-    ring.beginCommand("c", fakeMarker(20));
-    ring.endCommand(0, fakeMarker(21));
+    ring.beginCommand("b", fakeMarker(10), fakeMarker(11));
+    ring.endCommand(0, fakeMarker(12));
+    ring.beginCommand("c", fakeMarker(20), fakeMarker(21));
+    ring.endCommand(0, fakeMarker(22));
     expect(ctl.getSelected()).toBeNull();
     ctl.dispose();
   });
@@ -256,8 +275,8 @@ describe("BlockController hover", () => {
   it("ignores hover on non-interactive blocks", () => {
     const { term } = makeFakeTerm();
     const ring = new CommandBlockRing();
-    ring.beginCommand("", fakeMarker(0)); // empty command
-    ring.endCommand(127, fakeMarker(1));
+    ring.beginCommand("", fakeMarker(0), fakeMarker(1)); // empty command
+    ring.endCommand(127, fakeMarker(2));
     const ctl = new BlockController(term, ring);
 
     ctl.setHover(ring.all()[0]);
@@ -310,6 +329,23 @@ describe("BlockController.getActiveFrame", () => {
     setViewportY(40); // lines 10–12 now sit far above the viewport
     expect(ctl.getActiveFrame()).toBeNull();
   });
+
+  it("paints a no-output command at line 0 instead of collapsing to nothing", () => {
+    // Degenerate top-of-buffer case: start and end markers both land on line 0
+    // (a command that produced no output, next prompt on the same row). The end
+    // line must be clamped to at least top+1 so the block keeps a paintable row
+    // rather than an empty [0,0) range that would never draw or hit-test.
+    const { term } = makeDomTerm(24, { ...RECT, top: 0 });
+    const ring = new CommandBlockRing();
+    ring.beginCommand("clear", fakeMarker(0), fakeMarker(0));
+    ring.endCommand(0, fakeMarker(0));
+    const ctl = new BlockController(term, ring);
+    ctl.setHover(ring.all()[0]);
+
+    const frame = ctl.getActiveFrame();
+    expect(frame).not.toBeNull();
+    expect(frame?.height).toBe(20); // exactly one row, not zero
+  });
 });
 
 describe("BlockController.blockAtClientY", () => {
@@ -335,8 +371,8 @@ describe("BlockController.blockAtClientY", () => {
   it("ignores non-interactive (empty) blocks under the point", () => {
     const { term } = makeDomTerm(24, { ...RECT, top: 0 });
     const ring = new CommandBlockRing();
-    ring.beginCommand("", fakeMarker(0)); // empty command, lines 0..1
-    ring.endCommand(127, fakeMarker(1));
+    ring.beginCommand("", fakeMarker(0), fakeMarker(1)); // empty command
+    ring.endCommand(127, fakeMarker(2));
     const ctl = new BlockController(term, ring);
     expect(ctl.blockAtClientY(5)).toBeNull();
   });

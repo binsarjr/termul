@@ -19,6 +19,13 @@ import type { BlockFrame } from "./lib/blockController";
 
 type Action = "command" | "output";
 
+// Error-accent bar geometry, in px. The bar lives in the terminal's left gutter
+// (the padding on .xterm): WIDTH wide, GAP from the first glyph, INSET in from
+// the band's top/bottom edges.
+const ACCENT_WIDTH = 3;
+const ACCENT_GAP = 4;
+const ACCENT_INSET = 2;
+
 type Props = {
   /** Only the focused, on-screen pane paints the overlay. */
   active: boolean;
@@ -33,6 +40,11 @@ type Props = {
   onFilter: () => void;
   /** Fired when the ⋮ menu opens/closes so the host can pin the active block. */
   onMenuOpenChange: (open: boolean) => void;
+  /** App zoom (`--app-zoom`). The terminal is zoom-exempt but this overlay lives
+   * in the zoomed subtree, so every measured screen-px value is divided by this
+   * before being written as an inline px length, keeping the band/accent aligned
+   * with the (unscaled) terminal text at any zoom. */
+  zoom: number;
 };
 
 /**
@@ -51,9 +63,15 @@ export function BlockHoverLayer({
   onReinput,
   onFilter,
   onMenuOpenChange,
+  zoom,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  // The rAF loop reads zoom through a ref so a zoom change doesn't tear down and
+  // restart the loop; this assignment runs every render and is idempotent.
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
   const highlightRef = useRef<HTMLDivElement>(null);
+  const accentRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLSpanElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
@@ -70,33 +88,52 @@ export function BlockHoverLayer({
   useEffect(() => {
     function hide() {
       if (highlightRef.current) highlightRef.current.style.display = "none";
+      if (accentRef.current) accentRef.current.style.display = "none";
       if (toolbarRef.current) toolbarRef.current.style.display = "none";
     }
     function position(frame: BlockFrame, rootRect: DOMRect) {
       const hl = highlightRef.current;
+      const accent = accentRef.current;
       const tb = toolbarRef.current;
-      if (!hl || !tb) return;
+      if (!hl || !accent || !tb) return;
+      // `frame`/`rootRect` are real (post-zoom) screen px, but this overlay lives
+      // in the `zoom: --app-zoom` subtree while the terminal is zoom-exempt, so a
+      // CSS px we assign here renders at px*zoom. Divide every length by the zoom
+      // factor so the band lines up with the (unscaled) terminal text. At zoom 1
+      // this is a no-op.
+      const z = zoomRef.current || 1;
+      const px = (v: number) => `${v / z}px`;
       const top = frame.top - rootRect.top;
-      const left = frame.left - rootRect.left;
+      // The terminal has a left gutter (padding on .xterm), so .xterm-screen's
+      // left edge sits a few px in from the wrapper. The band fills from the
+      // wrapper's left edge through the text so it reads as one block, and the
+      // accent bar lives in that gutter — never on top of the first glyph.
+      const gutter = Math.max(0, frame.left - rootRect.left);
       const failed = frame.exitCode !== null && frame.exitCode !== 0;
 
       hl.style.display = "block";
-      hl.style.top = `${top}px`;
-      hl.style.left = `${left}px`;
-      hl.style.width = `${frame.width}px`;
-      hl.style.height = `${frame.height}px`;
+      hl.style.top = px(top);
+      hl.style.left = "0px";
+      hl.style.width = px(gutter + frame.width);
+      hl.style.height = px(frame.height);
       hl.style.background = failed
-        ? "color-mix(in srgb, var(--destructive) 9%, transparent)"
+        ? "color-mix(in srgb, var(--destructive) 7%, transparent)"
         : "color-mix(in srgb, var(--foreground) 5%, transparent)";
-      hl.style.boxShadow = `inset 2px 0 0 0 ${
-        failed
-          ? "var(--destructive)"
-          : "color-mix(in srgb, var(--foreground) 22%, transparent)"
-      }`;
+
+      // Warp shows the colored left bar only for failed commands.
+      if (failed) {
+        accent.style.display = "block";
+        accent.style.top = px(top + ACCENT_INSET);
+        accent.style.left = px(Math.max(2, gutter - ACCENT_GAP - ACCENT_WIDTH));
+        accent.style.width = px(ACCENT_WIDTH);
+        accent.style.height = px(Math.max(0, frame.height - ACCENT_INSET * 2));
+      } else {
+        accent.style.display = "none";
+      }
 
       tb.style.display = "flex";
-      tb.style.top = `${top + 4}px`;
-      tb.style.right = `${rootRect.right - (frame.left + frame.width) + 8}px`;
+      tb.style.top = px(top + 4);
+      tb.style.right = px(rootRect.right - (frame.left + frame.width) + 8);
 
       const dot = dotRef.current;
       if (dot) {
@@ -172,8 +209,17 @@ export function BlockHoverLayer({
     >
       <div
         ref={highlightRef}
-        className="absolute rounded-[2px] transition-[background] duration-100"
+        className="absolute rounded-[3px] transition-[background] duration-100"
         style={{ display: "none", pointerEvents: "none" }}
+      />
+      <div
+        ref={accentRef}
+        className="absolute rounded-full"
+        style={{
+          display: "none",
+          pointerEvents: "none",
+          background: "var(--destructive)",
+        }}
       />
       <div
         ref={toolbarRef}

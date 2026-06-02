@@ -1,3 +1,4 @@
+import { usePreferencesStore } from "@/modules/settings/preferences";
 import { useTheme } from "@/modules/theme";
 import type { SearchAddon } from "@xterm/addon-search";
 import {
@@ -57,6 +58,9 @@ export function TerminalPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { resolvedMode, themeId, customThemes } = useTheme();
+  // The hover overlay lives in the zoomed subtree (the terminal itself is
+  // zoom-exempt), so it needs the zoom factor to keep its geometry aligned.
+  const zoom = usePreferencesStore((p) => p.zoomLevel);
 
   const session = useTerminalSession({
     leafId,
@@ -193,6 +197,7 @@ export function TerminalPane({
           />
           <BlockHoverLayer
             active={visible && focused}
+            zoom={zoom}
             getFrame={session.getBlockHoverFrame}
             onCopyCommand={() => copyActive("command")}
             onCopyOutput={() => copyActive("output")}

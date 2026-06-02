@@ -1,17 +1,52 @@
-import type { Terminal } from "@xterm/xterm";
+import type { IMarker, Terminal } from "@xterm/xterm";
 import type { CommandBlock, CommandBlockRing } from "./osc-handlers";
 
+/** The buffer line of a marker, or null when it is missing / disposed / off. */
+function liveLine(marker: IMarker | null): number | null {
+  return marker && !marker.isDisposed && marker.line >= 0 ? marker.line : null;
+}
+
+/**
+ * Top buffer line of a block's highlight — the command line, so the command and
+ * its output read as one unit (Warp-style). The command's output begins at the
+ * start marker (OSC 133 C), so the command itself sits on the row directly above
+ * it. Deriving the top this way — rather than from the prompt marker (OSC 133 A)
+ * — is both robust (the start marker is always captured for a real command) and
+ * keeps the blank spacer line that many prompts print above themselves out of
+ * the highlight. Falls back to the prompt line only when there is no output
+ * marker at all. Null when neither anchor is live.
+ */
+function blockTopLine(block: CommandBlock): number | null {
+  const startLine = liveLine(block.startMarker);
+  if (startLine !== null) return Math.max(0, startLine - 1);
+  return liveLine(block.promptMarker);
+}
+
+/** Exclusive bottom buffer line of a block: the next-prompt line (OSC 133 D)
+ * when known, else just past the output start, else just past the top. Always
+ * at least `topLine + 1` so an interactive block paints (and hit-tests) at least
+ * its command row — a no-output command whose end marker collapses onto the top
+ * line (e.g. at buffer line 0) must never produce an empty range. */
+function blockEndLine(block: CommandBlock, topLine: number): number {
+  const endLine = liveLine(block.endMarker);
+  if (endLine !== null) return Math.max(topLine + 1, endLine);
+  const startLine = liveLine(block.startMarker);
+  if (startLine !== null) return Math.max(topLine + 1, startLine + 1);
+  return topLine + 1;
+}
+
 /** A block is interactive — hoverable, selectable, highlightable — only when it
- * has a live start marker AND a real command. Empty-Enter prompts emit OSC 133
- * D/A but no C (no preexec), so they have a null start marker and no command;
- * excluding them here means an empty prompt never gets a highlight or toolbar,
- * matching Warp. This is also the guard that keeps stray "command not found"-era
- * empty blocks from ever drawing UI regardless of how the shell emitted them. */
+ * has a live anchor marker (output or prompt) AND a real command. Empty-Enter
+ * prompts emit OSC 133 D/A but no C (no preexec), so they have no output marker
+ * and no command; excluding them here means an empty prompt never gets a
+ * highlight or toolbar, matching Warp. This is also the guard that keeps stray
+ * "command not found"-era empty blocks from ever drawing UI regardless of how
+ * the shell emitted them. */
 export function isInteractiveBlock(block: CommandBlock): boolean {
-  const m = block.startMarker;
-  return (
-    !!m && !m.isDisposed && m.line >= 0 && block.command.trim().length > 0
-  );
+  const hasAnchor =
+    liveLine(block.startMarker) !== null ||
+    liveLine(block.promptMarker) !== null;
+  return hasAnchor && block.command.trim().length > 0;
 }
 
 /** Geometry of the active block, in client coordinates, clamped to the rows
@@ -149,15 +184,10 @@ export class BlockController {
     const blocks = this.interactive();
     for (let i = blocks.length - 1; i >= 0; i--) {
       const block = blocks[i];
-      const start = block.startMarker;
-      // interactive() already guarantees a live start marker.
-      if (!start) continue;
-      const end = block.endMarker;
-      const endLine =
-        end && !end.isDisposed && end.line >= 0
-          ? end.line
-          : Number.POSITIVE_INFINITY;
-      if (line >= start.line && line < endLine) return block;
+      const topLine = blockTopLine(block);
+      if (topLine === null) continue;
+      // Span the command line through the output: a click on either hits it.
+      if (line >= topLine && line < blockEndLine(block, topLine)) return block;
     }
     return null;
   }
@@ -168,8 +198,8 @@ export class BlockController {
   getActiveFrame(): BlockFrame | null {
     const block = this.getActiveBlock();
     if (!block) return null;
-    const start = block.startMarker;
-    if (!start || start.isDisposed || start.line < 0) return null;
+    const topLine = blockTopLine(block);
+    if (topLine === null) return null;
     const screen = this.screenEl();
     const rows = this.term.rows;
     if (!screen || rows <= 0) return null;
@@ -177,10 +207,8 @@ export class BlockController {
     if (rect.height <= 0) return null;
     const cellHeight = rect.height / rows;
     const viewportY = this.term.buffer.active.viewportY;
-    const end = block.endMarker;
-    const endLine =
-      end && !end.isDisposed && end.line >= 0 ? end.line : start.line + 1;
-    const topRow = Math.max(0, start.line - viewportY);
+    const endLine = blockEndLine(block, topLine);
+    const topRow = Math.max(0, topLine - viewportY);
     const botRow = Math.min(rows, endLine - viewportY);
     if (botRow <= topRow) return null; // fully off screen
 
@@ -233,10 +261,10 @@ export class BlockController {
   }
 
   private scrollToSelected(): void {
-    const marker = this.selected?.startMarker;
-    if (marker && !marker.isDisposed && marker.line >= 0) {
-      this.term.scrollToLine(marker.line);
-    }
+    // Scroll to the command line (top of the block), not the output, so the
+    // selected command is what comes into view.
+    const topLine = this.selected ? blockTopLine(this.selected) : null;
+    if (topLine !== null) this.term.scrollToLine(topLine);
   }
 
   private screenEl(): HTMLElement | null {
