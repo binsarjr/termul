@@ -4,6 +4,7 @@ export type SettingsSection =
   | "shortcuts"
   | "models"
   | "agents"
+  | "history"
   | "about";
 
 type OpenSettingsHandler = (section?: SettingsSection) => void;

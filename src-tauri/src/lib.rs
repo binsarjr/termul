@@ -1,6 +1,6 @@
 pub mod modules;
 
-use modules::{agent, fs, git, net, pty, secrets, shell, workspace};
+use modules::{agent, fs, git, history, net, pty, secrets, shell, workspace};
 use std::sync::Mutex;
 use tauri::State;
 use tauri_plugin_window_state::StateFlags;
@@ -117,6 +117,9 @@ pub fn run() {
             shell::shell_bg_logs,
             shell::shell_bg_kill,
             shell::shell_bg_list,
+            history::read_shell_history,
+            history::delete_shell_history_entry,
+            history::clear_shell_history,
             workspace::wsl_list_distros,
             workspace::wsl_default_distro,
             workspace::wsl_home,

@@ -4,11 +4,13 @@ import type { SettingsSection } from "@/modules/settings/openSettings";
 import { AboutSection } from "@/settings/sections/AboutSection";
 import { AgentsSection } from "@/settings/sections/AgentsSection";
 import { GeneralSection } from "@/settings/sections/GeneralSection";
+import { HistorySection } from "@/settings/sections/HistorySection";
 import { ModelsSection } from "@/settings/sections/ModelsSection";
 import { ShortcutsSection } from "@/settings/sections/ShortcutsSection";
 import { ThemesSection } from "@/settings/sections/ThemesSection";
 import {
   AiScanIcon,
+  Clock01Icon,
   InformationCircleIcon,
   KeyboardIcon,
   PaintBoardIcon,
@@ -29,6 +31,7 @@ const SECTIONS: {
   { id: "shortcuts", label: "Shortcuts", icon: KeyboardIcon, component: ShortcutsSection },
   { id: "models", label: "Models", icon: AiScanIcon, component: ModelsSection },
   { id: "agents", label: "Agents", icon: UserMultiple02Icon, component: AgentsSection },
+  { id: "history", label: "History", icon: Clock01Icon, component: HistorySection },
   { id: "about", label: "About", icon: InformationCircleIcon, component: AboutSection },
 ];
 

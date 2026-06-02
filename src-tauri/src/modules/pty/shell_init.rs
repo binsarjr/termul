@@ -264,6 +264,50 @@ mod unix {
     }
 }
 
+/// The login shell's history file plus a short shell name
+/// ("zsh"/"bash"/"fish"/"powershell"). Reuses the same shell detection the PTY
+/// uses, so the history we read matches the shell the user actually runs.
+/// `None` when the home dir can't be resolved or no known history file exists.
+#[cfg(unix)]
+pub(crate) fn history_file() -> Option<(String, std::path::PathBuf)> {
+    let home = dirs::home_dir()?;
+    let (shell, _path) = unix::Shell::detect();
+    let (name, rel): (&str, &str) = match shell {
+        unix::Shell::Zsh => ("zsh", ".zsh_history"),
+        unix::Shell::Bash => ("bash", ".bash_history"),
+        unix::Shell::Fish => ("fish", ".local/share/fish/fish_history"),
+        unix::Shell::Other => {
+            // Unknown shell: fall back to whichever common history file exists.
+            for (n, r) in [
+                ("zsh", ".zsh_history"),
+                ("bash", ".bash_history"),
+                ("fish", ".local/share/fish/fish_history"),
+            ] {
+                let p = home.join(r);
+                if p.is_file() {
+                    return Some((n.to_string(), p));
+                }
+            }
+            return None;
+        }
+    };
+    Some((name.to_string(), home.join(rel)))
+}
+
+#[cfg(windows)]
+pub(crate) fn history_file() -> Option<(String, std::path::PathBuf)> {
+    let appdata = std::env::var_os("APPDATA").map(std::path::PathBuf::from)?;
+    Some((
+        "powershell".to_string(),
+        appdata
+            .join("Microsoft")
+            .join("Windows")
+            .join("PowerShell")
+            .join("PSReadLine")
+            .join("ConsoleHost_history.txt"),
+    ))
+}
+
 #[cfg(windows)]
 mod windows {
     use std::ffi::OsString;
