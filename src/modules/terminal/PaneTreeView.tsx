@@ -12,6 +12,7 @@ type LeafBundle = {
   setRef: (h: TerminalPaneHandle | null) => void;
   onSearch: (addon: SearchAddon) => void;
   onCwd: (cwd: string, remote: boolean) => void;
+  onSshHost: (host: string | null) => void;
   onExit: (code: number) => void;
 };
 
@@ -58,6 +59,7 @@ export function PaneTreeView({
           ref={b.setRef}
           onSearchReady={(_id, addon) => b.onSearch(addon)}
           onCwd={(_id, cwd, remote) => b.onCwd(cwd, remote)}
+          onSshHost={(_id, host) => b.onSshHost(host)}
           onExit={(_id, code) => b.onExit(code)}
         />
       </div>

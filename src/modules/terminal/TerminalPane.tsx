@@ -46,6 +46,8 @@ type Props = {
   onSearchReady?: (leafId: number, addon: SearchAddon) => void;
   onExit?: (leafId: number, code: number) => void;
   onCwd?: (leafId: number, cwd: string, remote: boolean) => void;
+  /** A local `ssh <host>` started (host) or ended (null) in this pane. */
+  onSshHost?: (leafId: number, host: string | null) => void;
 };
 
 export function TerminalPane({
@@ -57,6 +59,7 @@ export function TerminalPane({
   onSearchReady,
   onExit,
   onCwd,
+  onSshHost,
   ref,
 }: Props & { ref?: React.Ref<TerminalPaneHandle> }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,6 +79,7 @@ export function TerminalPane({
     onSearchReady: (a) => onSearchReady?.(leafId, a),
     onExit: (c) => onExit?.(leafId, c),
     onCwd: (c, r) => onCwd?.(leafId, c, r),
+    onSshHost: (h) => onSshHost?.(leafId, h),
   });
 
   useEffect(() => {

@@ -13,6 +13,7 @@ type Props = {
   registerHandle: (leafId: number, handle: TerminalPaneHandle | null) => void;
   onSearchReady: (leafId: number, addon: SearchAddon) => void;
   onCwd: (leafId: number, cwd: string, remote: boolean) => void;
+  onSshHost: (leafId: number, host: string | null) => void;
   onExit: (leafId: number, code: number) => void;
   onFocusLeaf: (tabId: number, leafId: number) => void;
 };
@@ -21,6 +22,7 @@ type Bundle = {
   setRef: (h: TerminalPaneHandle | null) => void;
   onSearch: (addon: SearchAddon) => void;
   onCwd: (cwd: string, remote: boolean) => void;
+  onSshHost: (host: string | null) => void;
   onExit: (code: number) => void;
 };
 
@@ -30,6 +32,7 @@ export function TerminalStack({
   registerHandle,
   onSearchReady,
   onCwd,
+  onSshHost,
   onExit,
   onFocusLeaf,
 }: Props) {
@@ -41,6 +44,7 @@ export function TerminalStack({
   const registerRef = useRef(registerHandle);
   const searchReadyRef = useRef(onSearchReady);
   const cwdRef = useRef(onCwd);
+  const sshHostRef = useRef(onSshHost);
   const exitRef = useRef(onExit);
   useEffect(() => {
     registerRef.current = registerHandle;
@@ -51,6 +55,9 @@ export function TerminalStack({
   useEffect(() => {
     cwdRef.current = onCwd;
   }, [onCwd]);
+  useEffect(() => {
+    sshHostRef.current = onSshHost;
+  }, [onSshHost]);
   useEffect(() => {
     exitRef.current = onExit;
   }, [onExit]);
@@ -63,6 +70,7 @@ export function TerminalStack({
         setRef: (h) => registerRef.current(leafId, h),
         onSearch: (addon) => searchReadyRef.current(leafId, addon),
         onCwd: (cwd, remote) => cwdRef.current(leafId, cwd, remote),
+        onSshHost: (host) => sshHostRef.current(leafId, host),
         onExit: (code) => exitRef.current(leafId, code),
       };
       bundles.current.set(leafId, b);

@@ -3,7 +3,7 @@ import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
 import { hostname } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { isLocalHost } from "./remoteCwd";
+import { isLocalHost, parseSshHost } from "./remoteCwd";
 import { AutocompleteController } from "./autocompleteController";
 import { BlockController, type BlockFrame } from "./blockController";
 import {
@@ -41,6 +41,10 @@ type Callbacks = {
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
   onCwd?: (cwd: string, remote: boolean) => void;
+  // The host of a locally-detected `ssh <host>` (from the OSC 133 C command),
+  // or null when that ssh session ends (OSC 133 D). Independent of onCwd:
+  // surfaces a remote indicator even when the remote shell emits no OSC 7.
+  onSshHost?: (host: string | null) => void;
 };
 
 type Session = {
@@ -418,7 +422,17 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // 7 emitted by untrusted command output (remote SSH, `cat` of an
       // attacker file, etc.).
       const shellState = createShellIntegrationState();
-      const prompt = registerPromptTracker(term, shellState);
+      const prompt = registerPromptTracker(term, shellState, {
+        // Detect a local `ssh <host>` from the raw command line and surface a
+        // remote indicator for its lifetime — even against a stock remote shell
+        // that emits no OSC 7 of its own. Cleared when the command ends (the
+        // local ssh process exits → OSC 133 D).
+        onCommand: (cmd) => {
+          const host = parseSshHost(cmd);
+          if (host) s.callbacks.onSshHost?.(host);
+        },
+        onCommandEnd: () => s.callbacks.onSshHost?.(null),
+      });
       // Expose the slot's command-block ring to the session so getLastBlock /
       // getBlocks can read it. The prompt tracker disposes the ring on its own
       // disposer (returned below), so we only need to drop our reference.
@@ -604,6 +618,8 @@ type Options = {
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
   onCwd?: (cwd: string, remote: boolean) => void;
+  /** Host of a locally-detected `ssh <host>` while it runs; null when it ends. */
+  onSshHost?: (host: string | null) => void;
 };
 
 export function useTerminalSession({
@@ -616,9 +632,10 @@ export function useTerminalSession({
   onSearchReady,
   onExit,
   onCwd,
+  onSshHost,
 }: Options) {
-  const cbRef = useRef({ onSearchReady, onExit, onCwd });
-  cbRef.current = { onSearchReady, onExit, onCwd };
+  const cbRef = useRef({ onSearchReady, onExit, onCwd, onSshHost });
+  cbRef.current = { onSearchReady, onExit, onCwd, onSshHost };
 
   useEffect(() => {
     let cancelled = false;
@@ -631,6 +648,7 @@ export function useTerminalSession({
         onSearchReady: (a) => cbRef.current.onSearchReady?.(a),
         onExit: (c) => cbRef.current.onExit?.(c),
         onCwd: (c, r) => cbRef.current.onCwd?.(c, r),
+        onSshHost: (h) => cbRef.current.onSshHost?.(h),
       });
       if (s.visibleNow && s.focusedNow) focusSlot(leafId);
     });

@@ -83,4 +83,28 @@ describe("labelFor (terminal custom title)", () => {
       labelFor({ id: 9, kind: "editor", title: "main.rs", path: "/main.rs", dirty: false, preview: false }),
     ).toBe("main.rs");
   });
+
+  it("shows the detected ssh host when there is no remote cwd", () => {
+    expect(
+      labelFor(term({ cwd: "/Users/me/projects/app", sshHost: "pi.local" })),
+    ).toBe("pi.local");
+  });
+
+  it("prefers the remote cwd basename over the ssh host when both are set", () => {
+    expect(
+      labelFor(
+        term({
+          cwd: "/Users/me/projects/app",
+          sshHost: "pi.local",
+          remoteCwd: "/home/pi/code",
+        }),
+      ),
+    ).toBe("code");
+  });
+
+  it("lets a user-pinned title win over a detected ssh host", () => {
+    expect(
+      labelFor(term({ sshHost: "pi.local", customTitle: "deploy" })),
+    ).toBe("deploy");
+  });
 });

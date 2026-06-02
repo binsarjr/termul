@@ -162,9 +162,34 @@ export type PromptTracker = {
   dispose: () => void;
 };
 
+/**
+ * Side-channel callbacks for the raw OSC 133 command lifecycle, independent of
+ * the command-block ring. `onCommand` fires with the parsed command line on C
+ * (only when non-empty). `onCommandEnd` fires on the D that closes the local
+ * command — NOT on D's emitted by a nested remote shell. Used to detect a local
+ * `ssh <host>` from the command text and surface a remote indicator for the
+ * session's lifetime — even when the remote shell emits no OSC 7 of its own.
+ *
+ * Command-depth nesting: a remote host whose own shell has OSC 133 integration
+ * emits a C/D pair around every remote command, nested inside the local `ssh`
+ * command's outer C/D. Treating every D as end-of-command would clear the remote
+ * indicator after the FIRST remote command while the ssh session is still live.
+ * We track depth (C => +1, D => −1) and only fire `onCommandEnd` when depth
+ * returns to 0 — i.e. the local command (the one that ran `ssh`) actually
+ * exited. A stock remote shell emits neither C nor D, so depth holds at 1 across
+ * the whole session and the local ssh's own D fires it; this matters for the
+ * partial case (remote emits OSC 133 but no OSC 7) where the remoteCwd fallback
+ * can't keep the pill alive.
+ */
+export type PromptTrackerOpts = {
+  onCommand?: (command: string) => void;
+  onCommandEnd?: () => void;
+};
+
 export function registerPromptTracker(
   term: Terminal,
   state?: ShellIntegrationState,
+  opts?: PromptTrackerOpts,
 ): PromptTracker {
   let marker: IMarker | null = null;
   // Pins the row+col where the typed command begins, valid only across the edit
@@ -175,6 +200,11 @@ export function registerPromptTracker(
     commandStart?.marker?.dispose();
     commandStart = null;
   };
+  // OSC 133 command nesting. A C opens a command (+1), its D closes it (−1).
+  // A remote shell with its own OSC 133 integration emits inner C/D pairs that
+  // nest inside the local command's span; only the D that returns depth to 0
+  // ends the local command. See PromptTrackerOpts for why this matters to ssh.
+  let commandDepth = 0;
   const blocks = new CommandBlockRing();
   const d = term.parser.registerOscHandler(133, (data) => {
     // OSC 133 A — start of new prompt (between commands).
@@ -202,6 +232,10 @@ export function registerPromptTracker(
     } else if (data.startsWith("C")) {
       // OSC 133 C — command pre-execution marker; still inside command.
       if (state) state.inCommand = true;
+      // Count the command (local or nested-remote) for end-of-command pairing.
+      // Independent of the alt-screen block-capture guard below so depth stays
+      // balanced whether a command runs on the normal or the alternate screen.
+      commandDepth++;
       // Command submitted: the input line is final, no more editing.
       clearCommandStart();
       // Skip block capture inside a TUI (vim/htop/less): the alt screen has no
@@ -209,6 +243,12 @@ export function registerPromptTracker(
       if (!isAltScreen(term)) {
         // Payload is "C;<cmd>": everything after the first ";" is the command.
         const command = data.startsWith("C;") ? data.slice(2) : "";
+        // Surface the raw command line (e.g. for `ssh <host>` detection), but
+        // only for the OUTER local command (depth 1). A nested remote shell's
+        // C (depth > 1) is a command running *inside* the ssh session, not the
+        // local one — firing for it would flip the indicator to a nested host
+        // (and leak a pill onto an injected `C;ssh ...` in command output).
+        if (command && commandDepth === 1) opts?.onCommand?.(command);
         // Hand this prompt's A marker (the command line) to the block so its
         // highlight spans the command, not just the output. Release ownership
         // (marker = null) so the next A doesn't dispose it — the block owns it
@@ -221,6 +261,17 @@ export function registerPromptTracker(
       // OSC 133 D — command ends.
       if (state) state.inCommand = false;
       clearCommandStart();
+      // Close one command level. Only the D that returns depth to 0 ends the
+      // LOCAL command — D's from a nested remote shell's OSC 133 integration
+      // (depth > 1) must not fire onCommandEnd, or the ssh pill would clear
+      // after the first remote command while the session is still live.
+      // A D with no open command (depth already 0, e.g. bash 3.2 / PowerShell
+      // skipping the pre-exec C) still counts as end-of-command — clamp at 0 so
+      // the existing degraded-block behavior is preserved. Always signal here,
+      // even on the alt screen: a local `ssh` that dropped straight into a
+      // remote TUI still exits at depth 0 and the indicator must clear.
+      if (commandDepth > 0) commandDepth--;
+      if (commandDepth === 0) opts?.onCommandEnd?.();
       if (!isAltScreen(term)) {
         const exitCode = parseExitCode(data);
         blocks.endCommand(exitCode, registerMarkerSafe(term));

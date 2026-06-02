@@ -389,3 +389,98 @@ describe("OSC 133 command-start tracking (autocomplete input source)", () => {
     }
   });
 });
+
+describe("OSC 133 command lifecycle side-channel (onCommand / onCommandEnd)", () => {
+  it("fires onCommand with the parsed command on C", () => {
+    const { term, handlers } = makeBlockTerm();
+    const onCommand = vi.fn();
+    registerPromptTracker(term, createShellIntegrationState(), { onCommand });
+
+    handlers.get(133)?.("A");
+    handlers.get(133)?.("B");
+    handlers.get(133)?.("C;ssh pi");
+
+    expect(onCommand).toHaveBeenCalledTimes(1);
+    expect(onCommand).toHaveBeenCalledWith("ssh pi");
+  });
+
+  it("fires onCommand only for the outer/local command, not nested remote C's", () => {
+    // A nested remote shell (or injected `C;ssh ...` in command output) must not
+    // flip the indicator — only the local command (depth 1) is parsed for ssh.
+    const { term, handlers } = makeBlockTerm();
+    const onCommand = vi.fn();
+    registerPromptTracker(term, createShellIntegrationState(), { onCommand });
+
+    handlers.get(133)?.("C;ssh host"); // local ssh, depth 1 → fires
+    handlers.get(133)?.("C;ssh inner"); // nested remote ssh, depth 2 → ignored
+    handlers.get(133)?.("C;ls"); // nested remote command, depth 3 → ignored
+
+    expect(onCommand).toHaveBeenCalledTimes(1);
+    expect(onCommand).toHaveBeenCalledWith("ssh host");
+  });
+
+  it("fires onCommandEnd on D", () => {
+    const { term, handlers } = makeBlockTerm();
+    const onCommandEnd = vi.fn();
+    registerPromptTracker(term, createShellIntegrationState(), { onCommandEnd });
+
+    handlers.get(133)?.("C;ssh pi");
+    handlers.get(133)?.("D;0");
+
+    expect(onCommandEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire onCommand for an empty command payload", () => {
+    const { term, handlers } = makeBlockTerm();
+    const onCommand = vi.fn();
+    registerPromptTracker(term, undefined, { onCommand });
+
+    handlers.get(133)?.("C"); // no ";<cmd>" — empty command
+    expect(onCommand).not.toHaveBeenCalled();
+  });
+
+  it("fires onCommandEnd even when the command ran on the alternate screen", () => {
+    const { term, handlers, setAltScreen } = makeBlockTerm();
+    const onCommandEnd = vi.fn();
+    registerPromptTracker(term, undefined, { onCommandEnd });
+
+    setAltScreen(true); // ssh dropped straight into a remote TUI
+    handlers.get(133)?.("D;0");
+
+    expect(onCommandEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire onCommandEnd on a nested remote shell's D (depth tracking)", () => {
+    // Local `ssh host` into a remote whose shell ALSO emits OSC 133. The remote
+    // shell wraps each remote command in its own C/D, nested inside the local
+    // ssh command. Only the outer (local) ssh D should end the command.
+    const { term, handlers } = makeBlockTerm();
+    const onCommandEnd = vi.fn();
+    registerPromptTracker(term, createShellIntegrationState(), { onCommandEnd });
+
+    handlers.get(133)?.("C;ssh host"); // local ssh begins, depth 1
+    handlers.get(133)?.("C;ls"); // first remote command, depth 2
+    handlers.get(133)?.("D;0"); // remote command ends, depth 1
+    expect(onCommandEnd).not.toHaveBeenCalled(); // pill must stay
+
+    handlers.get(133)?.("C;whoami"); // second remote command, depth 2
+    handlers.get(133)?.("D;0"); // ends, depth 1
+    expect(onCommandEnd).not.toHaveBeenCalled();
+
+    handlers.get(133)?.("D;0"); // local ssh exits, depth 0
+    expect(onCommandEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onCommandEnd for each local command without nesting", () => {
+    const { term, handlers } = makeBlockTerm();
+    const onCommandEnd = vi.fn();
+    registerPromptTracker(term, createShellIntegrationState(), { onCommandEnd });
+
+    handlers.get(133)?.("C;ls");
+    handlers.get(133)?.("D;0");
+    handlers.get(133)?.("C;pwd");
+    handlers.get(133)?.("D;0");
+
+    expect(onCommandEnd).toHaveBeenCalledTimes(2);
+  });
+});

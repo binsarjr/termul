@@ -337,6 +337,20 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
       console.warn("[its-just-terminal] snapshot replay failed:", e);
     }
   }
+
+  // Re-register the OSC handlers BEFORE replaying the dormant ring so any
+  // OSC 133 C/D (and OSC 7) captured while the tab was hibernated drive the
+  // fresh lifecycle trackers as they replay. Otherwise a ring that holds the
+  // ssh-session's exit (OSC 133 D from a remote `exit` / dropped link during
+  // hibernation) would be written before onCommandEnd existed, leaving the
+  // remote pill stuck on a dead host until the next full local command.
+  for (const d of slot.oscDisposers) {
+    try {
+      d();
+    } catch {}
+  }
+  slot.oscDisposers = p.registerOsc(slot.term);
+
   if (p.altScreen) {
     // Discard the dormant ring. TUI output is incremental cursor-positioned
     // updates that can't be replayed coherently on top of a stale snapshot
@@ -348,13 +362,6 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
   try {
     slot.term.write("\x1b[?25h");
   } catch {}
-
-  for (const d of slot.oscDisposers) {
-    try {
-      d();
-    } catch {}
-  }
-  slot.oscDisposers = p.registerOsc(slot.term);
 
   setupResizeObserver(slot, p);
   slot.fitAddon.fit();

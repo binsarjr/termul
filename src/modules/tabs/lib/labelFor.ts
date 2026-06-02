@@ -18,6 +18,9 @@ export function labelFor(t: Tab): string {
   if (t.kind === "settings") return t.title;
   // terminal: a user-pinned name wins over the dynamic cwd-based label.
   if (t.customTitle) return t.customTitle;
+  // A detected `ssh <host>` session with no remote cwd shows the bare host, so
+  // the tab visibly changes the moment the user connects.
+  if (t.sshHost && !t.remoteCwd) return t.sshHost;
   const path = t.remoteCwd ?? t.cwd;
   if (!path) return t.title;
   const parts = path.split(/[\\/]/).filter(Boolean);

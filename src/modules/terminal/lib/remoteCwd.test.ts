@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLocalHost } from "./remoteCwd";
+import { isLocalHost, parseSshHost } from "./remoteCwd";
 
 describe("isLocalHost", () => {
   it("treats the always-local hosts as local regardless of hostname", () => {
@@ -32,5 +32,107 @@ describe("isLocalHost", () => {
 
   it("ignores surrounding whitespace", () => {
     expect(isLocalHost("  prod  ", "prod.example.com")).toBe(true);
+  });
+});
+
+describe("parseSshHost", () => {
+  it("extracts the bare host from a plain ssh invocation", () => {
+    expect(parseSshHost("ssh pi")).toBe("pi");
+  });
+
+  it("strips a user@ prefix", () => {
+    expect(parseSshHost("ssh user@pi")).toBe("pi");
+  });
+
+  it("skips a value flag and its separate argument", () => {
+    expect(parseSshHost("ssh -p 2222 user@host.example.com")).toBe(
+      "host.example.com",
+    );
+  });
+
+  it("skips -i and its key path", () => {
+    expect(parseSshHost("ssh -i ~/.ssh/id_ed25519 pi")).toBe("pi");
+  });
+
+  it("skips -o key=value option pairs", () => {
+    expect(parseSshHost("ssh -o StrictHostKeyChecking=no host")).toBe("host");
+  });
+
+  it("ignores boolean flags before the host", () => {
+    expect(parseSshHost("ssh -4 -v pi")).toBe("pi");
+  });
+
+  it("returns the host, not the trailing remote command", () => {
+    expect(parseSshHost("ssh -tt pi htop")).toBe("pi");
+  });
+
+  it("skips a -L port-forward spec", () => {
+    expect(parseSshHost("ssh -L 8080:localhost:80 pi")).toBe("pi");
+  });
+
+  it("treats a glued-on flag value as consuming nothing extra", () => {
+    expect(parseSshHost("ssh -p2222 pi")).toBe("pi");
+  });
+
+  it("handles a short-flag bundle ending in a value-flag (consumes next token)", () => {
+    // OpenSSH splits `-Cp` into -C (boolean) + -p (value), and -p takes "2222"
+    // as its argument — the host is the token after that.
+    expect(parseSshHost("ssh -Cp 2222 examplehost")).toBe("examplehost");
+    expect(parseSshHost("ssh -qp 2222 pi")).toBe("pi");
+    expect(parseSshHost("ssh -fp 2222 host")).toBe("host");
+  });
+
+  it("handles a bundle whose value-flag has its value glued on", () => {
+    // `-fp2222`: the value-flag char (p) is mid-bundle, so "2222" is its glued
+    // value and nothing extra is consumed — the very next token is the host.
+    expect(parseSshHost("ssh -fp2222 host")).toBe("host");
+  });
+
+  it("accepts a path to the ssh binary", () => {
+    expect(parseSshHost("/usr/bin/ssh host")).toBe("host");
+  });
+
+  it("parses the ssh:// URL form", () => {
+    expect(parseSshHost("ssh://user@host:22/x")).toBe("host");
+  });
+
+  it("rejects ssh-keygen (basename is not exactly ssh)", () => {
+    expect(parseSshHost("ssh-keygen -t ed25519")).toBeNull();
+  });
+
+  it("rejects sshpass wrapping ssh", () => {
+    expect(parseSshHost("sshpass -p x ssh h")).toBeNull();
+  });
+
+  it("returns null for non-ssh commands", () => {
+    expect(parseSshHost("ls")).toBeNull();
+    expect(parseSshHost("git push")).toBeNull();
+  });
+
+  it("returns null when ssh has no host", () => {
+    expect(parseSshHost("ssh")).toBeNull();
+  });
+
+  it("returns null for empty / whitespace-only input", () => {
+    expect(parseSshHost("")).toBeNull();
+    expect(parseSshHost("   ")).toBeNull();
+  });
+
+  it("rejects the other ssh-* sibling tools", () => {
+    expect(parseSshHost("ssh-add ~/.ssh/id")).toBeNull();
+    expect(parseSshHost("ssh-copy-id pi")).toBeNull();
+    expect(parseSshHost("ssh-agent")).toBeNull();
+    expect(parseSshHost("sshfs pi:/ /mnt")).toBeNull();
+    expect(parseSshHost("autossh -M 0 pi")).toBeNull();
+  });
+
+  it("collapses runs of whitespace between tokens", () => {
+    expect(parseSshHost("  ssh   -v    pi  ")).toBe("pi");
+  });
+
+  it("strips a :port from a [user@]host token", () => {
+    expect(parseSshHost("ssh user@host.example.com:2222")).toBe(
+      "host.example.com",
+    );
   });
 });

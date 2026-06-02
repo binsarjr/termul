@@ -234,6 +234,7 @@ export default function App() {
     selectByIndex,
     setLeafCwd,
     setRemoteCwd,
+    setSshHost,
     setTabSpillToDisk,
     focusPane,
     focusNextPaneInTab,
@@ -1102,6 +1103,12 @@ export default function App() {
   const activeRemoteCwd =
     activeTab?.kind === "terminal" ? (activeTab.remoteCwd ?? null) : null;
 
+  // Host of a detected local `ssh <host>` session on the active terminal (no
+  // remote shell integration needed). Feeds the same status-bar pill as
+  // activeRemoteCwd, which takes precedence when both are known.
+  const activeSshHost =
+    activeTab?.kind === "terminal" ? (activeTab.sshHost ?? null) : null;
+
   const activeFilePath = (() => {
     if (activeTab?.kind === "editor") return activeTab.path;
     if (activeTab?.kind === "git-diff") {
@@ -1422,6 +1429,11 @@ export default function App() {
     [setLeafCwd, setRemoteCwd],
   );
 
+  const handleTerminalSshHost = useCallback(
+    (leafId: number, host: string | null) => setSshHost(leafId, host),
+    [setSshHost],
+  );
+
   const handleFocusLeaf = useCallback(
     (tabId: number, leafId: number) => focusPane(tabId, leafId),
     [focusPane],
@@ -1613,6 +1625,7 @@ export default function App() {
           registerHandle={registerTerminalHandle}
           onSearchReady={handleSearchReady}
           onCwd={handleTerminalCwd}
+          onSshHost={handleTerminalSshHost}
           onExit={handleLeafExit}
           onFocusLeaf={handleFocusLeaf}
         />
@@ -1831,6 +1844,7 @@ export default function App() {
           <StatusBar
             cwd={activeCwd}
             remoteCwd={activeRemoteCwd}
+            sshHost={activeSshHost}
             filePath={activeFilePath}
             home={home}
             onCd={sendCd}

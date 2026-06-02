@@ -20,6 +20,10 @@ type Props = {
   /** Remote (SSH) cwd of the active terminal; shown as a pill. The local
    * breadcrumb keeps tracking `cwd` — only the shell is on the remote host. */
   remoteCwd?: string | null;
+  /** Host of a detected local `ssh <host>` session (stock remote shell, no
+   * integration). Drives the same pill when no `remoteCwd` is known; the more
+   * specific `remoteCwd` wins when both are set. */
+  sshHost?: string | null;
   filePath?: string | null;
   home: string | null;
   onCd: (path: string) => void;
@@ -33,6 +37,7 @@ type Props = {
 export function StatusBar({
   cwd,
   remoteCwd,
+  sshHost,
   filePath,
   home,
   onCd,
@@ -44,12 +49,16 @@ export function StatusBar({
   const panelOpen = useChatStore((s) => s.panelOpen);
   const openPanel = useChatStore((s) => s.openPanel);
 
+  // The pill shows the remote cwd (precise) when the remote shell emits OSC 7,
+  // else the bare host of a `ssh <host>` we detected from the command line.
+  const remoteLabel = remoteCwd ?? sshHost ?? null;
+
   return (
     <footer className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-border/60 bg-card/60 px-3 text-[11px]">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <WorkspaceEnvSelector onSelect={onWorkspaceChange} />
         <CwdBreadcrumb cwd={cwd} filePath={filePath} home={home} onCd={onCd} />
-        {remoteCwd ? (
+        {remoteLabel ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="flex min-w-0 shrink cursor-default items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10.5px] font-medium text-sky-700 dark:text-sky-400">
@@ -58,15 +67,16 @@ export function StatusBar({
                   size={11}
                   strokeWidth={2}
                 />
-                <span className="truncate">{remoteCwd}</span>
+                <span className="truncate">{remoteLabel}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent
               side="top"
               className="max-w-72 text-[11px] leading-relaxed"
             >
-              Remote working directory over SSH. The file explorer stays on your
-              local machine — only this terminal's shell is on the remote host.
+              {remoteCwd
+                ? "Remote working directory over SSH. The file explorer stays on your local machine — only this terminal's shell is on the remote host."
+                : `SSH session to ${sshHost} — detected from your ssh command. The file explorer stays on your local machine.`}
             </TooltipContent>
           </Tooltip>
         ) : null}

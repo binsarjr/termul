@@ -38,6 +38,15 @@ export type TerminalTab = {
    * the last local `cwd`). Cleared when the shell returns to a local cwd.
    */
   remoteCwd?: string;
+  /**
+   * Host of an in-progress local `ssh <host>` command, detected from the OSC
+   * 133 C command line (independent of {@link remoteCwd}, which only fires when
+   * the remote shell itself emits OSC 7). Set while the ssh session runs and
+   * cleared when it ends. Display-only: drives the tab label and the status-bar
+   * pill when no `remoteCwd` is known. When both are set, `remoteCwd` (the more
+   * specific path) wins for display.
+   */
+  sshHost?: string;
   paneTree: PaneNode;
   activeLeafId: number;
   /** AI agent cannot read buffer / context of this terminal. */
@@ -829,6 +838,30 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     [],
   );
 
+  /** Reflect a detected `ssh <host>` session on the active pane's tab. Set when
+   * the local ssh command starts (OSC 133 C) and cleared (null) when it ends
+   * (OSC 133 D). Display-only and independent of {@link setRemoteCwd}. Same
+   * keystroke-rate guard: bail when nothing changed; only the active leaf
+   * drives the tab. Stored as undefined when cleared so tab objects stay clean. */
+  const setSshHost = useCallback((leafId: number, host: string | null) => {
+    const nextHost = host || undefined;
+    setTabs((curr) => {
+      let changed = false;
+      const next = curr.map((t) => {
+        if (
+          t.kind !== "terminal" ||
+          t.activeLeafId !== leafId ||
+          !hasLeaf(t.paneTree, leafId)
+        )
+          return t;
+        if (t.sshHost === nextHost) return t;
+        changed = true;
+        return { ...t, sshHost: nextHost };
+      });
+      return changed ? next : curr;
+    });
+  }, []);
+
   /** Toggle a terminal tab's "keep full output to disk" spill. Applies to every
    * pane in the tab; the sessions pick it up via a prop-driven effect. Stored
    * as undefined when off so tab objects stay clean. */
@@ -1132,6 +1165,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     selectByIndex,
     setLeafCwd,
     setRemoteCwd,
+    setSshHost,
     setTabSpillToDisk,
     focusPane,
     focusNextPaneInTab,
