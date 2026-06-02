@@ -3,6 +3,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -19,19 +23,44 @@ import {
   Cancel01Icon,
   Clock01Icon,
   ComputerTerminal02Icon,
+  FolderAddIcon,
   GitBranchIcon,
   GitCompareIcon,
   IncognitoIcon,
   PencilEdit02Icon,
   PlusSignIcon,
+  RemoveSquareIcon,
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
+import { GroupChip } from "./GroupChip";
+import {
+  buildTabRows,
+  groupColorVar,
+  type GroupColorId,
+  type TabGroup,
+  type TabGroupMap,
+} from "./lib/groups";
 import { labelFor } from "./lib/labelFor";
 import type { EditorTab, Tab } from "./lib/useTabs";
+import { TabRenameField } from "./TabRenameField";
 
 export { labelFor };
+
+/** Group state + actions the TabBar needs, bundled to keep prop-forwarding
+ * (App → Header → TabBar) compact. */
+export type TabGroupControls = {
+  groups: TabGroup[];
+  tabGroupOf: TabGroupMap;
+  onCreateGroup: (tabId: number) => void;
+  onAssignToGroup: (tabId: number, groupId: number) => void;
+  onRemoveFromGroup: (tabId: number) => void;
+  onRenameGroup: (groupId: number, name: string) => void;
+  onRecolorGroup: (groupId: number, color: GroupColorId) => void;
+  onToggleGroupCollapsed: (groupId: number) => void;
+  onUngroup: (groupId: number) => void;
+};
 
 type Props = {
   tabs: Tab[];
@@ -52,6 +81,8 @@ type Props = {
     targetId: number,
     place: "before" | "after",
   ) => void;
+  /** Tab-group state and actions (membership, create/assign/recolor/collapse). */
+  groupControls: TabGroupControls;
   compact?: boolean;
 };
 
@@ -82,8 +113,10 @@ export function TabBar({
   onPin,
   onRename,
   onReorder,
+  groupControls,
   compact,
 }: Props) {
+  const { groups, tabGroupOf } = groupControls;
   const scrollRef = useRef<HTMLDivElement>(null);
   // Pointer-based reorder. HTML5 drag-and-drop does not fire inside the Tauri
   // webview (native drag-drop is enabled for the terminal file-drop feature),
@@ -99,6 +132,8 @@ export function TabBar({
   const [dragOver, setDragOver] = useState<DragOver | null>(null);
   // Id of the terminal tab whose title is being edited inline (null = none).
   const [editingId, setEditingId] = useState<number | null>(null);
+  // Id of the group whose name is being edited inline (null = none).
+  const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
 
   const startRename = (id: number) => {
     onSelect(id);
@@ -143,8 +178,36 @@ export function TabBar({
           }}
         >
           <TabsList className="h-7 w-max gap-0.5 bg-transparent p-0">
-            {tabs.map((t) => {
+            {buildTabRows(tabs, groups, tabGroupOf).map((row) => {
+              if (row.kind === "group") {
+                const g = row.group;
+                return (
+                  <GroupChip
+                    key={`group-${g.id}`}
+                    group={g}
+                    count={row.count}
+                    editing={editingGroupId === g.id}
+                    onStartRename={() => setEditingGroupId(g.id)}
+                    onCommitRename={(name) => {
+                      groupControls.onRenameGroup(g.id, name);
+                      setEditingGroupId(null);
+                    }}
+                    onCancelRename={() => setEditingGroupId(null)}
+                    onToggleCollapsed={() =>
+                      groupControls.onToggleGroupCollapsed(g.id)
+                    }
+                    onRecolor={(c) => groupControls.onRecolorGroup(g.id, c)}
+                    onUngroup={() => groupControls.onUngroup(g.id)}
+                  />
+                );
+              }
+              const t = row.tab;
               const isPreview = t.kind === "editor" && (t as EditorTab).preview;
+              const memberGroupId = tabGroupOf[t.id];
+              const memberColor =
+                memberGroupId != null
+                  ? groups.find((g) => g.id === memberGroupId)?.color
+                  : undefined;
 
               // Inline rename field (terminal tabs only). Rendered in place of
               // the trigger so we never nest an <input> inside a <button>.
@@ -242,6 +305,13 @@ export function TabBar({
                       onMouseDown={(e) => {
                         if (e.button === 1) e.preventDefault();
                       }}
+                      style={
+                        memberColor
+                          ? {
+                              boxShadow: `inset 0 -2px 0 ${groupColorVar(memberColor)}`,
+                            }
+                          : undefined
+                      }
                       className={cn(
                         "group relative h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors data-[state=active]:bg-accent data-[state=active]:text-foreground hover:text-foreground/80 justify-between",
                         compact
@@ -309,7 +379,7 @@ export function TabBar({
                       )}
                     </TabsTrigger>
                   </ContextMenuTrigger>
-                  <ContextMenuContent className="min-w-36">
+                  <ContextMenuContent className="min-w-44">
                     {t.kind === "terminal" && (
                       <ContextMenuItem onSelect={() => startRename(t.id)}>
                         <HugeiconsIcon
@@ -320,18 +390,76 @@ export function TabBar({
                         Rename
                       </ContextMenuItem>
                     )}
-                    {tabs.length > 1 && (
-                      <ContextMenuItem
-                        variant="destructive"
-                        onSelect={() => onClose(t.id)}
-                      >
+                    <ContextMenuSub>
+                      <ContextMenuSubTrigger>
                         <HugeiconsIcon
-                          icon={Cancel01Icon}
+                          icon={FolderAddIcon}
                           size={14}
                           strokeWidth={1.75}
                         />
-                        Close
+                        Add to group
+                      </ContextMenuSubTrigger>
+                      <ContextMenuSubContent className="min-w-40">
+                        {groups
+                          .filter((g) => g.id !== memberGroupId)
+                          .map((g) => (
+                            <ContextMenuItem
+                              key={g.id}
+                              onSelect={() =>
+                                groupControls.onAssignToGroup(t.id, g.id)
+                              }
+                            >
+                              <span
+                                className="size-2.5 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor: groupColorVar(g.color),
+                                }}
+                              />
+                              <span className="truncate">{g.name}</span>
+                            </ContextMenuItem>
+                          ))}
+                        {groups.some((g) => g.id !== memberGroupId) && (
+                          <ContextMenuSeparator />
+                        )}
+                        <ContextMenuItem
+                          onSelect={() => groupControls.onCreateGroup(t.id)}
+                        >
+                          <HugeiconsIcon
+                            icon={PlusSignIcon}
+                            size={14}
+                            strokeWidth={1.75}
+                          />
+                          New group
+                        </ContextMenuItem>
+                      </ContextMenuSubContent>
+                    </ContextMenuSub>
+                    {memberGroupId != null && (
+                      <ContextMenuItem
+                        onSelect={() => groupControls.onRemoveFromGroup(t.id)}
+                      >
+                        <HugeiconsIcon
+                          icon={RemoveSquareIcon}
+                          size={14}
+                          strokeWidth={1.75}
+                        />
+                        Remove from group
                       </ContextMenuItem>
+                    )}
+                    {tabs.length > 1 && (
+                      <>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          variant="destructive"
+                          onSelect={() => onClose(t.id)}
+                        >
+                          <HugeiconsIcon
+                            icon={Cancel01Icon}
+                            size={14}
+                            strokeWidth={1.75}
+                          />
+                          Close
+                        </ContextMenuItem>
+                      </>
                     )}
                   </ContextMenuContent>
                 </ContextMenu>
@@ -461,60 +589,6 @@ export function TabIcon({ tab }: { tab: Tab }) {
       size={14}
       strokeWidth={2}
       className="shrink-0"
-    />
-  );
-}
-
-/** Inline tab-title editor. Enter commits, Escape cancels, blur commits; an
- * empty value reverts the tab to its dynamic name. */
-function TabRenameField({
-  initial,
-  placeholder,
-  onCommit,
-  onCancel,
-}: {
-  initial: string;
-  placeholder: string;
-  onCommit: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-  const inputRef = useRef<HTMLInputElement>(null);
-  // Enter/Escape and the unmount blur can both fire; finalize only once.
-  const doneRef = useRef(false);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-
-  const finish = (commit: boolean) => {
-    if (doneRef.current) return;
-    doneRef.current = true;
-    if (commit) onCommit(value);
-    else onCancel();
-  };
-
-  return (
-    <input
-      ref={inputRef}
-      value={value}
-      placeholder={placeholder}
-      aria-label="Rename tab"
-      spellCheck={false}
-      onChange={(e) => setValue(e.target.value)}
-      onPointerDown={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          finish(true);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          finish(false);
-        }
-      }}
-      onBlur={() => finish(true)}
-      className="w-32 min-w-0 border-0 bg-transparent p-0 text-xs text-foreground outline-none placeholder:text-muted-foreground/70"
     />
   );
 }

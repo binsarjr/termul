@@ -95,9 +95,11 @@ import {
 import { StatusBar } from "@/modules/statusbar";
 import {
   MAX_PANES_PER_TAB,
+  type TabGroupControls,
   TabSearch,
   useTabs,
   useWorkspaceCwd,
+  visibleTabs,
 } from "@/modules/tabs";
 import {
   clearFocusedTerminal,
@@ -238,7 +240,41 @@ export default function App() {
     closePaneByLeaf,
     reorderTab,
     resetWorkspace,
+    groups,
+    tabGroupOf,
+    createGroupFromTab,
+    assignTabToGroup,
+    removeTabFromGroup,
+    renameGroup,
+    recolorGroup,
+    toggleGroupCollapsed,
+    ungroup,
   } = useTabs(getLaunchDir() ? { cwd: getLaunchDir() } : undefined);
+
+  const groupControls = useMemo<TabGroupControls>(
+    () => ({
+      groups,
+      tabGroupOf,
+      onCreateGroup: createGroupFromTab,
+      onAssignToGroup: assignTabToGroup,
+      onRemoveFromGroup: removeTabFromGroup,
+      onRenameGroup: renameGroup,
+      onRecolorGroup: recolorGroup,
+      onToggleGroupCollapsed: toggleGroupCollapsed,
+      onUngroup: ungroup,
+    }),
+    [
+      groups,
+      tabGroupOf,
+      createGroupFromTab,
+      assignTabToGroup,
+      removeTabFromGroup,
+      renameGroup,
+      recolorGroup,
+      toggleGroupCollapsed,
+      ungroup,
+    ],
+  );
 
   // Mirror `tabs` into a ref so callbacks scheduled with `setTimeout`
   // (e.g. cdInNewTab) read the latest pane state instead of a stale closure.
@@ -762,12 +798,21 @@ export default function App() {
 
   const cycleTab = useCallback(
     (delta: 1 | -1) => {
-      if (tabs.length < 2) return;
-      const idx = tabs.findIndex((t) => t.id === activeId);
-      const nextIdx = (idx + delta + tabs.length) % tabs.length;
-      setActiveId(tabs[nextIdx].id);
+      // Walk the visible list so Ctrl+Tab skips members of a collapsed group.
+      const vis = visibleTabs(tabs, groups, tabGroupOf);
+      if (vis.length < 2) return;
+      const idx = vis.findIndex((t) => t.id === activeId);
+      // If the active tab is hidden (its group was just collapsed), enter the
+      // visible list from the appropriate end.
+      const nextIdx =
+        idx === -1
+          ? delta > 0
+            ? 0
+            : vis.length - 1
+          : (idx + delta + vis.length) % vis.length;
+      setActiveId(vis[nextIdx].id);
     },
-    [tabs, activeId, setActiveId],
+    [tabs, groups, tabGroupOf, activeId, setActiveId],
   );
 
   const captureActiveSelection = useCallback((): string | null => {
@@ -1660,6 +1705,7 @@ export default function App() {
             onPin={pinTab}
             onRename={renameTab}
             onReorder={reorderTab}
+            groupControls={groupControls}
             onToggleSidebar={toggleSidebar}
             onSplit={splitActivePaneInActiveTab}
             canSplit={
