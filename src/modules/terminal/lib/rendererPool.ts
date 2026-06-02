@@ -478,6 +478,15 @@ export function releaseSlot(leafId: number): SerializeOutput | null {
   return out;
 }
 
+/** Serialize the slot currently bound to a leaf without releasing it — used to
+ * seed the disk spill with the on-screen scrollback when "keep full output" is
+ * turned on, so pre-enable history isn't lost on the first wake. Null when no
+ * slot is bound. */
+export function snapshotLeaf(leafId: number): string | null {
+  const slot = slots.find((s) => s.currentLeafId === leafId);
+  return slot ? serializeSlot(slot).snapshot : null;
+}
+
 function serializeSlot(slot: Slot): SerializeOutput {
   let snapshot: string | null = null;
   try {

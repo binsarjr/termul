@@ -33,6 +33,7 @@ import {
   getSlotForLeaf,
   releaseSlot,
   setSlotFocused,
+  snapshotLeaf,
   type Slot,
 } from "./rendererPool";
 
@@ -79,6 +80,17 @@ type Session = {
   // at the most recent release. Read once on the next bind to trigger a
   // SIGWINCH-driven repaint instead of replaying dormant bytes.
   altScreenAtRelease: boolean;
+  // Per-tab "keep full output" disk spill. When true, hibernation bytes are
+  // captured to the Rust spill file (not the RAM ring) and wake replays the
+  // full scrollback from that file. Mirrors the tab's spillToDisk choice.
+  spill: boolean;
+  // True while a spill replay is writing the transcript on wake. Live bytes are
+  // suppressed (they're already in the replayed file, spilled before shipping,
+  // so re-writing them would duplicate output) until the queued write is sent.
+  replaying: boolean;
+  // Bumped on every (un)bind so a slow spill read from a prior bind that
+  // resolves after an unbind/rebind is recognised as stale and ignored.
+  replayToken: number;
 };
 
 const sessions = new Map<number, Session>();
@@ -223,6 +235,9 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     blockCtl: null,
     autocompleteCtl: null,
     altScreenAtRelease: false,
+    spill: false,
+    replaying: false,
+    replayToken: 0,
   };
   sessions.set(leafId, session);
 
@@ -268,8 +283,83 @@ function deliverPtyBytes(leafId: number, bytes: Uint8Array): void {
   const s = sessions.get(leafId);
   if (!s) return;
   const slot = getSlotForLeaf(leafId);
-  if (slot) slot.term.write(bytes);
-  else s.dormantRing.push(bytes);
+  if (!slot) {
+    // Hibernated. A spilled session is captured to disk by Rust, so skip the
+    // RAM ring entirely — that's the whole point (no unbounded memory).
+    if (!s.spill) s.dormantRing.push(bytes);
+    return;
+  }
+  // Suppress live writes while replaying the spill transcript on wake: these
+  // bytes were spilled before being shipped, so they're already in the queued
+  // replay — writing them now would duplicate output.
+  if (s.replaying) return;
+  slot.term.write(bytes);
+}
+
+/** Re-enable spill on a freshly (re)opened PTY when the tab already had it on
+ * (e.g. a new split pane in a spilled tab, or after respawn). No seed needed —
+ * a fresh terminal has no prior scrollback. No-op on the common spill-off path. */
+function applySpill(s: Session): void {
+  if (!s.spill) return;
+  s.pty?.setSpill(true).catch((e) => {
+    console.warn("[its-just-terminal] setSpill failed:", e);
+  });
+}
+
+/**
+ * Toggle the per-tab "keep full output to disk" for a leaf's session. Driven by
+ * the terminal pane when the owning tab's spill choice changes (and on mount).
+ * Idempotent; cheap no-op when unchanged.
+ */
+export function setSessionSpill(leafId: number, enabled: boolean): void {
+  const s = sessions.get(leafId);
+  if (!s || s.spill === enabled) return;
+  s.spill = enabled;
+  // Seed the file with current scrollback on enable (live snapshot if bound,
+  // else the last release snapshot) so pre-enable history survives the first
+  // wake. No seed on disable.
+  const seed = enabled
+    ? (snapshotLeaf(leafId) ?? s.snapshot ?? undefined)
+    : undefined;
+  s.pty?.setSpill(enabled, seed).catch((e) => {
+    console.warn("[its-just-terminal] setSpill failed:", e);
+  });
+}
+
+/**
+ * Reconstruct a spilled session's terminal from its on-disk transcript on wake:
+ * read the bounded tail from Rust, reset, and replay it. Live bytes are
+ * suppressed (s.replaying) across the async read so they don't double-render;
+ * xterm queues writes in order, so resuming right after dispatching the replay
+ * keeps later live output correctly after the transcript. A bind/unbind during
+ * the read bumps replayToken, marking this result stale.
+ */
+function replayFromSpill(
+  leafId: number,
+  s: Session,
+  fallbackSnapshot: string | null,
+): void {
+  const pty = s.pty;
+  if (!pty) return;
+  const token = s.replayToken;
+  s.replaying = true;
+  pty
+    .readSpill()
+    .then((buf) => {
+      if (s.disposed || s.replayToken !== token) return;
+      const slot = getSlotForLeaf(leafId);
+      if (!slot) return;
+      slot.term.reset();
+      if (buf.byteLength > 0) slot.term.write(new Uint8Array(buf));
+      else if (fallbackSnapshot) slot.term.write(fallbackSnapshot);
+    })
+    .catch((e) => {
+      console.warn("[its-just-terminal] spill replay failed:", e);
+    })
+    .finally(() => {
+      // Only clear suppression if no newer bind has taken over.
+      if (s.replayToken === token) s.replaying = false;
+    });
 }
 
 async function openPtyForSession(
@@ -301,12 +391,23 @@ function bindLeafToSlot(leafId: number, s: Session): void {
   if (!s.container) return;
   const altScreen = s.altScreenAtRelease;
   s.altScreenAtRelease = false;
+  // A spilled session reconstructs from the on-disk transcript rather than the
+  // snapshot + RAM ring. Alt-screen TUIs (SIGWINCH repaint) and exited shells
+  // (no live pty to read; final snapshot suffices) keep the normal path.
+  const fromSpill = s.spill && !altScreen && !s.shellExited && !!s.pty;
+  // Captured before it's nulled below: used as a fallback if the spill read
+  // comes back empty (e.g. enabled with nothing captured yet).
+  const fallbackSnapshot = s.snapshot;
+  // Every (re)bind invalidates a prior in-flight spill replay and clears any
+  // leftover suppression; replayFromSpill re-arms it below when relevant.
+  s.replayToken++;
+  s.replaying = false;
   acquireSlot({
     leafId,
     container: s.container,
-    snapshot: s.snapshot,
+    snapshot: fromSpill ? null : s.snapshot,
     altScreen,
-    drainRing: (write) => s.dormantRing.drain(write),
+    drainRing: fromSpill ? () => {} : (write) => s.dormantRing.drain(write),
     shellExited: s.shellExited,
     searchQuery: s.searchQuery,
     cols: s.cols,
@@ -357,6 +458,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
   });
   s.snapshot = null;
   s.hasSlot = true;
+  if (fromSpill) replayFromSpill(leafId, s, fallbackSnapshot);
   if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd, s.lastCwdRemote);
   if (s.pendingExit !== null) {
     const code = s.pendingExit;
@@ -367,6 +469,10 @@ function bindLeafToSlot(leafId: number, s: Session): void {
 
 function unbindLeafFromSlot(leafId: number, s: Session): void {
   if (!s.hasSlot) return;
+  // Invalidate any in-flight spill replay and drop its byte suppression so a
+  // late read result can't write into (or freeze) a now-unbound terminal.
+  s.replayToken++;
+  s.replaying = false;
   const out = releaseSlot(leafId);
   if (out) {
     s.snapshot = out.snapshot;
@@ -405,6 +511,7 @@ function attachSession(
           return;
         }
         s.pty = pty;
+        applySpill(s);
         if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
       })
       .catch((e) => {
@@ -458,6 +565,7 @@ export async function respawnSession(
     return;
   }
   s.pty = pty;
+  applySpill(s);
   if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
 }
 
@@ -487,6 +595,8 @@ type Options = {
   visible: boolean;
   focused?: boolean;
   initialCwd?: string;
+  /** Keep the full output on disk so hibernation never drops scrollback. */
+  spillToDisk?: boolean;
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
   onCwd?: (cwd: string, remote: boolean) => void;
@@ -498,6 +608,7 @@ export function useTerminalSession({
   visible,
   focused = true,
   initialCwd,
+  spillToDisk = false,
   onSearchReady,
   onExit,
   onCwd,
@@ -571,6 +682,13 @@ export function useTerminalSession({
       unbindLeafFromSlot(leafId, s);
     }
   }, [leafId, visible, focused]);
+
+  // Push the owning tab's "keep full output to disk" choice down to this leaf's
+  // session, re-applying when it flips or the leaf changes. Runs after the
+  // attach effect above, so the session already exists.
+  useEffect(() => {
+    setSessionSpill(leafId, spillToDisk);
+  }, [leafId, spillToDisk]);
 
   const write = useCallback(
     (data: string) => sessions.get(leafId)?.pty?.write(data),

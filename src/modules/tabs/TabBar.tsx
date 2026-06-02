@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
@@ -23,6 +24,7 @@ import {
   Cancel01Icon,
   Clock01Icon,
   ComputerTerminal02Icon,
+  Database01Icon,
   FolderAddIcon,
   GitBranchIcon,
   GitCompareIcon,
@@ -75,6 +77,8 @@ type Props = {
   onPin: (id: number) => void;
   /** Rename a terminal tab. Empty name reverts it to the dynamic cwd label. */
   onRename: (id: number, name: string) => void;
+  /** Toggle a terminal tab's "keep full output to disk" spill. */
+  onToggleSpill: (id: number, value: boolean) => void;
   /** Reorder a dragged tab before/after the target tab. */
   onReorder: (
     draggedId: number,
@@ -112,6 +116,7 @@ export function TabBar({
   onClose,
   onPin,
   onRename,
+  onToggleSpill,
   onReorder,
   groupControls,
   compact,
@@ -389,6 +394,21 @@ export function TabBar({
                         />
                         Rename
                       </ContextMenuItem>
+                    )}
+                    {t.kind === "terminal" && (
+                      <ContextMenuCheckboxItem
+                        checked={t.spillToDisk ?? false}
+                        onCheckedChange={(v) =>
+                          onToggleSpill(t.id, v === true)
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={Database01Icon}
+                          size={14}
+                          strokeWidth={1.75}
+                        />
+                        Keep full output (disk)
+                      </ContextMenuCheckboxItem>
                     )}
                     <ContextMenuSub>
                       <ContextMenuSubTrigger>

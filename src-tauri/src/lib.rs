@@ -75,6 +75,8 @@ pub fn run() {
             pty::pty_resize,
             pty::pty_close,
             pty::pty_close_all,
+            pty::pty_set_spill,
+            pty::pty_read_spill,
             fs::tree::list_subdirs,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,
@@ -136,6 +138,11 @@ pub fn run() {
             net::ai_http_request,
             net::ai_http_stream,
         ])
+        .setup(|app| {
+            // Clear spill debris from a previous run before any tab can spawn.
+            pty::cleanup_spill_dir(app.handle());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

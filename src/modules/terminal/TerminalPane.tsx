@@ -41,6 +41,8 @@ type Props = {
   /** This leaf is the active pane within its tab — receives auto-focus. */
   focused?: boolean;
   initialCwd?: string;
+  /** Keep this terminal's full output on disk (per-tab "keep full output"). */
+  spillToDisk?: boolean;
   onSearchReady?: (leafId: number, addon: SearchAddon) => void;
   onExit?: (leafId: number, code: number) => void;
   onCwd?: (leafId: number, cwd: string, remote: boolean) => void;
@@ -51,6 +53,7 @@ export function TerminalPane({
   visible,
   focused = true,
   initialCwd,
+  spillToDisk,
   onSearchReady,
   onExit,
   onCwd,
@@ -69,6 +72,7 @@ export function TerminalPane({
     visible,
     focused,
     initialCwd,
+    spillToDisk,
     onSearchReady: (a) => onSearchReady?.(leafId, a),
     onExit: (c) => onExit?.(leafId, c),
     onCwd: (c, r) => onCwd?.(leafId, c, r),

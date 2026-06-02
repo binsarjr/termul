@@ -4,18 +4,36 @@ mod da_filter;
 mod job;
 mod session;
 pub(crate) mod shell_init;
+mod spill;
 
 use std::collections::HashMap;
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
 use portable_pty::PtySize;
 use tauri::ipc::{Channel, Response};
+use tauri::Manager;
 
 use crate::modules::workspace::{authorize_user_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 use session::Session;
+
+/// Directory holding per-session spill files, under the app cache dir. One
+/// source of truth shared by session spawn and startup cleanup; None when the
+/// cache dir can't be resolved (spill then becomes a no-op).
+pub(super) fn spill_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_cache_dir().ok().map(|p| p.join("spill"))
+}
+
+/// Wipe spill debris left by a previous (possibly crashed) run. Session ids
+/// reset each process, so nothing here is still owned. Called once at startup.
+pub fn cleanup_spill_dir(app: &tauri::AppHandle) {
+    if let Some(dir) = spill_dir(app) {
+        spill::cleanup_dir(&dir);
+    }
+}
 
 pub struct PtyState {
     sessions: RwLock<HashMap<u32, Arc<Session>>>,
@@ -181,4 +199,58 @@ pub fn pty_close_all(state: tauri::State<PtyState>) -> Result<usize, String> {
         log::info!("pty_close_all: reaped {count} orphaned session(s)");
     }
     Ok(count)
+}
+
+// Toggle the per-tab "keep full output" disk spill for a session. Enabling
+// starts capturing forward output to disk; disabling drops the transcript. On
+// an off→on transition, `seed` (a serialized scrollback snapshot) is written as
+// the file's first bytes under the same lock — so it lands before any flusher
+// chunk — letting wake reconstruct pre-enable history with no loss or dup.
+#[tauri::command]
+pub fn pty_set_spill(
+    state: tauri::State<PtyState>,
+    id: u32,
+    enabled: bool,
+    seed: Option<String>,
+) -> Result<(), String> {
+    let session = state
+        .sessions
+        .read()
+        .unwrap()
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| {
+            log::warn!("pty_set_spill: unknown id={id}");
+            "no session".to_string()
+        })?;
+    let mut sink = session.spill.lock().unwrap();
+    if sink.set_enabled(enabled) && enabled {
+        if let Some(seed) = seed {
+            sink.write(seed.as_bytes());
+        }
+    }
+    log::info!("pty spill id={id} enabled={enabled}");
+    Ok(())
+}
+
+// Read back the spilled transcript tail (raw PTY bytes, bounded ~16 MiB) so the
+// frontend can replay it into a freshly-reset terminal on wake. Returns empty
+// when the session never spilled. Raw `Response` avoids JSON-encoding the bytes.
+#[tauri::command]
+pub fn pty_read_spill(
+    state: tauri::State<PtyState>,
+    id: u32,
+) -> Result<tauri::ipc::Response, String> {
+    let session = state
+        .sessions
+        .read()
+        .unwrap()
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| {
+            log::warn!("pty_read_spill: unknown id={id}");
+            "no session".to_string()
+        })?;
+    let bytes = session.spill.lock().unwrap().read_tail();
+    Ok(tauri::ipc::Response::new(bytes))
 }

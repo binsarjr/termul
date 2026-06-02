@@ -11,6 +11,12 @@ export type PtySession = {
   write: (data: string) => Promise<void>;
   resize: (cols: number, rows: number) => Promise<void>;
   close: () => Promise<void>;
+  /** Toggle the per-tab "keep full output" disk spill for this session. When
+   * enabling, `seed` (a serialized snapshot) primes the file with current
+   * scrollback so pre-enable history isn't lost on the first wake. */
+  setSpill: (enabled: boolean, seed?: string) => Promise<void>;
+  /** Read back the spilled transcript tail (raw bytes) to replay on wake. */
+  readSpill: () => Promise<ArrayBuffer>;
 };
 
 export async function openPty(
@@ -53,6 +59,9 @@ export async function openPty(
     id,
     write: (data) => invoke("pty_write", { id, data }),
     resize: (c, r) => invoke("pty_resize", { id, cols: c, rows: r }),
+    setSpill: (enabled, seed) =>
+      invoke("pty_set_spill", { id, enabled, seed: seed ?? null }),
+    readSpill: () => invoke<ArrayBuffer>("pty_read_spill", { id }),
     close: async () => {
       if (closed) return;
       closed = true;
