@@ -42,6 +42,8 @@ type Props = {
   onClose: (id: number) => void;
   /** Promote a preview (transient) tab to persistent. */
   onPin: (id: number) => void;
+  /** Rename a terminal tab; empty name reverts it to the dynamic cwd label. */
+  onRename: (id: number, name: string) => void;
   /** Reorder a dragged tab before/after the target tab. */
   onReorder: (
     draggedId: number,
@@ -71,6 +73,7 @@ export function Header({
   onNewGitGraph,
   onClose,
   onPin,
+  onRename,
   onReorder,
   onToggleSidebar,
   onSplit,
@@ -204,6 +207,7 @@ export function Header({
           onNewGitGraph={onNewGitGraph}
           onClose={onClose}
           onPin={onPin}
+          onRename={onRename}
           onReorder={onReorder}
           compact={compact}
         />
