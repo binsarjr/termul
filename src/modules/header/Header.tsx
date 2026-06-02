@@ -16,6 +16,7 @@ import {
 import type { Tab, TabGroupControls } from "@/modules/tabs";
 import { TabBar } from "@/modules/tabs";
 import { NotificationBell } from "@/modules/agents";
+import { UpdateIndicator } from "@/modules/updater";
 import {
   GridViewIcon,
   LayoutTwoColumnIcon,
@@ -217,6 +218,8 @@ export function Header({
         />
         <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
       </div>
+
+      <UpdateIndicator />
 
       <SearchInline ref={searchRef} target={searchTarget} compact={compact} />
 
