@@ -124,7 +124,7 @@ import {
   themeFilePath,
   writeThemeFile,
 } from "@/modules/theme/themeFiles";
-import { UpdaterDialog } from "@/modules/updater";
+import { UpdaterDialog, useUpdaterStore } from "@/modules/updater";
 import {
   currentWorkspaceEnv,
   getWslHome,
@@ -931,11 +931,25 @@ export default function App() {
 
   const openNewTab = useCallback(() => {
     newTab(inheritedCwdForNewTab());
+    // Opportunistic update check on new-tab open; the store throttles to once
+    // per 30 min, so this is effectively free and never hits the network twice.
+    void useUpdaterStore.getState().check();
   }, [newTab, inheritedCwdForNewTab]);
 
   const openNewPrivateTab = useCallback(() => {
     newPrivateTab(inheritedCwdForNewTab());
   }, [newPrivateTab, inheritedCwdForNewTab]);
+
+  // Low-frequency safety net so a long-lived single-tab session still notices
+  // updates without opening a new tab. The 30-min store throttle means this
+  // only actually reaches the network a few times a day.
+  useEffect(() => {
+    const SAFETY_INTERVAL_MS = 6 * 60 * 60 * 1000;
+    const id = setInterval(() => {
+      void useUpdaterStore.getState().check();
+    }, SAFETY_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   const sendCd = useCallback(
     (path: string) => {

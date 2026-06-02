@@ -23,7 +23,7 @@ export function AboutSection() {
   const [version, setVersion] = useState("");
   const [name, setName] = useState("Its Just Terminal");
   const [build, setBuild] = useState("");
-  const { status, check, install } = useUpdater({ autoCheck: false });
+  const { status, check, install, restart } = useUpdater({ autoCheck: false });
   const checking = status.kind === "checking";
   const downloading = status.kind === "downloading";
   const available = status.kind === "available";
@@ -46,7 +46,8 @@ export function AboutSection() {
                   ? `Update to v${status.info.version}`
                   : "Check for updates";
   const onUpdateClick = () => {
-    if (available) void install();
+    if (ready) void restart();
+    else if (available) void install();
     else void check({ manual: true });
   };
 
@@ -112,7 +113,7 @@ export function AboutSection() {
           <Button
             size="sm"
             onClick={onUpdateClick}
-            disabled={checking || downloading || ready}
+            disabled={checking || downloading}
           >
             {checkLabel}
           </Button>

@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState } from "react";
 import { useUpdater } from "./useUpdater";
+import { useUpdaterStore } from "./updaterStore";
 
 type DistroKey = "arch" | "debian" | "fedora";
 
@@ -38,18 +39,23 @@ function formatBytes(n: number): string {
 }
 
 export function UpdaterDialog() {
-  const { status, install, dismiss } = useUpdater();
+  // useUpdater drives the on-mount auto-check; dialogOpen/restart come straight
+  // from the shared store so dismissing here doesn't drop the update state that
+  // keeps the header indicator alive.
+  const { status, install, restart, dismiss } = useUpdater();
+  const dialogOpen = useUpdaterStore((s) => s.dialogOpen);
   const [copied, setCopied] = useState(false);
   const [distro, setDistro] = useState<DistroKey>("arch");
   const manualVersion =
     status.kind === "manual-available" ? status.info.version : "";
   const activeCommand = distroCommand(distro, manualVersion);
 
-  const open =
+  const showable =
     status.kind === "available" ||
     status.kind === "manual-available" ||
     status.kind === "downloading" ||
     status.kind === "ready";
+  const open = dialogOpen && showable;
 
   if (!open) return null;
 
@@ -77,11 +83,9 @@ export function UpdaterDialog() {
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (
-          !o &&
-          (status.kind === "available" || status.kind === "manual-available")
-        )
-          dismiss();
+        // Allow closing any time except mid-download; closing keeps the update
+        // state (and the header indicator) so it can be reopened later.
+        if (!o && status.kind !== "downloading") dismiss();
       }}
     >
       <DialogContent className="sm:max-w-[440px]">
@@ -97,7 +101,7 @@ export function UpdaterDialog() {
           </DialogTitle>
           <DialogDescription>
             {ready
-              ? "Restart Its Just Terminal to finish installing."
+              ? "Update downloaded. Restart now to finish installing — this closes all open tabs."
               : downloading
                 ? progress !== null
                   ? `${progress.toFixed(0)}% — ${formatBytes(status.downloaded)}`
@@ -154,7 +158,17 @@ export function UpdaterDialog() {
                 Later
               </Button>
               <Button size="sm" onClick={() => void install()}>
-                Install &amp; restart
+                Download &amp; install
+              </Button>
+            </>
+          )}
+          {ready && (
+            <>
+              <Button variant="ghost" size="sm" onClick={dismiss}>
+                Later
+              </Button>
+              <Button size="sm" onClick={() => void restart()}>
+                Restart now
               </Button>
             </>
           )}
