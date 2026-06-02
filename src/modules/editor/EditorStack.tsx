@@ -1,8 +1,12 @@
 import { cn } from "@/lib/utils";
 import { useLazyRef } from "@/lib/useLazyRef";
+import { isMarkdownPath } from "@/modules/markdown/lib/isMarkdownPath";
+import { MarkdownViewToggle } from "@/modules/markdown/MarkdownViewToggle";
 import type { EditorTab, Tab } from "@/modules/tabs";
 import { useEffect, useRef } from "react";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
+
+const noop = () => {};
 
 type Props = {
   tabs: Tab[];
@@ -10,6 +14,8 @@ type Props = {
   onDirtyChange: (id: number, dirty: boolean) => void;
   registerHandle: (id: number, handle: EditorPaneHandle | null) => void;
   onCloseTab: (id: number) => void;
+  /** Open/focus the rendered preview for a markdown file (top-right toggle). */
+  onOpenPreview: (path: string) => void;
 };
 
 export function EditorStack({
@@ -18,6 +24,7 @@ export function EditorStack({
   onDirtyChange,
   registerHandle,
   onCloseTab,
+  onOpenPreview,
 }: Props) {
   const editors = tabs.filter((t): t is EditorTab => t.kind === "editor");
 
@@ -99,13 +106,24 @@ export function EditorStack({
             )}
             aria-hidden={!visible}
           >
-            <div className="h-full overflow-hidden rounded-md border border-border/60 bg-background">
-              <EditorPane
-                ref={getRefCallback(t.id)}
-                path={t.path}
-                onDirtyChange={getDirtyCallback(t.id)}
-                onClose={getCloseCallback(t.id)}
-              />
+            <div className="flex h-full flex-col overflow-hidden rounded-md border border-border/60 bg-background">
+              {isMarkdownPath(t.path) && (
+                <div className="flex h-8 shrink-0 items-center justify-end border-b border-border/60 px-2">
+                  <MarkdownViewToggle
+                    mode="editor"
+                    onPlainText={noop}
+                    onPreview={() => onOpenPreview(t.path)}
+                  />
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <EditorPane
+                  ref={getRefCallback(t.id)}
+                  path={t.path}
+                  onDirtyChange={getDirtyCallback(t.id)}
+                  onClose={getCloseCallback(t.id)}
+                />
+              </div>
             </div>
           </div>
         );
