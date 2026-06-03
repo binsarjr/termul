@@ -23,6 +23,7 @@ import {
   TERMINAL_FONT_SIZES,
   TERMINAL_SCROLLBACK_PRESETS,
   setAgentNotifications,
+  setDimInactivePanes,
   setMaxPanesPerTab,
   setAutostart,
   setEditorAutoSave,
@@ -100,6 +101,7 @@ export function GeneralSection() {
   const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize);
   const terminalScrollback = usePreferencesStore((s) => s.terminalScrollback);
   const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
+  const dimInactivePanes = usePreferencesStore((s) => s.dimInactivePanes);
   const zoomLevel = usePreferencesStore((s) => s.zoomLevel);
   const agentNotifications = usePreferencesStore((s) => s.agentNotifications);
 
@@ -355,6 +357,15 @@ export function GeneralSection() {
               ))}
             </SelectContent>
           </Select>
+        </SettingRow>
+        <SettingRow
+          title="Dim inactive panes"
+          description="Reduce opacity of panes that are not focused to visually highlight the active one."
+        >
+          <Switch
+            checked={dimInactivePanes}
+            onCheckedChange={(v) => void setDimInactivePanes(v)}
+          />
         </SettingRow>
       </div>
 

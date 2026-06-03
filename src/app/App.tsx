@@ -501,6 +501,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const userShortcuts = usePreferencesStore((s) => s.shortcuts);
   const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
+  const dimInactivePanes = usePreferencesStore((s) => s.dimInactivePanes);
   const miniOpen = useChatStore((s) => s.mini.open);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const openMini = useChatStore((s) => s.openMini);
@@ -1653,6 +1654,7 @@ export default function App() {
         <TerminalStack
           tabs={tabs}
           activeId={activeId}
+          dimInactivePanes={dimInactivePanes}
           registerHandle={registerTerminalHandle}
           onSearchReady={handleSearchReady}
           onCwd={handleTerminalCwd}

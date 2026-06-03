@@ -9,6 +9,7 @@ import { leafIds } from "./lib/panes";
 type Props = {
   tabs: Tab[];
   activeId: number;
+  dimInactivePanes: boolean;
   /** Register/unregister handle by leaf id (not tab id). */
   registerHandle: (leafId: number, handle: TerminalPaneHandle | null) => void;
   onSearchReady: (leafId: number, addon: SearchAddon) => void;
@@ -29,6 +30,7 @@ type Bundle = {
 export function TerminalStack({
   tabs,
   activeId,
+  dimInactivePanes,
   registerHandle,
   onSearchReady,
   onCwd,
@@ -105,6 +107,7 @@ export function TerminalStack({
               tabVisible={tabVisible}
               activeLeafId={t.activeLeafId}
               spillToDisk={t.spillToDisk ?? false}
+              dimInactivePanes={dimInactivePanes}
               onFocusLeaf={(leafId) => onFocusLeaf(t.id, leafId)}
               getBundle={getBundle}
             />

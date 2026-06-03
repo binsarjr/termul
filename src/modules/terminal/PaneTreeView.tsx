@@ -22,6 +22,7 @@ type Props = {
   activeLeafId: number;
   /** Tab-level "keep full output to disk"; applies to every pane in the tab. */
   spillToDisk: boolean;
+  dimInactivePanes: boolean;
   onFocusLeaf: (leafId: number) => void;
   getBundle: (leafId: number) => LeafBundle;
 };
@@ -31,6 +32,7 @@ export function PaneTreeView({
   tabVisible,
   activeLeafId,
   spillToDisk,
+  dimInactivePanes,
   onFocusLeaf,
   getBundle,
 }: Props) {
@@ -48,7 +50,8 @@ export function PaneTreeView({
           if (!focused) onFocusLeaf(node.id);
         }}
         data-pane-leaf={node.id}
-        className="relative h-full w-full"
+        className="relative h-full w-full transition-opacity duration-150"
+        style={dimInactivePanes && !focused ? { opacity: 0.4 } : undefined}
       >
         <TerminalPane
           leafId={node.id}
@@ -79,6 +82,7 @@ export function PaneTreeView({
               tabVisible={tabVisible}
               activeLeafId={activeLeafId}
               spillToDisk={spillToDisk}
+              dimInactivePanes={dimInactivePanes}
               onFocusLeaf={onFocusLeaf}
               getBundle={getBundle}
             />

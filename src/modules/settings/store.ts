@@ -77,6 +77,8 @@ export type Preferences = {
   /** Max panes a single terminal tab can be split into. Clamped to the
    * renderer pool size so panes never evict each other. */
   maxPanesPerTab: number;
+  /** Dim inactive panes to visually highlight the active one. */
+  dimInactivePanes: boolean;
   /** Inline shell-history autocomplete (ghost text + Ctrl+Space dropdown). */
   historyAutocomplete: boolean;
   lastWslDistro: string | null;
@@ -132,6 +134,7 @@ const KEY_AGENT_NOTIFICATIONS = "agentNotifications";
 const KEY_SHORTCUTS = "shortcuts";
 const KEY_EDITOR_AUTO_SAVE = "editorAutoSave";
 const KEY_EDITOR_AUTO_SAVE_DELAY = "editorAutoSaveDelay";
+const KEY_DIM_INACTIVE_PANES = "dimInactivePanes";
 
 const TERMINAL_FONT_SIZE_DEFAULT = 14;
 const TERMINAL_FONT_SIZE_MIN = 8;
@@ -191,6 +194,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   terminalFontSize: TERMINAL_FONT_SIZE_DEFAULT,
   terminalScrollback: TERMINAL_SCROLLBACK_DEFAULT,
   maxPanesPerTab: MAX_PANES_PER_TAB_DEFAULT,
+  dimInactivePanes: false,
   historyAutocomplete: true,
   lastWslDistro: null,
   zoomLevel: 1.0,
@@ -327,6 +331,9 @@ export async function loadPreferences(): Promise<Preferences> {
       get<number>(KEY_MAX_PANES_PER_TAB) ??
         DEFAULT_PREFERENCES.maxPanesPerTab,
     ),
+    dimInactivePanes:
+      get<boolean>(KEY_DIM_INACTIVE_PANES) ??
+      DEFAULT_PREFERENCES.dimInactivePanes,
     historyAutocomplete:
       get<boolean>(KEY_HISTORY_AUTOCOMPLETE) ??
       DEFAULT_PREFERENCES.historyAutocomplete,
@@ -541,6 +548,11 @@ export async function setMaxPanesPerTab(value: number): Promise<void> {
   await writePref(KEY_MAX_PANES_PER_TAB, clampMaxPanesPerTab(value));
 }
 
+export async function setDimInactivePanes(value: boolean): Promise<void> {
+  await writePref(KEY_DIM_INACTIVE_PANES, value);
+}
+
+
 export async function setHistoryAutocomplete(value: boolean): Promise<void> {
   await writePref(KEY_HISTORY_AUTOCOMPLETE, value);
 }
@@ -619,6 +631,7 @@ export async function onPreferencesChange(
     [KEY_TERMINAL_FONT_SIZE]: "terminalFontSize",
     [KEY_TERMINAL_SCROLLBACK]: "terminalScrollback",
     [KEY_MAX_PANES_PER_TAB]: "maxPanesPerTab",
+    [KEY_DIM_INACTIVE_PANES]: "dimInactivePanes",
     [KEY_HISTORY_AUTOCOMPLETE]: "historyAutocomplete",
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
     [KEY_ZOOM_LEVEL]: "zoomLevel",
