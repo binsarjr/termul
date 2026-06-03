@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { currentWorkspaceEnv } from "@/modules/workspace";
+import { fsBridge } from "@/modules/workspace";
 import {
   ArrowDown01Icon,
   ArrowUp01Icon,
@@ -8,7 +8,6 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { RenderingCancelledException, TextLayer } from "pdfjs-dist";
 import type { RenderTask } from "pdfjs-dist/types/src/display/api";
@@ -67,10 +66,7 @@ export function PdfViewerPane({ path, visible }: Props) {
     setCurrentPage(1);
     (async () => {
       try {
-        const buf = await invoke<ArrayBuffer>("fs_read_bytes", {
-          path,
-          workspace: currentWorkspaceEnv(),
-        });
+        const buf = await fsBridge.readBytes(path);
         if (cancelled) return;
         loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buf) });
         doc = await loadingTask.promise;

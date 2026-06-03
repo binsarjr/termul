@@ -1,12 +1,11 @@
 import { cn } from "@/lib/utils";
-import { currentWorkspaceEnv } from "@/modules/workspace";
+import { fsBridge } from "@/modules/workspace";
 import {
   Download01Icon,
   MinusSignIcon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -79,10 +78,7 @@ export function ImageViewerPane({ path, visible }: Props) {
     setFit(true);
     (async () => {
       try {
-        const buf = await invoke<ArrayBuffer>("fs_read_bytes", {
-          path,
-          workspace: currentWorkspaceEnv(),
-        });
+        const buf = await fsBridge.readBytes(path);
         if (cancelled) return;
         const ext = path.split(".").pop()?.toLowerCase() ?? "";
         const blob = new Blob([buf], {

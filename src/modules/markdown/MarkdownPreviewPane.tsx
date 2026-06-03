@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
-import { currentWorkspaceEnv } from "@/modules/workspace";
-import { invoke } from "@tauri-apps/api/core";
+import { fsBridge } from "@/modules/workspace";
 import GithubSlugger from "github-slugger";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
@@ -10,11 +9,6 @@ import { MarkdownViewToggle } from "./MarkdownViewToggle";
 import { PreviewCode } from "./PreviewCode";
 import { Toc, type TocItem } from "./Toc";
 import "katex/dist/katex.min.css";
-
-type ReadResult =
-  | { kind: "text"; content: string; size: number }
-  | { kind: "binary"; size: number }
-  | { kind: "toolarge"; size: number; limit: number };
 
 type Status =
   | { kind: "loading" }
@@ -52,10 +46,8 @@ export function MarkdownPreviewPane({ path, visible, onOpenEditor }: Props) {
   useEffect(() => {
     let cancelled = false;
     setStatus({ kind: "loading" });
-    invoke<ReadResult>("fs_read_file", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    })
+    fsBridge
+      .readFile(path)
       .then((res) => {
         if (cancelled) return;
         if (res.kind === "text") {

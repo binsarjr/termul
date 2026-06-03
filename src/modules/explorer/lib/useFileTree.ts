@@ -1,6 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { currentWorkspaceEnv } from "@/modules/workspace";
+import { fsBridge } from "@/modules/workspace";
 import { useLazyRef } from "@/lib/useLazyRef";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { listenFsChanged, watchAdd, watchRemove } from "./watch";
@@ -106,11 +105,7 @@ export function useFileTree(rootPath: string | null, options?: Options) {
   const fetchChildren = useCallback(async (path: string) => {
     setNodes((s) => ({ ...s, [path]: { status: "loading" } }));
     try {
-      const entries = await invoke<DirEntry[]>("fs_read_dir", {
-        path,
-        showHidden: showHiddenRef.current,
-        workspace: currentWorkspaceEnv(),
-      });
+      const entries = await fsBridge.readDir(path, showHiddenRef.current);
 
       const liveDirs = new Set<string>();
       for (const e of entries) {
@@ -306,13 +301,12 @@ export function useFileTree(rootPath: string | null, options?: Options) {
         return;
       }
       const path = joinPath(pendingCreate.parentPath, trimmed);
-      const cmd =
-        pendingCreate.kind === "dir" ? "fs_create_dir" : "fs_create_file";
+      const isDir = pendingCreate.kind === "dir";
       try {
-        await invoke(cmd, { path, workspace: currentWorkspaceEnv() });
+        await (isDir ? fsBridge.createDir(path) : fsBridge.createFile(path));
         await fetchChildren(pendingCreate.parentPath);
       } catch (e) {
-        console.error(`${cmd} failed:`, e);
+        console.error(`create ${isDir ? "dir" : "file"} failed:`, e);
       } finally {
         setPendingCreate(null);
       }
@@ -339,11 +333,7 @@ export function useFileTree(rootPath: string | null, options?: Options) {
       }
       const to = joinPath(parent, trimmed);
       try {
-        await invoke("fs_rename", {
-          from: renaming,
-          to,
-          workspace: currentWorkspaceEnv(),
-        });
+        await fsBridge.rename(renaming, to);
         options?.onPathRenamed?.(renaming, to);
         await fetchChildren(parent);
       } catch (e) {
@@ -358,7 +348,7 @@ export function useFileTree(rootPath: string | null, options?: Options) {
   const deletePath = useCallback(
     async (path: string) => {
       try {
-        await invoke("fs_delete", { path, workspace: currentWorkspaceEnv() });
+        await fsBridge.remove(path);
         options?.onPathDeleted?.(path);
         await fetchChildren(dirname(path));
       } catch (e) {

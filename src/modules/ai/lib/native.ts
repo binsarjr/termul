@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { currentWorkspaceEnv } from "@/modules/workspace";
+import { currentWorkspaceEnv, fsBridge } from "@/modules/workspace";
 
 export type ReadResult =
   | { kind: "text"; content: string; size: number }
@@ -130,34 +130,15 @@ export const native = {
       path,
       workspace: currentWorkspaceEnv(),
     }),
-  readFile: (path: string) =>
-    invoke<ReadResult>("fs_read_file", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    }),
-  writeFile: (path: string, content: string) =>
-    invoke<void>("fs_write_file", {
-      path,
-      content,
-      workspace: currentWorkspaceEnv(),
-    }),
-  canonicalize: (path: string) =>
-    invoke<string>("fs_canonicalize", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    }),
-  createFile: (path: string) =>
-    invoke<void>("fs_create_file", { path, workspace: currentWorkspaceEnv() }),
-  createDir: (path: string) =>
-    invoke<void>("fs_create_dir", { path, workspace: currentWorkspaceEnv() }),
+  readFile: (path: string): Promise<ReadResult> => fsBridge.readFile(path),
+  writeFile: (path: string, content: string): Promise<void> =>
+    fsBridge.writeFile(path, content),
+  canonicalize: (path: string): Promise<string> => fsBridge.canonicalize(path),
+  createFile: (path: string): Promise<void> => fsBridge.createFile(path),
+  createDir: (path: string): Promise<void> => fsBridge.createDir(path),
   // AI tooling never sees dot-prefixed entries regardless of the user's
   // explorer preference — keeps .git / .env / .ssh out of agent context.
-  readDir: (path: string) =>
-    invoke<DirEntry[]>("fs_read_dir", {
-      path,
-      showHidden: false,
-      workspace: currentWorkspaceEnv(),
-    }),
+  readDir: (path: string): Promise<DirEntry[]> => fsBridge.readDir(path, false),
   grep: (params: {
     pattern: string;
     root: string;
