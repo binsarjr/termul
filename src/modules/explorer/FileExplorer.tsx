@@ -138,7 +138,20 @@ function buildRows(
             message: child.message,
           });
         } else if (child?.status === "loaded") {
-          walk(path, depth + 1);
+          if (child.entries.length === 0) {
+            // An expanded-but-empty directory renders an explicit marker so a
+            // genuinely empty folder is distinguishable from a failed/stuck load
+            // (both otherwise show nothing under the row).
+            rows.push({
+              kind: "status",
+              key: `empty:${path}`,
+              depth: depth + 1,
+              tone: "muted",
+              message: "(empty)",
+            });
+          } else {
+            walk(path, depth + 1);
+          }
         }
       }
     }
