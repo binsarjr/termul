@@ -8,11 +8,11 @@ use tempfile::NamedTempFile;
 
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
-const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+pub const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 // Binary viewers (PDF) routinely exceed the 10 MB text cap; give them a larger
 // dedicated ceiling. Past this, the UI falls back to the system viewer.
-const MAX_READ_BYTES_BINARY: u64 = 100 * 1024 * 1024; // 100 MB
+pub const MAX_READ_BYTES_BINARY: u64 = 100 * 1024 * 1024; // 100 MB
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -68,16 +68,21 @@ pub fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<Rea
         e.to_string()
     })?;
 
-    // Null-byte sniff on the first chunk. Not perfect (misses UTF-16 BOM
-    // cases) but catches the common "this is a PNG" mistake cheaply.
+    Ok(classify_bytes(bytes, size))
+}
+
+/// Classify file bytes as Text or Binary, shared by local and remote (SSH)
+/// reads so both honour the identical contract. Null-byte sniff on the first
+/// chunk (not perfect — misses UTF-16 BOM cases — but catches the common "this
+/// is a PNG" mistake cheaply), then a UTF-8 validity check.
+pub fn classify_bytes(bytes: Vec<u8>, size: u64) -> ReadResult {
     let sniff_len = bytes.len().min(BINARY_SNIFF_BYTES);
     if bytes[..sniff_len].contains(&0) {
-        return Ok(ReadResult::Binary { size });
+        return ReadResult::Binary { size };
     }
-
     match String::from_utf8(bytes) {
-        Ok(content) => Ok(ReadResult::Text { content, size }),
-        Err(_) => Ok(ReadResult::Binary { size }),
+        Ok(content) => ReadResult::Text { content, size },
+        Err(_) => ReadResult::Binary { size },
     }
 }
 

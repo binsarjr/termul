@@ -187,6 +187,45 @@ pub fn run(program: &str, args: &[String], dur: Duration) -> Result<Run, String>
     })
 }
 
+/// Run a remote `sh` script over the master with positional args, every arg
+/// single-quoted so the remote login shell cannot word-split, glob, or expand
+/// them. Inside the script `$0` is `_` and the args are `$1`, `$2`, … — so a
+/// path reaches the script as `"$1"` no matter what bytes it contains. Ensures
+/// the master first.
+pub fn exec(
+    state: &SshState,
+    host: &str,
+    script: &str,
+    args: &[&str],
+    dur: Duration,
+) -> Result<Run, String> {
+    ensure_master(state, host)?;
+    let sock = socket_path(host)?.to_string_lossy().into_owned();
+    let mut remote = format!("sh -c {} _", super::parse::sq(script));
+    for a in args {
+        remote.push(' ');
+        remote.push_str(&super::parse::sq(a));
+    }
+    run(
+        "ssh",
+        &[String::from("-S"), sock, host.to_string(), remote],
+        dur,
+    )
+}
+
+/// Format a failed remote op into a user-facing error.
+pub(crate) fn op_error(host: &str, what: &str, result: &Run) -> String {
+    if result.timed_out {
+        return format!("ssh: `{what}` on {host} timed out");
+    }
+    let stderr = result.stderr.trim();
+    if stderr.is_empty() {
+        format!("ssh: `{what}` on {host} failed (exit {:?})", result.exit_code)
+    } else {
+        format!("ssh: {stderr}")
+    }
+}
+
 /// `ssh -O check` — true when a live master owns the socket.
 fn master_alive(sock: &str, host: &str) -> bool {
     if !Path::new(sock).exists() {
@@ -253,7 +292,7 @@ pub fn home(state: &SshState, host: &str) -> Result<String, String> {
     let args = vec!["-S".into(), sock, host.into(), "pwd".into()];
     let result = run("ssh", &args, Duration::from_secs(EXEC_TIMEOUT_SECS))?;
     if !result.ok() {
-        return Err(exec_error(host, "pwd", &result));
+        return Err(op_error(host, "pwd", &result));
     }
     let home = result
         .stdout_string()
@@ -314,18 +353,6 @@ fn connect_error(host: &str, result: &Run) -> String {
     }
     if stderr.is_empty() {
         format!("ssh: could not connect to {host}")
-    } else {
-        format!("ssh: {stderr}")
-    }
-}
-
-fn exec_error(host: &str, what: &str, result: &Run) -> String {
-    if result.timed_out {
-        return format!("ssh: `{what}` on {host} timed out");
-    }
-    let stderr = result.stderr.trim();
-    if stderr.is_empty() {
-        format!("ssh: `{what}` on {host} failed (exit {:?})", result.exit_code)
     } else {
         format!("ssh: {stderr}")
     }

@@ -215,12 +215,6 @@ pub enum WorkspaceEnv {
     Wsl {
         distro: String,
     },
-    /// Remote filesystem over the user's own OpenSSH client. `host` is the bare
-    /// `[user@]host` token (a `~/.ssh/config` alias, hostname, or `user@host`)
-    /// handed straight to `ssh`/`sftp`. Path values are remote POSIX paths.
-    Ssh {
-        host: String,
-    },
 }
 
 impl WorkspaceEnv {
@@ -230,15 +224,6 @@ impl WorkspaceEnv {
 
     pub fn is_wsl(&self) -> bool {
         matches!(self, Self::Wsl { .. })
-    }
-
-    /// The remote host when this is an SSH workspace, for dispatching fs ops to
-    /// the remote backend instead of `std::fs`.
-    pub fn ssh_host(&self) -> Option<&str> {
-        match self {
-            Self::Ssh { host } => Some(host),
-            _ => None,
-        }
     }
 }
 
@@ -254,9 +239,6 @@ pub fn resolve_path(path: &str, workspace: &WorkspaceEnv) -> PathBuf {
     match workspace {
         WorkspaceEnv::Local => PathBuf::from(path),
         WorkspaceEnv::Wsl { distro } => wsl_path_to_host(distro, path),
-        // SSH fs ops dispatch to the remote backend before reaching here; this
-        // arm only keeps the match exhaustive and echoes the remote path back.
-        WorkspaceEnv::Ssh { .. } => PathBuf::from(path),
     }
 }
 
