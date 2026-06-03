@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLocalHost, parseSshHost } from "./remoteCwd";
+import { isLocalHost, parseSshHost, parseSshTarget } from "./remoteCwd";
 
 describe("isLocalHost", () => {
   it("treats the always-local hosts as local regardless of hostname", () => {
@@ -134,5 +134,48 @@ describe("parseSshHost", () => {
     expect(parseSshHost("ssh user@host.example.com:2222")).toBe(
       "host.example.com",
     );
+  });
+});
+
+describe("parseSshTarget", () => {
+  it("returns the bare host when no user is given", () => {
+    expect(parseSshTarget("ssh pi")).toBe("pi");
+  });
+
+  it("PRESERVES the user@ prefix (the whole point — connect as that identity)", () => {
+    expect(parseSshTarget("ssh user@pi")).toBe("user@pi");
+    expect(parseSshTarget("ssh deploy@host.example.com")).toBe(
+      "deploy@host.example.com",
+    );
+  });
+
+  it("preserves user@ on an IP-address host", () => {
+    expect(parseSshTarget("ssh user@10.0.0.5")).toBe("user@10.0.0.5");
+  });
+
+  it("keeps the user but drops the port flag and remote command", () => {
+    expect(parseSshTarget("ssh -p 2222 root@host htop")).toBe("root@host");
+  });
+
+  it("skips -i and keeps the user@host", () => {
+    expect(parseSshTarget("ssh -i ~/.ssh/id_ed25519 deploy@host")).toBe(
+      "deploy@host",
+    );
+  });
+
+  it("strips the scheme and /path but keeps user (and port) in the URL form", () => {
+    expect(parseSshTarget("ssh://user@host:22/x")).toBe("user@host:22");
+  });
+
+  it("rejects the ssh-* sibling tools just like parseSshHost", () => {
+    expect(parseSshTarget("ssh-add ~/.ssh/id")).toBeNull();
+    expect(parseSshTarget("ssh-keygen -t ed25519")).toBeNull();
+    expect(parseSshTarget("sshpass -p x ssh h")).toBeNull();
+  });
+
+  it("returns null for non-ssh / hostless / empty input", () => {
+    expect(parseSshTarget("ls")).toBeNull();
+    expect(parseSshTarget("ssh")).toBeNull();
+    expect(parseSshTarget("")).toBeNull();
   });
 });

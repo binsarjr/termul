@@ -236,6 +236,11 @@ export function registerPromptTracker(
       // Independent of the alt-screen block-capture guard below so depth stays
       // balanced whether a command runs on the normal or the alternate screen.
       commandDepth++;
+      // Capture the typed command from the buffer BEFORE the start pin is
+      // cleared. Many shell integrations emit a bare `C` with no command in the
+      // payload, so this buffer read (the same source the autocomplete uses) is
+      // what makes `ssh <host>` detection fire on a stock OSC 133 setup.
+      const typedCommand = readTypedCommand(term, commandStart);
       // Command submitted: the input line is final, no more editing.
       clearCommandStart();
       // Skip block capture inside a TUI (vim/htop/less): the alt screen has no
@@ -248,7 +253,9 @@ export function registerPromptTracker(
         // C (depth > 1) is a command running *inside* the ssh session, not the
         // local one — firing for it would flip the indicator to a nested host
         // (and leak a pill onto an injected `C;ssh ...` in command output).
-        if (command && commandDepth === 1) opts?.onCommand?.(command);
+        // Fall back to the buffer-read command when the payload omits it.
+        const detected = command || typedCommand;
+        if (detected && commandDepth === 1) opts?.onCommand?.(detected);
         // Hand this prompt's A marker (the command line) to the block so its
         // highlight spans the command, not just the output. Release ownership
         // (marker = null) so the next A doesn't dispose it — the block owns it
@@ -309,6 +316,31 @@ function isAltScreen(term: Terminal): boolean {
     return term.buffer.active.type === "alternate";
   } catch {
     return false;
+  }
+}
+
+/**
+ * Best-effort read of the just-submitted command from the buffer: the text on
+ * the pinned command-start row, from the start column to the end of that row.
+ * Used as a fallback for OSC 133 `C` payloads that carry no command (the common
+ * case), so `ssh <host>` detection works without iTerm-style command payloads.
+ * Single-row only; returns "" on the alt screen, a disposed pin, or no row.
+ */
+function readTypedCommand(
+  term: Terminal,
+  start: { marker: IMarker | null; col: number } | null,
+): string {
+  const m = start?.marker;
+  if (!m || m.isDisposed || isAltScreen(term)) return "";
+  try {
+    const row = term.buffer.active.getLine(m.line);
+    if (!row) return "";
+    // trimRight: drop the trailing blank cells so we get just the command.
+    const text = row.translateToString(true);
+    if (start!.col >= text.length) return "";
+    return text.slice(start!.col).trim();
+  } catch {
+    return "";
   }
 }
 

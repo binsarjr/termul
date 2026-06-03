@@ -59,18 +59,31 @@ function bareHost(token: string): string | null {
   return t.length > 0 ? t : null;
 }
 
+/** Reduce a `[user@]host[:port][/path]` token (optionally `ssh://`-prefixed) to
+ * its connection target — the `[user@]host` destination ssh would dial. Keeps
+ * the `user@` (and any port / IPv6 brackets), strips only the scheme and a
+ * trailing `/path`. Null when nothing remains. */
+function targetHost(token: string): string | null {
+  let t = token;
+  const scheme = t.match(/^[a-z][a-z0-9+.-]*:\/\//i);
+  if (scheme) t = t.slice(scheme[0].length);
+  // The `/path` tail only appears in the ssh:// URL form; bare CLI hosts have none.
+  const slash = t.indexOf("/");
+  if (slash >= 0) t = t.slice(0, slash);
+  return t.length > 0 ? t : null;
+}
+
 /**
- * Detect an `ssh <host>` invocation from a captured command line and return the
- * bare host, or null when it isn't an ssh command. Pure and defensive: never
- * throws. Used to surface a "remote" indicator the moment a local `ssh` runs,
- * even against a stock remote shell that emits no OSC 7 / OSC 133 of its own.
+ * Extract the first positional destination token from a local `ssh <host>`
+ * invocation (the raw `[user@]host[:port]` or `ssh://…` token), or null when it
+ * isn't an ssh command. Pure and defensive: never throws.
  *
  * Rejects sibling tools whose name merely starts with "ssh" (ssh-keygen,
  * ssh-add, ssh-copy-id, ssh-agent, sshfs, sshpass, autossh): the first token's
  * basename must equal "ssh" exactly. Also accepts the `ssh://[user@]host[:port]`
  * URL form when it's the first non-flag token.
  */
-export function parseSshHost(command: string): string | null {
+function firstSshArg(command: string): string | null {
   const trimmed = command.trim();
   if (!trimmed) return null;
   const tokens = trimmed.split(/\s+/);
@@ -82,8 +95,8 @@ export function parseSshHost(command: string): string | null {
     const base = head.split(/[\\/]/).pop() ?? "";
     if (base !== "ssh") return null;
   }
-  // When the first token itself is the ssh:// URL, the host lives there.
-  if (isSchemeForm) return bareHost(head);
+  // When the first token itself is the ssh:// URL, it IS the destination.
+  if (isSchemeForm) return head;
   // Walk the remaining tokens, skipping option flags (and the value tokens that
   // value-flags pull along), until the first positional [user@]host.
   for (let i = 1; i < tokens.length; i++) {
@@ -104,7 +117,29 @@ export function parseSshHost(command: string): string | null {
       if (k >= 0 && k === body.length - 1) i++;
       continue;
     }
-    return bareHost(tok);
+    return tok;
   }
   return null;
+}
+
+/**
+ * The bare host of an `ssh <host>` invocation (user@, :port and /path stripped),
+ * or null when it isn't an ssh command. Used for human-facing display where a
+ * `user@` prefix would be noise.
+ */
+export function parseSshHost(command: string): string | null {
+  const arg = firstSshArg(command);
+  return arg === null ? null : bareHost(arg);
+}
+
+/**
+ * The full connection target of an `ssh <host>` invocation — the `[user@]host`
+ * exactly as ssh would dial it (user preserved), or null when it isn't an ssh
+ * command. This is what we hand to `ssh_connect` so the remote browser follows
+ * the SAME identity the terminal connected as: `ssh user@host` must browse as
+ * that `user`, not the config's default user for the host.
+ */
+export function parseSshTarget(command: string): string | null {
+  const arg = firstSshArg(command);
+  return arg === null ? null : targetHost(arg);
 }

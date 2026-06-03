@@ -3,7 +3,7 @@ import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SearchAddon } from "@xterm/addon-search";
 import { hostname } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { isLocalHost, parseSshHost } from "./remoteCwd";
+import { isLocalHost, parseSshTarget } from "./remoteCwd";
 import { AutocompleteController } from "./autocompleteController";
 import { BlockController, type BlockFrame } from "./blockController";
 import {
@@ -428,8 +428,10 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         // that emits no OSC 7 of its own. Cleared when the command ends (the
         // local ssh process exits → OSC 133 D).
         onCommand: (cmd) => {
-          const host = parseSshHost(cmd);
-          if (host) s.callbacks.onSshHost?.(host);
+          // The FULL target (`user@host`), not the bare host, so the remote
+          // browser connects as the same identity the terminal did.
+          const target = parseSshTarget(cmd);
+          if (target) s.callbacks.onSshHost?.(target);
         },
         onCommandEnd: () => s.callbacks.onSshHost?.(null),
       });
