@@ -32,6 +32,7 @@ import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
 import { useExplorerGitStatus } from "./lib/useExplorerGitStatus";
 import { useFileTree } from "./lib/useFileTree";
 import { useGlobalShortcuts } from "@/modules/shortcuts";
+import { isRemotePath } from "@/modules/workspace";
 
 export type FileExplorerHandle = {
   focus: () => void;
@@ -217,8 +218,13 @@ export function FileExplorer({
       [entryPaths, scrollEntryIntoView, selectedPath],
     );
 
+    // No remote file-search backend yet — disable search entirely while the
+    // explorer is rooted on a remote (ssh://) host.
+    const searchable = !!rootPath && !isRemotePath(rootPath);
+
     useGlobalShortcuts({
       "explorer.search": () => {
+        if (!searchable) return;
         if (searchRef.current?.isFocused()) {
           setIsSearchOpen(false);
           return;
@@ -386,16 +392,18 @@ export function FileExplorer({
             {basename(rootPath)}
           </span>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 text-muted-foreground hover:text-foreground"
-            onClick={() => setIsSearchOpen((v) => !v)}
-            title="Search files"
-            aria-label="Search files"
-          >
-            <HugeiconsIcon icon={Search01Icon} size={13} strokeWidth={2} />
-          </Button>
+          {searchable && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground hover:text-foreground"
+              onClick={() => setIsSearchOpen((v) => !v)}
+              title="Search files"
+              aria-label="Search files"
+            >
+              <HugeiconsIcon icon={Search01Icon} size={13} strokeWidth={2} />
+            </Button>
+          )}
 
           <Button
             variant="ghost"
@@ -430,7 +438,7 @@ export function FileExplorer({
           ref={searchRef}
           rootPath={rootPath}
           onOpenFile={onOpenFile}
-          open={isSearchOpen}
+          open={isSearchOpen && searchable}
           onRequestClose={() => setIsSearchOpen(false)}
           onActiveChange={setIsSearchActive}
           onRevealInTerminal={onRevealInTerminal}

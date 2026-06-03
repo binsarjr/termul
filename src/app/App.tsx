@@ -132,6 +132,7 @@ import { UpdaterDialog, useUpdaterStore } from "@/modules/updater";
 import {
   currentWorkspaceEnv,
   getWslHome,
+  isRemotePath,
   LOCAL_WORKSPACE,
   useWorkspaceEnvStore,
   type WorkspaceEnv,
@@ -1165,9 +1166,15 @@ export default function App() {
   // re-fire git IPC for the badge. The active panel resolves the current
   // context path on its own when the user actually opens git.
   const badgeContextPath = workspaceFallbackPath;
-  const sourceControlPath = sourceControlActive
+  const activeContextPath = sourceControlActive
     ? sourceControlContextPath
     : badgeContextPath;
+  // A remote (ssh://) context has no local git backend; fall back to the stable
+  // local workspace path so the panel never fires git IPC against a remote path
+  // (mirrors the explorer guard in useExplorerGitStatus).
+  const sourceControlPath = isRemotePath(activeContextPath ?? "")
+    ? badgeContextPath
+    : activeContextPath;
   const sourceControl = useSourceControl(sourceControlPath, true);
 
   const toggleSourceControl = useCallback(() => {
@@ -1183,7 +1190,8 @@ export default function App() {
       });
       return;
     }
-    if (!sourceControlContextPath) return;
+    if (!sourceControlContextPath || isRemotePath(sourceControlContextPath))
+      return;
     try {
       const repo = await native.gitResolveRepo(sourceControlContextPath);
       if (!repo) return;
