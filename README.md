@@ -1,10 +1,10 @@
 <div align="center">
   <img src="public/logo.png" width="144" height="144" alt="Termul" />
   <h1>Termul</h1>
-  <p><sub><b>TER</b>minal&nbsp;<b>mUL</b>tiplexer</sub></p>
+  <p><sub>(<b>TER</b>minal&nbsp;<b>mUL</b>tiplexer)</sub></p>
 
   <p><em>(it's not just a terminal.)</em></p>
-  <p><strong>A lightweight, AI-native terminal multiplexer.</strong></p>
+  <p><strong>A lightweight, AI-native terminal &amp; dev workspace.</strong></p>
 
   <p>
     <img src="https://img.shields.io/github/v/release/binsarjr/termul?label=version&color=blue" alt="version" />
@@ -21,7 +21,7 @@
 
 ---
 
-**Termul** — short for **TER**minal **mUL**tiplexer — is a lightweight open-source terminal multiplexer built on Tauri 2 + Rust and React 19. Run many shells side by side in tabs, all in one fast native window. A native PTY backend with a WebGL renderer, an agentic AI side-panel that runs against your own keys or fully local models, plus a code editor, file explorer, and source control with a git graph built in. About 7-8 MB on disk. No telemetry. No account.
+**Termul** (short for **TER**minal **mUL**tiplexer) is a lightweight open-source terminal and dev workspace built on Tauri 2 + Rust and React 19. A native PTY backend with a WebGL renderer and tabbed, splittable terminals, an agentic AI side-panel that runs against your own keys or fully local models, an agentic AI side-panel that runs against your own keys or fully local models, plus a code editor, file explorer, and source control with a git graph built in. About 7-8 MB on disk. No telemetry. No account.
 
 > A fork of [Terax](https://github.com/crynta/terax-ai). See [Credits](#credits).
 
