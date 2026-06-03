@@ -97,7 +97,11 @@ fn socket_dir() -> Result<PathBuf, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+        // Fail closed: if we can't lock the socket dir down to the owner, refuse
+        // rather than risk a world-accessible control socket a local attacker
+        // could hijack the multiplexed session through.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("ssh socket dir perms: {e}"))?;
     }
     Ok(dir)
 }
@@ -394,6 +398,19 @@ pub fn disconnect(state: &SshState, host: &str) -> Result<(), String> {
     }
     state.forget(host);
     Ok(())
+}
+
+/// Tear down every live ControlMaster. Called on app exit: `ssh -fNM` masters
+/// daemonize (`-f` detaches them from our process), so without this they'd
+/// outlive the app until `ControlPersist` reaps them. Best-effort.
+pub fn disconnect_all(state: &SshState) {
+    let hosts: Vec<String> = {
+        let map = state.inner.locks.lock().expect("ssh locks poisoned");
+        map.keys().cloned().collect()
+    };
+    for host in hosts {
+        let _ = disconnect(state, &host);
+    }
 }
 
 fn connect_error(host: &str, result: &Run) -> String {
