@@ -1126,7 +1126,7 @@ export default function App() {
     sshRoot: sshExplorerRoot,
     status: sshExplorerStatus,
     retry: retrySshExplorer,
-  } = useSshExplorerRoot(explorerSshHost);
+  } = useSshExplorerRoot(explorerSshHost, activeRemoteCwd);
   const effectiveExplorerRoot = sshExplorerRoot ?? explorerRoot;
 
   const activeFilePath = (() => {

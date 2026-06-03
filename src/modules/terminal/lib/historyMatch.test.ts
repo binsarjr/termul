@@ -3,6 +3,7 @@ import {
   deriveInputFromRow,
   ghostSuffix,
   matchHistory,
+  promptCwd,
   promptInputStart,
 } from "./historyMatch";
 
@@ -127,5 +128,41 @@ describe("promptInputStart", () => {
     const row = "host $ echo x > file";
     const col = promptInputStart(row, row.length);
     expect(row.slice(col)).toBe("echo x > file");
+  });
+});
+
+describe("promptCwd", () => {
+  it("pulls `~/sub` from the default bash prompt", () => {
+    expect(promptCwd("pi@raspberrypi:~/Backups $ ")).toBe("~/Backups");
+  });
+
+  it("pulls a bare `~` (home)", () => {
+    expect(promptCwd("pi@raspberrypi:~ $ ")).toBe("~");
+  });
+
+  it("pulls an absolute path", () => {
+    expect(promptCwd("pi@raspberrypi:/var/log $ ")).toBe("/var/log");
+  });
+
+  it("handles a root `#` prompt glued to the path (no space)", () => {
+    expect(promptCwd("root@host:/etc# ")).toBe("/etc");
+  });
+
+  it("handles zsh `%` and starship `❯` prompts", () => {
+    expect(promptCwd("host ~/proj % ")).toBe("~/proj");
+    expect(promptCwd("~/proj ❯ ")).toBe("~/proj");
+  });
+
+  it("returns null once a command is being typed (row no longer ends at the sigil)", () => {
+    expect(promptCwd("pi@raspberrypi:~/Backups $ ls")).toBeNull();
+  });
+
+  it("returns null for a prompt with no path token", () => {
+    expect(promptCwd("❯ ")).toBeNull();
+    expect(promptCwd("$ ")).toBeNull();
+  });
+
+  it("takes the LAST path before the final sigil", () => {
+    expect(promptCwd("ran /usr/bin $ then cd ~/x $ ")).toBe("~/x");
   });
 });

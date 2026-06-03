@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { makeRemoteUri } from "@/modules/workspace";
 
 export type SshRootState =
@@ -7,6 +7,17 @@ export type SshRootState =
   | { status: "connecting"; host: string }
   | { status: "ready"; host: string; root: string }
   | { status: "error"; host: string; message: string };
+
+/** Expand the cwd reported by the remote shell against the host's home. The
+ * prompt heuristic reports `~`/`~/sub` (tilde, unresolved) or an absolute
+ * `/path`; anything else (or no cwd) falls back to home. */
+function resolveRemoteCwd(home: string, cwd: string | null): string {
+  if (!cwd || cwd === "~") return home;
+  const base = home.replace(/\/+$/, "");
+  if (cwd.startsWith("~/")) return base + cwd.slice(1);
+  if (cwd.startsWith("/")) return cwd;
+  return home;
+}
 
 /**
  * Auto-follow an SSH terminal: when the active tab is in an `ssh <host>` session
@@ -22,7 +33,10 @@ export type SshRootState =
  * reconnecting. A dropped master self-heals on the next read (the backend
  * re-establishes it on demand), so a stale cached home is never a dead end.
  */
-export function useSshExplorerRoot(sshHost: string | null): {
+export function useSshExplorerRoot(
+  sshHost: string | null,
+  remoteCwd: string | null = null,
+): {
   sshRoot: string | null;
   status: SshRootState;
   retry: () => void;
@@ -33,6 +47,10 @@ export function useSshExplorerRoot(sshHost: string | null): {
   // this a failed connection could never be retried from the UI.
   const [retryNonce, setRetryNonce] = useState(0);
   const homesRef = useRef<Map<string, string>>(new Map());
+  // Last cwd seen per host, so opening a remote file tab (which carries no cwd
+  // of its own) keeps the tree where the terminal last roamed instead of
+  // snapping back to home.
+  const cwdsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!sshHost) {
@@ -72,7 +90,22 @@ export function useSshExplorerRoot(sshHost: string | null): {
     };
   }, [sshHost, retryNonce]);
 
-  const sshRoot = state.status === "ready" ? state.root : null;
+  // Remember the active host's latest cwd for the file-tab fallback above.
+  useEffect(() => {
+    if (sshHost && remoteCwd) cwdsRef.current.set(sshHost, remoteCwd);
+  }, [sshHost, remoteCwd]);
+
+  // Root at the shell's cwd when known (the active terminal's `remoteCwd`, else
+  // the last cwd remembered for this host), resolving `~` against the home from
+  // the connect. Recomputes on every `cd` so the explorer follows the shell.
+  const sshRoot = useMemo(() => {
+    if (state.status !== "ready") return null;
+    const home = homesRef.current.get(state.host);
+    if (!home) return state.root;
+    const cwd = remoteCwd ?? cwdsRef.current.get(state.host) ?? null;
+    return makeRemoteUri(state.host, resolveRemoteCwd(home, cwd));
+  }, [state, remoteCwd]);
+
   const retry = () => setRetryNonce((n) => n + 1);
   return { sshRoot, status: state, retry };
 }

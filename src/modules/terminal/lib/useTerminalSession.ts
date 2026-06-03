@@ -5,6 +5,7 @@ import { hostname } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { isLocalHost, parseSshTarget } from "./remoteCwd";
 import { AutocompleteController } from "./autocompleteController";
+import { promptCwd } from "./historyMatch";
 import { BlockController, type BlockFrame } from "./blockController";
 import {
   DEFAULT_BYTE_CAP,
@@ -37,6 +38,11 @@ import {
   type Slot,
 } from "./rendererPool";
 
+// How long the cursor must sit still before the prompt-cwd heuristic reads the
+// row — long enough for a remote command's output to finish printing and the
+// new prompt to settle, short enough to feel instant after a `cd`.
+const CWD_SETTLE_MS = 150;
+
 type Callbacks = {
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
@@ -59,6 +65,10 @@ type Session = {
   // tab's sshHost holds), or null on the local shell. Read by the autocomplete
   // controller to match against the remote host's history instead of local.
   sshHost: string | null;
+  // True once this ssh session has emitted a real OSC 7 of its own, so the
+  // prompt-cwd heuristic stands down (the shell's own absolute path wins).
+  // Reset when the ssh session ends.
+  remoteOsc7Seen: boolean;
   pendingExit: number | null;
   shellExited: boolean;
   callbacks: Callbacks;
@@ -226,6 +236,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     lastCwd: null,
     lastCwdRemote: false,
     sshHost: null,
+    remoteOsc7Seen: false,
     pendingExit: null,
     shellExited: false,
     callbacks: {},
@@ -427,6 +438,17 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // 7 emitted by untrusted command output (remote SSH, `cat` of an
       // attacker file, etc.).
       const shellState = createShellIntegrationState();
+
+      // Both OSC 7 and the prompt-cwd heuristic funnel cwd updates through here,
+      // so the dedup and the session-ready signal live in one place.
+      const dispatchCwd = (next: string, remote: boolean) => {
+        markSessionReady(leafId);
+        if (s.lastCwd === next && s.lastCwdRemote === remote) return;
+        s.lastCwd = next;
+        s.lastCwdRemote = remote;
+        s.callbacks.onCwd?.(next, remote);
+      };
+
       const prompt = registerPromptTracker(term, shellState, {
         // Detect a local `ssh <host>` from the raw command line and surface a
         // remote indicator for its lifetime — even against a stock remote shell
@@ -443,6 +465,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         },
         onCommandEnd: () => {
           s.sshHost = null;
+          s.remoteOsc7Seen = false;
           s.callbacks.onSshHost?.(null);
         },
       });
@@ -464,15 +487,38 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       const cwd = registerCwdHandler(
         term,
         (next, host) => {
-          markSessionReady(leafId);
           const remote = !isLocalHost(host, localHostname);
-          if (s.lastCwd === next && s.lastCwdRemote === remote) return;
-          s.lastCwd = next;
-          s.lastCwdRemote = remote;
-          s.callbacks.onCwd?.(next, remote);
+          // A real OSC 7 from the remote shell is authoritative (absolute path),
+          // so stand the prompt heuristic down for the rest of the session.
+          if (remote) s.remoteOsc7Seen = true;
+          dispatchCwd(next, remote);
         },
         shellState,
       );
+
+      // Stock remote shells emit no OSC 7, so registerCwdHandler never fires for
+      // them. Recover the cwd from the prompt line instead: once output settles
+      // on a new prompt (the cursor stops moving), read the `\w` the default PS1
+      // prints (promptCwd) and let the explorer follow it. Gated to an ssh
+      // session that hasn't shown a real OSC 7, so the local shell is untouched.
+      let cwdTimer: ReturnType<typeof setTimeout> | null = null;
+      const readPromptCwd = () => {
+        cwdTimer = null;
+        if (!s.sshHost || s.remoteOsc7Seen) return;
+        const buf = term.buffer.active;
+        if (buf.type === "alternate") return;
+        const row = buf
+          .getLine(buf.baseY + buf.cursorY)
+          ?.translateToString(true);
+        const next = row ? promptCwd(row) : null;
+        if (next) dispatchCwd(next, true);
+      };
+      const cursorMove = term.onCursorMove(() => {
+        if (!s.sshHost || s.remoteOsc7Seen) return;
+        if (cwdTimer !== null) clearTimeout(cwdTimer);
+        cwdTimer = setTimeout(readPromptCwd, CWD_SETTLE_MS);
+      });
+
       return [
         () => {
           blockCtl.dispose();
@@ -481,6 +527,10 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         () => {
           autocompleteCtl.dispose();
           if (s.autocompleteCtl === autocompleteCtl) s.autocompleteCtl = null;
+        },
+        () => {
+          if (cwdTimer !== null) clearTimeout(cwdTimer);
+          cursorMove.dispose();
         },
         prompt.dispose,
         cwd,
