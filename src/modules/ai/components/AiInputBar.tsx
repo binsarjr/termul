@@ -247,7 +247,7 @@ export function AiInputBar() {
             <div className="flex items-start gap-2">
               <textarea
                 ref={c.textareaRef}
-                aria-label="Message Its Just Terminal"
+                aria-label="Message Termul"
                 value={c.value}
                 onChange={(e) => c.setValue(e.target.value)}
                 onKeyUp={updateTrigger}
@@ -293,7 +293,7 @@ export function AiInputBar() {
                     c.submit();
                   }
                 }}
-                placeholder="Ask Its Just Terminal anything   -   # for snippets and commands, @ for files"
+                placeholder="Ask Termul anything   -   # for snippets and commands, @ for files"
                 rows={1}
                 className={cn(
                   "max-h-40 flex-1 resize-none bg-transparent text-[13px] leading-relaxed outline-none",

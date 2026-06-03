@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Its Just Terminal",
+  "productName": "Termul",
   "version": "0.2.0",
-  "identifier": "app.binsarjr.itsjustterminal",
-  "mainBinaryName": "its-just-terminal",
+  "identifier": "app.binsarjr.termul",
+  "mainBinaryName": "termul",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
   "app": {
     "windows": [
       {
-        "title": "Its Just Terminal",
+        "title": "Termul",
         "width": 800,
         "height": 600,
         "minWidth": 420,
@@ -71,13 +71,13 @@
     },
     "category": "DeveloperTool",
     "shortDescription": "AI-native terminal emulator",
-    "longDescription": "Its Just Terminal — an open-source AI-native terminal emulator with multi-tab, file explorer, code editor, voice input, and AI agents."
+    "longDescription": "Termul — an open-source AI-native terminal emulator with multi-tab, file explorer, code editor, voice input, and AI agents."
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgQjc1MTc2MTkyODg4MjNBNwpSV1NuSTRnb0dYWlJ0NXAxQS9hTEpwOUw0SnJsZkY4NDk3RVNTYlpWdmRnajhtWnVoc1V3Zzh4WAo=",
       "endpoints": [
-        "https://github.com/binsarjr/its-just-terminal/releases/latest/download/latest.json"
+        "https://github.com/binsarjr/termul/releases/latest/download/latest.json"
       ]
     }
   }

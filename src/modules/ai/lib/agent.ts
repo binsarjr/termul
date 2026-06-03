@@ -155,8 +155,8 @@ export async function buildLanguageModel(
         baseURL: "https://openrouter.ai/api/v1",
         apiKey: key,
         headers: {
-          "HTTP-Referer": "https://its-just-terminal.ai",
-          "X-Title": "Its Just Terminal",
+          "HTTP-Referer": "https://termul.ai",
+          "X-Title": "Termul",
         },
       })(resolvedModelId);
       break;

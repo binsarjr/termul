@@ -17,7 +17,7 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 
 export type ThemePref = "system" | "light" | "dark";
 
-export const DEFAULT_THEME_ID = "ijt-default";
+export const DEFAULT_THEME_ID = "termul-default";
 
 export type BackgroundKind = "none" | "image";
 
@@ -84,7 +84,7 @@ export type Preferences = {
   editorAutoSaveDelay: number;
 };
 
-const STORE_PATH = "ijt-settings.json";
+const STORE_PATH = "termul-settings.json";
 const KEY_THEME = "theme";
 const KEY_THEME_ID = "themeId";
 const KEY_BG_KIND = "backgroundKind";
@@ -195,7 +195,7 @@ const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
 // page lives in a separate webview, so writes there never reach the main
 // window's subscribers. Mirror every setter through a Tauri event so any
 // window can listen.
-const PREFS_CHANGED_EVENT = "ijt://prefs-changed";
+const PREFS_CHANGED_EVENT = "termul://prefs-changed";
 
 async function writePref<T>(key: string, value: T): Promise<void> {
   await store.set(key, value);
@@ -619,7 +619,7 @@ export async function onPreferencesChange(
 
 // API key changes are stored in OS keychain (not the prefs store),
 // so we broadcast via a Tauri event for cross-window listeners.
-const KEYS_CHANGED_EVENT = "ijt://ai-keys-changed";
+const KEYS_CHANGED_EVENT = "termul://ai-keys-changed";
 
 export async function emitKeysChanged(): Promise<void> {
   await emit(KEYS_CHANGED_EVENT);

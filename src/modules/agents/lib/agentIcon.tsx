@@ -22,7 +22,7 @@ export function AgentIcon({
   size?: number;
   className?: string;
 }) {
-  if (agent.toLowerCase().includes("its-just-terminal")) {
+  if (agent.toLowerCase().includes("termul")) {
     return (
       <img
         src="/logo.png"

@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Its Just Terminal uses your microphone for AI voice input.</string>
+	<string>Termul uses your microphone for AI voice input.</string>
 </dict>
 </plist>

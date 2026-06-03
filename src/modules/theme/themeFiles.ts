@@ -5,8 +5,8 @@ import { appConfigDir, join } from "@tauri-apps/api/path";
 import type { Theme } from "./types";
 import { validateTheme, type ValidationResult } from "./validateTheme";
 
-const THEME_FILE_EXT = ".ijt-theme";
-const THEME_EDIT_EVENT = "ijt://theme-edit";
+const THEME_FILE_EXT = ".termul-theme";
+const THEME_EDIT_EVENT = "termul://theme-edit";
 
 export type ThemeEditRequest =
   | { action: "create" }

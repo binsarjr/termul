@@ -1,27 +1,27 @@
-# ijt-shell-integration (zshrc)
+# termul-shell-integration (zshrc)
 #
 # Emits OSC 7 (cwd) + OSC 133 A/B/C/D (prompt-start / prompt-end / pre-exec /
 # command-done-with-exit-code) so the host can detect command boundaries and
 # track cwd without re-parsing the prompt. `status` is a read-only special in
-# zsh, so we shadow $? into `_ijt_ret`.
+# zsh, so we shadow $? into `_termul_ret`.
 
 {
-  _ijt_user_zdotdir="${IJT_USER_ZDOTDIR:-$HOME}"
-  [ -f "$_ijt_user_zdotdir/.zshrc" ] && source "$_ijt_user_zdotdir/.zshrc"
-  unset _ijt_user_zdotdir
+  _termul_user_zdotdir="${TERMUL_USER_ZDOTDIR:-$HOME}"
+  [ -f "$_termul_user_zdotdir/.zshrc" ] && source "$_termul_user_zdotdir/.zshrc"
+  unset _termul_user_zdotdir
 }
 
 # Re-source guard within a single shell (e.g. user runs `source ~/.zshrc`).
 # This is NOT exported, so each nested zsh installs its own hooks — desired,
 # since every interactive shell needs its own prompt integration.
-if [[ -z "$__IJT_HOOKS_LOADED" ]]; then
-  __IJT_HOOKS_LOADED=1
+if [[ -z "$__TERMUL_HOOKS_LOADED" ]]; then
+  __TERMUL_HOOKS_LOADED=1
   autoload -Uz add-zsh-hook 2>/dev/null
 
   # URL-encode $PWD byte-wise so multi-byte paths stay valid in the `file://`
   # URI emitted via OSC 7. `no_multibyte` forces ${s[i]} to index bytes (not
   # code points), and LC_ALL=C keeps the [a-zA-Z0-9...] class single-byte.
-  _ijt_urlencode() {
+  _termul_urlencode() {
     emulate -L zsh
     setopt localoptions no_multibyte
     local LC_ALL=C s="$1" i byte
@@ -34,10 +34,10 @@ if [[ -z "$__IJT_HOOKS_LOADED" ]]; then
     done
   }
 
-  _ijt_precmd() {
-    local _ijt_ret=$?
-    printf '\e]133;D;%s\e\\' "$_ijt_ret"
-    printf '\e]7;file://%s%s\e\\' "${HOST}" "$(_ijt_urlencode "$PWD")"
+  _termul_precmd() {
+    local _termul_ret=$?
+    printf '\e]133;D;%s\e\\' "$_termul_ret"
+    printf '\e]7;file://%s%s\e\\' "${HOST}" "$(_termul_urlencode "$PWD")"
     # Re-inject prompt-end marker in case a framework rebuilt PS1 (p10k, starship).
     if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then
       PS1=$'%{\e]133;B\e\\%}'"$PS1"
@@ -45,14 +45,14 @@ if [[ -z "$__IJT_HOOKS_LOADED" ]]; then
     printf '\e]133;A\e\\'
   }
 
-  _ijt_preexec() {
+  _termul_preexec() {
     local cmd="${1//[[:cntrl:]]/ }"
     printf '\e]133;C;%s\e\\' "${cmd[1,256]}"
   }
 
   if (( $+functions[add-zsh-hook] )); then
-    add-zsh-hook precmd _ijt_precmd
-    add-zsh-hook preexec _ijt_preexec
+    add-zsh-hook precmd _termul_precmd
+    add-zsh-hook preexec _termul_preexec
   fi
 
   # Warp/iTerm2-style word-end navigation: zsh's default `forward-word` (M-f /
@@ -65,6 +65,6 @@ if [[ -z "$__IJT_HOOKS_LOADED" ]]; then
     bindkey '\ef' emacs-forward-word
   fi
 
-  _ijt_precmd
+  _termul_precmd
 fi
 :

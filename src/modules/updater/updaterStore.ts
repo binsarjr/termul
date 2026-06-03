@@ -4,10 +4,10 @@ import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
 import { create } from "zustand";
 import { IS_LINUX } from "@/lib/platform";
 
-const LAST_CHECK_KEY = "ijt:updater:last-check";
+const LAST_CHECK_KEY = "termul:updater:last-check";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const GITHUB_LATEST_RELEASE =
-  "https://api.github.com/repos/binsarjr/its-just-terminal/releases/latest";
+  "https://api.github.com/repos/binsarjr/termul/releases/latest";
 
 export interface ManualUpdateInfo {
   version: string;

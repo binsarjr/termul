@@ -112,8 +112,8 @@ export function AiComposerProvider({ children }: ProviderProps) {
         void attachFileByPath(path);
       }
     };
-    window.addEventListener("ijt:ai-attach-file", onAttach);
-    return () => window.removeEventListener("ijt:ai-attach-file", onAttach);
+    window.addEventListener("termul:ai-attach-file", onAttach);
+    return () => window.removeEventListener("termul:ai-attach-file", onAttach);
     // attachFileByPath is stable for our purposes (closes over setFiles only)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -233,7 +233,7 @@ export function AiComposerProvider({ children }: ProviderProps) {
       if (outcome.kind === "send-prompt") {
         effectiveText = outcome.prompt;
         if (outcome.commandName) {
-          commandMarker = `<ijt-command name="${outcome.commandName}" />`;
+          commandMarker = `<termul-command name="${outcome.commandName}" />`;
         }
       }
     }

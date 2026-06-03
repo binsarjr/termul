@@ -1,7 +1,7 @@
 #!/bin/sh
-# Its Just Terminal installer.
+# Termul installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/binsarjr/its-just-terminal/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/binsarjr/termul/main/install.sh | sh
 #
 # Detects the platform, pulls the matching asset from the latest GitHub
 # release, and installs it. On macOS the app is unsigned (no Apple Developer
@@ -9,13 +9,13 @@
 # which is what lets Gatekeeper open it without the "damaged / unidentified
 # developer" prompt.
 #
-# Overridable via env: IJT_REPO (owner/name), IJT_VERSION (tag like v0.1.3).
+# Overridable via env: TERMUL_REPO (owner/name), TERMUL_VERSION (tag like v0.1.3).
 
 set -eu
 
-IJT_REPO="${IJT_REPO:-binsarjr/its-just-terminal}"
-IJT_VERSION="${IJT_VERSION:-latest}"
-API="https://api.github.com/repos/${IJT_REPO}"
+TERMUL_REPO="${TERMUL_REPO:-binsarjr/termul}"
+TERMUL_VERSION="${TERMUL_VERSION:-latest}"
+API="https://api.github.com/repos/${TERMUL_REPO}"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
@@ -60,18 +60,18 @@ fi
 
 # Resolve the release JSON once, then pick asset URLs out of it by filename regex.
 release_json() {
-  if [ "$IJT_VERSION" = "latest" ]; then
+  if [ "$TERMUL_VERSION" = "latest" ]; then
     fetch "$API/releases/latest"
   else
-    fetch "$API/releases/tags/$IJT_VERSION"
+    fetch "$API/releases/tags/$TERMUL_VERSION"
   fi
 }
 
-RELEASE="$(release_json)" || die "could not reach GitHub release API for $IJT_REPO"
+RELEASE="$(release_json)" || die "could not reach GitHub release API for $TERMUL_REPO"
 [ -n "$RELEASE" ] || die "empty response from GitHub release API"
 
 TAG="$(printf '%s' "$RELEASE" | grep -o '"tag_name": *"[^"]*"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
-[ -n "$TAG" ] || die "no release found for $IJT_REPO ($IJT_VERSION)"
+[ -n "$TAG" ] || die "no release found for $TERMUL_REPO ($TERMUL_VERSION)"
 
 # asset_url <filename-regex> -> matching browser_download_url (or empty)
 asset_url() {
@@ -94,7 +94,7 @@ install_macos() {
   url="$(asset_url "$pat")"
   [ -n "$url" ] || die "no macOS .dmg asset in release $TAG"
 
-  dmg="$TMP/ijt.dmg"
+  dmg="$TMP/termul.dmg"
   log "Downloading $(basename "$url")"
   download "$url" "$dmg"
 
@@ -167,26 +167,26 @@ install_linux() {
       ;;
     appimage)
       bindir="$HOME/.local/bin"
-      target="$bindir/its-just-terminal.AppImage"
+      target="$bindir/termul.AppImage"
       mkdir -p "$bindir"
       cp "$file" "$target"
       chmod +x "$target"
       log "Installed AppImage to $target"
       case ":$PATH:" in
         *":$bindir:"*) : ;;
-        *) info "Add $bindir to your PATH to launch with 'its-just-terminal.AppImage'" ;;
+        *) info "Add $bindir to your PATH to launch with 'termul.AppImage'" ;;
       esac
       info "AppImage needs FUSE. Without it: $target --appimage-extract-and-run"
       ;;
   esac
 
-  log "Installed ${B}Its Just Terminal${R} $TAG"
+  log "Installed ${B}Termul${R} $TAG"
 }
 
 main() {
   os="$(uname -s)"
   arch="$(uname -m)"
-  log "Its Just Terminal installer  ${DIM}($IJT_REPO @ $TAG)${R}"
+  log "Termul installer  ${DIM}($TERMUL_REPO @ $TAG)${R}"
   info "platform: $os / $arch"
 
   case "$os" in

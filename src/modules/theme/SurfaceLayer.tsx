@@ -99,7 +99,7 @@ function BackgroundImage({ fastImageId }: { fastImageId: string | null }) {
   if (!state || typeof document === "undefined") return null;
 
   return createPortal(
-    <div aria-hidden className="ijt-bg-surface" style={surfaceStyle} />,
+    <div aria-hidden className="termul-bg-surface" style={surfaceStyle} />,
     document.body,
   );
 }

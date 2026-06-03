@@ -69,7 +69,7 @@ export const useRemoteHistoryStore = create<RemoteHistoryState>((set, get) => ({
             },
           },
         }));
-        console.warn("[its-just-terminal] ssh_read_history failed:", e);
+        console.warn("[termul] ssh_read_history failed:", e);
       });
   },
 

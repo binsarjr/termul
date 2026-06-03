@@ -55,7 +55,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     } catch (e) {
       // Mark loaded so the UI shows an empty state rather than a stuck spinner.
       set({ loading: false, loaded: true });
-      console.warn("[its-just-terminal] read_shell_history failed:", e);
+      console.warn("[termul] read_shell_history failed:", e);
     }
   },
 
@@ -73,7 +73,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     try {
       await invoke("delete_shell_history_entry", { command });
     } catch (e) {
-      console.warn("[its-just-terminal] delete_shell_history_entry failed:", e);
+      console.warn("[termul] delete_shell_history_entry failed:", e);
       await get().load(true);
     }
   },
@@ -83,7 +83,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     try {
       await invoke("clear_shell_history");
     } catch (e) {
-      console.warn("[its-just-terminal] clear_shell_history failed:", e);
+      console.warn("[termul] clear_shell_history failed:", e);
       await get().load(true);
     }
   },

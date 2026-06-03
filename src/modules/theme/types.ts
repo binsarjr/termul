@@ -62,4 +62,4 @@ export type Theme = {
   };
 };
 
-export const DEFAULT_THEME_ID = "ijt-default";
+export const DEFAULT_THEME_ID = "termul-default";

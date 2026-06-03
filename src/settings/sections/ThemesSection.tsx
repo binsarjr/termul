@@ -152,14 +152,14 @@ export function ThemesSection() {
               className="h-7 px-2 text-[11px]"
               onClick={onPickThemeFile}
             >
-              Import .ijt-theme
+              Import .termul-theme
             </Button>
           </div>
           <input
             ref={fileInputRef}
             type="file"
             aria-label="Import theme file"
-            accept=".ijt-theme,.json,application/json"
+            accept=".termul-theme,.json,application/json"
             className="hidden"
             onChange={(e) => {
               void handleThemeFiles(e.target.files);

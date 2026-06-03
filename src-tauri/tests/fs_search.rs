@@ -1,9 +1,9 @@
 mod common;
 
 use common::FsFixture;
-use ijt_lib::modules::fs::grep::{fs_glob, fs_grep};
-use ijt_lib::modules::fs::search::{fs_list_files, fs_search};
-use ijt_lib::modules::fs::tree::{fs_read_dir, list_subdirs, EntryKind};
+use termul_lib::modules::fs::grep::{fs_glob, fs_grep};
+use termul_lib::modules::fs::search::{fs_list_files, fs_search};
+use termul_lib::modules::fs::tree::{fs_read_dir, list_subdirs, EntryKind};
 
 #[test]
 fn grep_finds_matches_and_returns_relative_paths() {

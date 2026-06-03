@@ -6,15 +6,15 @@
   <p><strong>Lightweight, terminal-first, AI-native dev workspace.</strong></p>
 
   <p>
-    <img src="https://img.shields.io/github/v/release/binsarjr/its-just-terminal?label=version&color=blue" alt="version" />
+    <img src="https://img.shields.io/github/v/release/binsarjr/termul?label=version&color=blue" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="license" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="platform" />
   </p>
 
   <p>
-    <a href="https://github.com/binsarjr/its-just-terminal">GitHub</a>
+    <a href="https://github.com/binsarjr/termul">GitHub</a>
     ·
-    <a href="https://github.com/binsarjr/its-just-terminal/releases/latest">Releases</a>
+    <a href="https://github.com/binsarjr/termul/releases/latest">Releases</a>
   </p>
 </div>
 
@@ -88,14 +88,14 @@
 
 ## Install
 
-Latest installers are on the [Releases](https://github.com/binsarjr/its-just-terminal/releases/latest) page. The app auto-updates from there.
+Latest installers are on the [Releases](https://github.com/binsarjr/termul/releases/latest) page. The app auto-updates from there.
 
 ### Quick install (script)
 
 **macOS / Linux** detects your platform and arch, downloads the matching asset from the latest release, and installs it. On macOS it also clears the quarantine flag and ad-hoc signs the app so Gatekeeper opens it (the builds are not notarized yet):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/binsarjr/its-just-terminal/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/binsarjr/termul/main/install.sh | sh
 ```
 
 On Linux it picks `.deb` / `.rpm` / `.AppImage` based on what your system uses.
@@ -103,7 +103,7 @@ On Linux it picks `.deb` / `.rpm` / `.AppImage` based on what your system uses.
 **Windows** (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/binsarjr/its-just-terminal/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/binsarjr/termul/main/install.ps1 | iex
 ```
 
 ### Windows notes
@@ -114,7 +114,7 @@ irm https://raw.githubusercontent.com/binsarjr/its-just-terminal/main/install.ps
 
 ### Linux notes
 
-- **AppImage:** needs FUSE. Without it: `./its-just-terminal_*.AppImage --appimage-extract-and-run`. On Wayland with rendering glitches, try `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Otherwise the `.deb` / `.rpm` packages link against the system GTK stack and tend to be smoother.
+- **AppImage:** needs FUSE. Without it: `./termul_*.AppImage --appimage-extract-and-run`. On Wayland with rendering glitches, try `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Otherwise the `.deb` / `.rpm` packages link against the system GTK stack and tend to be smoother.
 
 ## Configure AI
 
@@ -164,11 +164,11 @@ Licensed under the Apache-2.0 License. See [LICENSE](LICENSE) and [NOTICE](NOTIC
 ## Star history
 
 <div align="center">
-  <a href="https://www.star-history.com/#binsarjr/its-just-terminal&Date">
+  <a href="https://www.star-history.com/#binsarjr/termul&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=binsarjr/its-just-terminal&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=binsarjr/its-just-terminal&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=binsarjr/its-just-terminal&type=Date" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=binsarjr/termul&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=binsarjr/termul&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=binsarjr/termul&type=Date" />
     </picture>
   </a>
 </div>

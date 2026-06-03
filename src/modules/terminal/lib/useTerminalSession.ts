@@ -210,7 +210,7 @@ configureRendererPool({
         pty
           .resize(cols, rows + 1)
           .then(() => pty.resize(cols, rows))
-          .catch((e) => console.warn("[its-just-terminal] kickPty failed:", e));
+          .catch((e) => console.warn("[termul] kickPty failed:", e));
       },
     };
   },
@@ -322,7 +322,7 @@ function deliverPtyBytes(leafId: number, bytes: Uint8Array): void {
 function applySpill(s: Session): void {
   if (!s.spill) return;
   s.pty?.setSpill(true).catch((e) => {
-    console.warn("[its-just-terminal] setSpill failed:", e);
+    console.warn("[termul] setSpill failed:", e);
   });
 }
 
@@ -342,7 +342,7 @@ export function setSessionSpill(leafId: number, enabled: boolean): void {
     ? (snapshotLeaf(leafId) ?? s.snapshot ?? undefined)
     : undefined;
   s.pty?.setSpill(enabled, seed).catch((e) => {
-    console.warn("[its-just-terminal] setSpill failed:", e);
+    console.warn("[termul] setSpill failed:", e);
   });
 }
 
@@ -374,7 +374,7 @@ function replayFromSpill(
       else if (fallbackSnapshot) slot.term.write(fallbackSnapshot);
     })
     .catch((e) => {
-      console.warn("[its-just-terminal] spill replay failed:", e);
+      console.warn("[termul] spill replay failed:", e);
     })
     .finally(() => {
       // Only clear suppression if no newer bind has taken over.
@@ -598,7 +598,7 @@ function attachSession(
       })
       .catch((e) => {
         s.ptyOpening = false;
-        console.error("[its-just-terminal] openPty failed:", e);
+        console.error("[termul] openPty failed:", e);
       });
   }
 }
@@ -638,7 +638,7 @@ export async function respawnSession(
     pty = await openPtyForSession(leafId, s, cwd ?? s.initialCwd);
   } catch (e) {
     s.ptyOpening = false;
-    console.error("[its-just-terminal] respawn openPty failed:", e);
+    console.error("[termul] respawn openPty failed:", e);
     return;
   }
   s.ptyOpening = false;

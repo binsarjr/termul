@@ -161,7 +161,7 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
         // Detached: on Windows `ClosePseudoConsole` can block until conhost
         // drains, which would freeze this Tauri worker thread and stall IPC.
         thread::Builder::new()
-            .name(format!("ijt-pty-drop-{id}"))
+            .name(format!("termul-pty-drop-{id}"))
             .spawn(move || {
                 let t0 = std::time::Instant::now();
                 session::drop_session(s);
@@ -191,7 +191,7 @@ pub fn pty_close_all(state: tauri::State<PtyState>) -> Result<usize, String> {
             log::debug!("pty_close_all: kill id={id} returned {e}");
         }
         thread::Builder::new()
-            .name(format!("ijt-pty-drop-{id}"))
+            .name(format!("termul-pty-drop-{id}"))
             .spawn(move || session::drop_session(s))
             .expect("spawn pty drop thread");
     }

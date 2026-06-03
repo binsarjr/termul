@@ -341,7 +341,7 @@ export function ModelsSection() {
     <div className="flex flex-col gap-7">
       <SectionHeader
         title="Models"
-        description="Connect the providers you use. Keys live in your OS keychain and are used only by Its Just Terminal."
+        description="Connect the providers you use. Keys live in your OS keychain and are used only by Termul."
       />
 
       <DefaultsBlock

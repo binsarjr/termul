@@ -104,7 +104,7 @@ export function HistorySection() {
                 <AlertDialogDescription>
                   This permanently erases your {shellLabel} history file
                   {path ? ` (${path})` : ""}. It affects every terminal that
-                  uses this shell, not just Its Just Terminal. This can't be
+                  uses this shell, not just Termul. This can't be
                   undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>

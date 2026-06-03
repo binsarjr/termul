@@ -4,7 +4,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Its Just Terminal",
+        "title": "Termul",
         "decorations": false,
         "transparent": true,
         "visible": false,

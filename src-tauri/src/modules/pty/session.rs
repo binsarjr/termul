@@ -14,7 +14,7 @@ use super::shell_init;
 use super::spill::SpillSink;
 use crate::modules::workspace::WorkspaceEnv;
 
-const AGENT_EVENT: &str = "ijt:agent-signal";
+const AGENT_EVENT: &str = "termul:agent-signal";
 
 // Flusher coalesces a short window after first-byte arrival so we send chunks,
 // not single bytes. MAX_IDLE is only a safety net for missed signals.
@@ -29,7 +29,7 @@ const MAX_PENDING: usize = 4 * 1024 * 1024;
 // Hard reset (ESC c) + dim notice. Written verbatim into the stream when
 // we're forced to discard backlog.
 const OVERFLOW_NOTICE: &[u8] =
-    b"\x1bc\x1b[2m[ijt: dropped output due to backpressure]\x1b[0m\r\n";
+    b"\x1bc\x1b[2m[termul: dropped output due to backpressure]\x1b[0m\r\n";
 
 pub struct Session {
     // Field drop order is intentional. Rust drops fields top-to-bottom:
@@ -172,7 +172,7 @@ pub fn spawn(
     let writer_for_da = writer.clone();
     let app_reader = app.clone();
     let reader_thread = thread::Builder::new()
-        .name("ijt-pty-reader".into())
+        .name("termul-pty-reader".into())
         .spawn(move || {
             let mut buf = [0u8; READ_BUF];
             let mut filtered: Vec<u8> = Vec::with_capacity(READ_BUF);
@@ -231,7 +231,7 @@ pub fn spawn(
     let done_f = done.clone();
     let spill_f = spill.clone();
     thread::Builder::new()
-        .name("ijt-pty-flusher".into())
+        .name("termul-pty-flusher".into())
         .spawn(move || {
             let (lock, cv) = &*pending_f;
             loop {
@@ -270,7 +270,7 @@ pub fn spawn(
     let done_e = done;
     let spill_e = spill;
     thread::Builder::new()
-        .name("ijt-pty-waiter".into())
+        .name("termul-pty-waiter".into())
         .spawn(move || {
             let code = match child.wait() {
                 Ok(status) => status.exit_code() as i32,

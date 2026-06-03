@@ -3,7 +3,7 @@ import { DormantRing } from "./dormantRing";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-const NOTICE = "[ijt: dropped output during hibernation]";
+const NOTICE = "[termul: dropped output during hibernation]";
 
 function drainToString(ring: DormantRing): string {
   const parts: Uint8Array[] = [];

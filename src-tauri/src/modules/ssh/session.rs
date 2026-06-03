@@ -83,7 +83,7 @@ impl SshState {
     }
 }
 
-/// Private, app-owned directory for control sockets: `$XDG_RUNTIME_DIR/ijt-ssh`
+/// Private, app-owned directory for control sockets: `$XDG_RUNTIME_DIR/termul-ssh`
 /// when available (Linux), else the per-user OS temp dir. Kept short to stay
 /// under the ~104-char unix-domain-socket path limit, and `0700` so a local
 /// attacker can't hijack the multiplexed session.
@@ -92,7 +92,7 @@ fn socket_dir() -> Result<PathBuf, String> {
         .map(PathBuf::from)
         .filter(|p| p.is_dir())
         .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("ijt-ssh");
+    let dir = base.join("termul-ssh");
     std::fs::create_dir_all(&dir).map_err(|e| format!("ssh socket dir: {e}"))?;
     #[cfg(unix)]
     {
@@ -461,7 +461,7 @@ mod tests {
         // The unix-domain-socket path must stay well under the ~104 byte limit.
         assert!(s.len() < 104, "socket path too long ({}): {s}", s.len());
         assert!(s.ends_with(".sock"));
-        assert!(s.contains("ijt-ssh"));
+        assert!(s.contains("termul-ssh"));
     }
 
     #[test]

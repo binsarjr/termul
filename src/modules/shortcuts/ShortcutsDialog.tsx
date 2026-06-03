@@ -38,7 +38,7 @@ export function ShortcutsDialog({ open, onOpenChange }: Props) {
           <div className="flex flex-col gap-1.5">
             <DialogTitle>Keyboard shortcuts</DialogTitle>
             <DialogDescription>
-              Quick reference for Its Just Terminal controls.
+              Quick reference for Termul controls.
             </DialogDescription>
           </div>
           <Button

@@ -46,8 +46,8 @@ type ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState | null>(null);
 
-const FAST_PATH_KEY = "ijt-ui-theme-shadow";
-const FAST_PATH_THEME_ID = "ijt-ui-theme-id-shadow";
+const FAST_PATH_KEY = "termul-ui-theme-shadow";
+const FAST_PATH_THEME_ID = "termul-ui-theme-id-shadow";
 
 function readFastMode(fallback: ThemePref): ThemePref {
   if (typeof window === "undefined") return fallback;

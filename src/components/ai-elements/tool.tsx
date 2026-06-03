@@ -196,7 +196,7 @@ const ToolImpl = ({
 
       {hasDetails && (
         <CollapsibleContent
-          className={cn("ijt-collapsible-content")}
+          className={cn("termul-collapsible-content")}
         >
           <div className="ml-3 mt-1 space-y-2 border-l border-border/60 pl-3 pb-1">
             {showInputBody ? (

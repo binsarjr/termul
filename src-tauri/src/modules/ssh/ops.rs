@@ -44,7 +44,7 @@ const CANON_SCRIPT: &str =
 
 const READ_SCRIPT: &str = r#"cat -- "$1""#;
 
-/// Emit `IJTSHELL:<shell>` then the raw history file for the remote login shell,
+/// Emit `TERMULSHELL:<shell>` then the raw history file for the remote login shell,
 /// so the same `history.rs` parser handles it. Picks the file from `$SHELL`,
 /// falling back to whichever of the known history files is readable. `tail`
 /// bounds the payload to the most-recent lines for users with huge histories.
@@ -61,7 +61,7 @@ if [ -z "$f" ] || [ ! -r "$f" ]; then
     if [ -r "$HOME/$rel" ]; then s=$t; f=$HOME/$rel; break; fi
   done
 fi
-printf 'IJTSHELL:%s\n' "$s"
+printf 'TERMULSHELL:%s\n' "$s"
 if [ -n "$f" ] && [ -r "$f" ]; then tail -n 8000 "$f" 2>/dev/null; fi"#;
 
 /// Atomic write of stdin to `$1`: a `mktemp` in the target's own dir (secure
@@ -70,7 +70,7 @@ if [ -n "$f" ] && [ -r "$f" ]; then tail -n 8000 "$f" 2>/dev/null; fi"#;
 /// = atomic). Mirrors the local `write_atomic`.
 const WRITE_SCRIPT: &str = r#"target=$1
 dir=$(dirname -- "$target")
-tmp=$(mktemp "$dir/.ijt-XXXXXXXX") || exit 5
+tmp=$(mktemp "$dir/.termul-XXXXXXXX") || exit 5
 mode=$(stat -c '%a' -- "$target" 2>/dev/null || stat -f '%Lp' -- "$target" 2>/dev/null || echo "")
 cat > "$tmp" || { rm -f -- "$tmp"; exit 6; }
 [ -n "$mode" ] && chmod "$mode" "$tmp"
@@ -201,11 +201,11 @@ pub fn read_history(state: &SshState, host: &str) -> Result<(String, String), St
         return Err(op_error(host, "history", &run));
     }
     let out = run.stdout_string();
-    // First line is the `IJTSHELL:<shell>` marker; everything after it is the
+    // First line is the `TERMULSHELL:<shell>` marker; everything after it is the
     // raw history file.
     match out.split_once('\n') {
         Some((first, rest)) => {
-            let shell = first.strip_prefix("IJTSHELL:").unwrap_or("unknown").trim();
+            let shell = first.strip_prefix("TERMULSHELL:").unwrap_or("unknown").trim();
             Ok((shell.to_string(), rest.to_string()))
         }
         None => Ok(("unknown".to_string(), String::new())),

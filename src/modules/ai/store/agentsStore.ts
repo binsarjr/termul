@@ -9,7 +9,7 @@ import {
   type Agent,
 } from "../lib/agents";
 
-const CHANGED_EVENT = "ijt://ai-agents-changed";
+const CHANGED_EVENT = "termul://ai-agents-changed";
 
 type AgentsState = {
   hydrated: boolean;

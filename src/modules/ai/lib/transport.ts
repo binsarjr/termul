@@ -5,7 +5,7 @@ import type { ProviderKeys, CustomEndpointKeys } from "./keyring";
 import { native } from "./native";
 import type { ToolContext } from "../tools/tools";
 
-const IJT_MD_MAX_BYTES = 32 * 1024;
+const TERMUL_MD_MAX_BYTES = 32 * 1024;
 type MemoryCacheEntry = { content: string | null; mtime: number };
 const projectMemoryCache = new Map<string, MemoryCacheEntry>();
 
@@ -21,8 +21,8 @@ async function readAgentsMd(workspaceRoot: string | null): Promise<string | null
       return null;
     }
     const content =
-      r.content.length > IJT_MD_MAX_BYTES
-        ? r.content.slice(0, IJT_MD_MAX_BYTES)
+      r.content.length > TERMUL_MD_MAX_BYTES
+        ? r.content.slice(0, TERMUL_MD_MAX_BYTES)
         : r.content;
     projectMemoryCache.set(workspaceRoot, { content, mtime: Date.now() });
     return content;

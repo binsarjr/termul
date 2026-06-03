@@ -69,8 +69,8 @@ export const SLASH_COMMANDS: Record<string, SlashCommandMeta> = {
   },
 };
 
-export const IJT_CMD_RE =
-  /^<ijt-command\s+name="([a-z0-9-]+)"(?:\s+state="([a-z]+)")?\s*\/>(?:\n+|$)/;
+export const TERMUL_CMD_RE =
+  /^<termul-command\s+name="([a-z0-9-]+)"(?:\s+state="([a-z]+)")?\s*\/>(?:\n+|$)/;
 
 export function tryRunSlashCommand(input: string): SlashOutcome {
   const trimmed = input.trim();

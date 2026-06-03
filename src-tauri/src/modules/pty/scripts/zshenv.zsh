@@ -1,11 +1,11 @@
-# ijt-shell-integration (zshenv)
+# termul-shell-integration (zshenv)
 #
 # Trailing `:` is load-bearing — without it, a missing user .zshenv leaves $?=1,
 # which propagates through the rest of init and ultimately into the first
 # prompt's `%?` (rendering robbyrussell's `➜` red on a clean shell start).
 {
-  _ijt_user_zdotdir="${IJT_USER_ZDOTDIR:-$HOME}"
-  [ -f "$_ijt_user_zdotdir/.zshenv" ] && source "$_ijt_user_zdotdir/.zshenv"
-  unset _ijt_user_zdotdir
+  _termul_user_zdotdir="${TERMUL_USER_ZDOTDIR:-$HOME}"
+  [ -f "$_termul_user_zdotdir/.zshenv" ] && source "$_termul_user_zdotdir/.zshenv"
+  unset _termul_user_zdotdir
 }
 :

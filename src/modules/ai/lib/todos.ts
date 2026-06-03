@@ -9,7 +9,7 @@ export type Todo = {
   status: TodoStatus;
 };
 
-const STORE_PATH = "its-just-terminal-todos.json";
+const STORE_PATH = "termul-todos.json";
 const todosKey = (sessionId: string) => `todos:${sessionId}`;
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });

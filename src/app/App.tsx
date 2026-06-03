@@ -173,8 +173,8 @@ function dirname(path: string | null): string | null {
 const SIDEBAR_DEFAULT_WIDTH = 260;
 const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
-const SIDEBAR_WIDTH_STORAGE_KEY = "ijt:sidebar.width";
-const SIDEBAR_VIEW_STORAGE_KEY = "ijt:sidebar.view";
+const SIDEBAR_WIDTH_STORAGE_KEY = "termul:sidebar.width";
+const SIDEBAR_VIEW_STORAGE_KEY = "termul:sidebar.view";
 
 function clampSidebarWidth(width: number): number {
   return Math.min(
@@ -687,12 +687,12 @@ export default function App() {
             if (res.kind !== "text" || typeof res.content !== "string") return;
             const parsed = parseThemeFile(res.content);
             if (!parsed.ok) {
-              console.warn("[its-just-terminal] theme not applied:", parsed.error);
+              console.warn("[termul] theme not applied:", parsed.error);
               return;
             }
             await saveCustomTheme(parsed.theme);
           } catch (e) {
-            console.warn("[its-just-terminal] theme ingest failed:", e);
+            console.warn("[termul] theme ingest failed:", e);
           }
         })();
       },
@@ -861,7 +861,7 @@ export default function App() {
       // Dispatch a window event the composer listens for. Same pattern as
       // selections — keeps file-explorer decoupled from the AI module.
       window.dispatchEvent(
-        new CustomEvent<string>("ijt:ai-attach-file", { detail: path }),
+        new CustomEvent<string>("termul:ai-attach-file", { detail: path }),
       );
       openPanel();
       focusInput(null);
@@ -1611,7 +1611,7 @@ export default function App() {
           if (result !== "ready") {
             if (result === "timeout") {
               console.warn(
-                "[its-just-terminal] Claude TUI did not appear in time; aborting prompt send",
+                "[termul] Claude TUI did not appear in time; aborting prompt send",
               );
             }
             useManagedAgentsStore.getState().remove(leafId);

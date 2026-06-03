@@ -1,4 +1,4 @@
-# ijt-shell-integration (zlogin)
+# termul-shell-integration (zlogin)
 #
 # This is the LAST init file zsh runs before entering the prompt loop, so its
 # exit status becomes `$?` for the very first prompt. Without the trailing `:`,
@@ -6,8 +6,8 @@
 # first render — themes that condition prompt color on `%?` (robbyrussell etc.)
 # show a red error indicator on a clean shell start.
 {
-  _ijt_user_zdotdir="${IJT_USER_ZDOTDIR:-$HOME}"
-  [ -f "$_ijt_user_zdotdir/.zlogin" ] && source "$_ijt_user_zdotdir/.zlogin"
-  unset _ijt_user_zdotdir
+  _termul_user_zdotdir="${TERMUL_USER_ZDOTDIR:-$HOME}"
+  [ -f "$_termul_user_zdotdir/.zlogin" ] && source "$_termul_user_zdotdir/.zlogin"
+  unset _termul_user_zdotdir
 }
 :

@@ -6,12 +6,12 @@ import { gruvbox } from "./gruvbox";
 import { nord } from "./nord";
 import { rosePine } from "./rose-pine";
 import { sage } from "./sage";
-import { ijtDefault } from "./ijt-default";
+import { termulDefault } from "./termul-default";
 import { tide } from "./tide";
 import { tokyoNight } from "./tokyo-night";
 
 const BUILTIN: Theme[] = [
-  ijtDefault,
+  termulDefault,
   claude,
   tokyoNight,
   nord,

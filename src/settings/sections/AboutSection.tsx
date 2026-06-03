@@ -8,7 +8,7 @@ import { arch, platform } from "@tauri-apps/plugin-os";
 import { useEffect, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
 
-const REPO_URL = "https://github.com/binsarjr/its-just-terminal";
+const REPO_URL = "https://github.com/binsarjr/termul";
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -21,7 +21,7 @@ const PLATFORM_LABEL: Record<string, string> = {
 
 export function AboutSection() {
   const [version, setVersion] = useState("");
-  const [name, setName] = useState("Its Just Terminal");
+  const [name, setName] = useState("Termul");
   const [build, setBuild] = useState("");
   const { status, check, install, restart } = useUpdater({ autoCheck: false });
   const checking = status.kind === "checking";
@@ -90,7 +90,7 @@ export function AboutSection() {
         </dd>
 
         <dt className="text-muted-foreground">Bundle ID</dt>
-        <dd className="font-mono text-[11.5px]">app.binsarjr.itsjustterminal</dd>
+        <dd className="font-mono text-[11.5px]">app.binsarjr.termul</dd>
 
         <dt className="text-muted-foreground">License</dt>
         <dd>Apache 2.0</dd>
@@ -103,7 +103,7 @@ export function AboutSection() {
             className="inline-flex items-center gap-1.5 rounded-md text-[12px] underline-offset-2 hover:text-foreground hover:underline"
           >
             <HugeiconsIcon icon={GithubIcon} size={12} strokeWidth={1.75} />
-            binsarjr/its-just-terminal
+            binsarjr/termul
           </button>
         </dd>
       </dl>

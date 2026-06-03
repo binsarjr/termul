@@ -79,7 +79,7 @@ export const BUILTIN_AGENTS: readonly Agent[] = [
   },
 ] as const;
 
-const STORE_PATH = "its-just-terminal-agents.json";
+const STORE_PATH = "termul-agents.json";
 const KEY_CUSTOM = "customAgents";
 const KEY_ACTIVE = "activeAgentId";
 

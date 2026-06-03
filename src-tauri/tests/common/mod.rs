@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use tempfile::TempDir;
-use ijt_lib::modules::fs::to_canon;
-use ijt_lib::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
+use termul_lib::modules::fs::to_canon;
+use termul_lib::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
 pub struct GitRepoFixture {
     pub registry: WorkspaceRegistry,
@@ -23,8 +23,8 @@ impl GitRepoFixture {
 
         run_git_in(&canonical, &["init", "-q"]);
         run_git_in(&canonical, &["symbolic-ref", "HEAD", "refs/heads/main"]);
-        run_git_in(&canonical, &["config", "user.email", "test@its-just-terminal.local"]);
-        run_git_in(&canonical, &["config", "user.name", "Its Just Terminal Test"]);
+        run_git_in(&canonical, &["config", "user.email", "test@termul.local"]);
+        run_git_in(&canonical, &["config", "user.name", "Termul Test"]);
         run_git_in(&canonical, &["config", "commit.gpgsign", "false"]);
         run_git_in(&canonical, &["config", "core.autocrlf", "false"]);
 

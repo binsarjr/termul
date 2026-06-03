@@ -5,7 +5,7 @@ import type { AgentStatus } from "@/modules/agents/lib/types";
 import { useEffect, useRef } from "react";
 import { useChatStore } from "../store/chatStore";
 
-const AGENT = "Its Just Terminal";
+const AGENT = "Termul";
 
 type RunStatus =
   | "idle"
@@ -63,11 +63,11 @@ export function LocalAgentNotificationsBridge() {
       });
 
     if (status === "awaiting-approval") {
-      fire("attention", "Its Just Terminal needs your approval", "Approve a tool to continue");
+      fire("attention", "Termul needs your approval", "Approve a tool to continue");
     } else if (status === "error") {
-      fire("error", "Its Just Terminal run failed", error ?? undefined);
+      fire("error", "Termul run failed", error ?? undefined);
     } else if (status === "idle" && isBusy(was)) {
-      fire("finished", "Its Just Terminal finished", "Your task is ready");
+      fire("finished", "Termul finished", "Your task is ready");
     }
   }, [status, error]);
 

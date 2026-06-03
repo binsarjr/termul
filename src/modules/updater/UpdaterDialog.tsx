@@ -18,11 +18,11 @@ type DistroKey = "arch" | "debian" | "fedora";
 function distroCommand(key: DistroKey, version: string): string {
   switch (key) {
     case "arch":
-      return "yay -S its-just-terminal-bin";
+      return "yay -S termul-bin";
     case "debian":
-      return `sudo apt install ./its-just-terminal_${version}_amd64.deb`;
+      return `sudo apt install ./termul_${version}_amd64.deb`;
     case "fedora":
-      return `sudo dnf install ./its-just-terminal-${version}-1.x86_64.rpm`;
+      return `sudo dnf install ./termul-${version}-1.x86_64.rpm`;
   }
 }
 
@@ -96,8 +96,8 @@ export function UpdaterDialog() {
               : downloading
                 ? "Downloading update…"
                 : manual
-                  ? `Its Just Terminal v${manual.version} is available`
-                  : `Its Just Terminal v${update?.version} is available`}
+                  ? `Termul v${manual.version} is available`
+                  : `Termul v${update?.version} is available`}
           </DialogTitle>
           <DialogDescription>
             {ready

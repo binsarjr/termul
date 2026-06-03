@@ -1,4 +1,4 @@
-# ijt-shell-integration (bashrc)
+# termul-shell-integration (bashrc)
 #
 # Differences vs zsh integration:
 # - We emulate login-shell init manually (/etc/profile, profile files) because
@@ -7,8 +7,8 @@
 #   skip it — a fragile DEBUG-trap alternative would clobber the user's own
 #   traps and interact badly with debuggers.
 
-if [ -z "$__IJT_HOOKS_LOADED" ]; then
-  __IJT_HOOKS_LOADED=1
+if [ -z "$__TERMUL_HOOKS_LOADED" ]; then
+  __TERMUL_HOOKS_LOADED=1
 
   [ -f /etc/profile ] && source /etc/profile
   [ -f /etc/bashrc ] && source /etc/bashrc
@@ -24,7 +24,7 @@ if [ -z "$__IJT_HOOKS_LOADED" ]; then
   # on reload, guard with a flag.
   [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc"
 
-  _ijt_urlencode() {
+  _termul_urlencode() {
     local LC_ALL=C s="$1" i c
     for (( i=0; i<${#s}; i++ )); do
       c="${s:i:1}"
@@ -35,20 +35,20 @@ if [ -z "$__IJT_HOOKS_LOADED" ]; then
     done
   }
 
-  _ijt_precmd() {
-    local _ijt_ret=$?
-    printf '\e]133;D;%s\e\\' "$_ijt_ret"
-    printf '\e]7;file://%s%s\e\\' "${HOSTNAME:-$(uname -n 2>/dev/null)}" "$(_ijt_urlencode "$PWD")"
-    if [ -z "$__IJT_PS1_INJECTED" ]; then
+  _termul_precmd() {
+    local _termul_ret=$?
+    printf '\e]133;D;%s\e\\' "$_termul_ret"
+    printf '\e]7;file://%s%s\e\\' "${HOSTNAME:-$(uname -n 2>/dev/null)}" "$(_termul_urlencode "$PWD")"
+    if [ -z "$__TERMUL_PS1_INJECTED" ]; then
       PS1='\[\e]133;B\e\\\]'"$PS1"
-      __IJT_PS1_INJECTED=1
+      __TERMUL_PS1_INJECTED=1
     fi
     printf '\e]133;A\e\\'
   }
 
   case ":${PROMPT_COMMAND:-}:" in
-    *":_ijt_precmd:"*) ;;
-    *) PROMPT_COMMAND="_ijt_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+    *":_termul_precmd:"*) ;;
+    *) PROMPT_COMMAND="_termul_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
   esac
 
   # Pre-exec marker via PS0 (bash 4.4+). PS0 is expanded just before a command
@@ -59,6 +59,6 @@ if [ -z "$__IJT_HOOKS_LOADED" ]; then
     PS0='\[\e]133;C\e\\\]'"${PS0:-}"
   fi
 
-  _ijt_precmd
+  _termul_precmd
 fi
 :

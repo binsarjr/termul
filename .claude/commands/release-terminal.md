@@ -1,10 +1,10 @@
 ---
-description: Cut and publish a new Its Just Terminal release — auto semver from commits, bump, tag, build, then auto-publish
+description: Cut and publish a new Termul release — auto semver from commits, bump, tag, build, then auto-publish
 argument-hint: "[patch|minor|major|X.Y.Z]  — optional, overrides the auto-detected bump"
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(curl:*), Bash(python3:*), Read, Edit, Write
 ---
 
-You are cutting a new release of **Its Just Terminal** (`binsarjr/its-just-terminal`). Work through the steps in order. If any step fails, **stop and report** — never continue past a failure, and never publish a broken build.
+You are cutting a new release of **Termul** (`binsarjr/termul`). Work through the steps in order. If any step fails, **stop and report** — never continue past a failure, and never publish a broken build.
 
 Key fact that drives everything: Tauri reads the released version from `src-tauri/tauri.conf.json` (`version`), **not** from the git tag. So the version file must be bumped and committed *before* tagging, and the tag must point at that bump commit.
 
@@ -28,19 +28,19 @@ Key fact that drives everything: Tauri reads the released version from `src-taur
 Run all git mutations through a temporary worktree off the freshly-fetched `origin/main` — never touch the user's main checkout (another agent may be working there):
 
 ```sh
-git worktree add /tmp/ijt-release origin/main --detach
+git worktree add /tmp/termul-release origin/main --detach
 ```
-In `/tmp/ijt-release`:
+In `/tmp/termul-release`:
 - Edit `src-tauri/tauri.conf.json` → set `"version"` to the new version.
 - Edit `package.json` → set `"version"` to the new version.
 - **Do not** touch `src-tauri/Cargo.toml` or `Cargo.lock` — `tauri.conf.json` is the source of truth for the released version, and leaving `Cargo.*` unchanged keeps the `--locked` CI green.
 - Commit and push the bump to main, then tag that commit and push the tag:
 ```sh
-git -C /tmp/ijt-release commit -am "chore(release): vX.Y.Z"
-git -C /tmp/ijt-release push origin HEAD:main
-git -C /tmp/ijt-release tag vX.Y.Z
-git -C /tmp/ijt-release push origin vX.Y.Z       # ← triggers the Release workflow
-git worktree remove /tmp/ijt-release --force
+git -C /tmp/termul-release commit -am "chore(release): vX.Y.Z"
+git -C /tmp/termul-release push origin HEAD:main
+git -C /tmp/termul-release tag vX.Y.Z
+git -C /tmp/termul-release push origin vX.Y.Z       # ← triggers the Release workflow
+git worktree remove /tmp/termul-release --force
 ```
 (Substitute the real version. The tag now points at the bump commit, so the build produces correctly-versioned artifacts.)
 
@@ -55,10 +55,10 @@ git worktree remove /tmp/ijt-release --force
 - If `latest.json` or any `.sig` is missing → stop and report (signing failed). Don't publish.
 
 ## 6. Auto-publish
-- Build the release notes: a short **What's changed** changelog (the commit list from step 0) followed by the unsigned-install block below. Write it to `/tmp/ijt-release-notes.md`.
-- Publish: `gh release edit vX.Y.Z --draft=false --notes-file /tmp/ijt-release-notes.md`.
+- Build the release notes: a short **What's changed** changelog (the commit list from step 0) followed by the unsigned-install block below. Write it to `/tmp/termul-release-notes.md`.
+- Publish: `gh release edit vX.Y.Z --draft=false --notes-file /tmp/termul-release-notes.md`.
 - Confirm the public updater endpoint is live:
-  `curl -sL -o /dev/null -w "%{http_code}\n" https://github.com/binsarjr/its-just-terminal/releases/latest/download/latest.json` → expect **200**.
+  `curl -sL -o /dev/null -w "%{http_code}\n" https://github.com/binsarjr/termul/releases/latest/download/latest.json` → expect **200**.
 
 ## 7. Report
 Print: new version, release URL, asset count, endpoint HTTP status. Done.
@@ -70,7 +70,7 @@ Print: new version, release URL, asset count, endpoint HTTP status. Done.
 ```md
 ## ⚠️ Unsigned builds — first launch
 These builds are not code-signed, so your OS warns on first launch. The app is safe.
-- **macOS**: after moving the app into Applications, run `xattr -cr "/Applications/Its Just Terminal.app"`, then open it (or right-click → **Open** the first time).
+- **macOS**: after moving the app into Applications, run `xattr -cr "/Applications/Termul.app"`, then open it (or right-click → **Open** the first time).
 - **Windows**: on the SmartScreen prompt, click **More info → Run anyway**.
 
 Updates are delivered automatically from this Releases page.

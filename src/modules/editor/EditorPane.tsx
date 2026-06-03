@@ -197,7 +197,7 @@ export function EditorPane({
     const ext = path.split(".").pop()?.toLowerCase() ?? null;
     languageRef.current = ext;
     const resolve = async (): Promise<Extension> => {
-      if (path.toLowerCase().endsWith(".ijt-theme")) {
+      if (path.toLowerCase().endsWith(".termul-theme")) {
         const [{ json }, { colorSwatches }] = await Promise.all([
           import("@codemirror/lang-json"),
           import("./lib/colorSwatches"),

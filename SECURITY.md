@@ -1,10 +1,10 @@
 # Security
 
-Its Just Terminal runs shells, reads/writes files, and talks to AI providers — so security bugs matter. If you find one, please tell us before posting it publicly.
+Termul runs shells, reads/writes files, and talks to AI providers — so security bugs matter. If you find one, please tell us before posting it publicly.
 
 ## Reporting
 
-Please report vulnerabilities privately via [GitHub Security Advisories](https://github.com/binsarjr/its-just-terminal/security/advisories/new). Include:
+Please report vulnerabilities privately via [GitHub Security Advisories](https://github.com/binsarjr/termul/security/advisories/new). Include:
 
 - What the issue is and what it lets an attacker do
 - Steps to reproduce (a small PoC is great)
@@ -33,12 +33,12 @@ Until `1.0.0`, only the latest minor gets security fixes. Right now that's `0.1.
 ## What we do to keep things safe
 
 - **API keys** live in the OS keychain via `keyring` — not on disk, not in `localStorage`, not in logs.
-- **No telemetry.** Its Just Terminal only talks to the network when you ask it to (AI requests, update checks).
+- **No telemetry.** Termul only talks to the network when you ask it to (AI requests, update checks).
 - **AI tool approval.** File writes and shell commands from the agent need your OK before they run.
 - **No Node in the renderer.** The frontend only reaches the host through the allow-listed Tauri commands.
 
 ## What we can't promise
 
-- Its Just Terminal runs whatever you (or the agent) tell it to run, with your permissions. That's kind of the point of a terminal.
+- Termul runs whatever you (or the agent) tell it to run, with your permissions. That's kind of the point of a terminal.
 - AI providers see whatever you send them. Read their retention policies.
-- Local LLM endpoints (LM Studio, OpenAI-compatible) are trusted at the network level — only point Its Just Terminal at servers you control.
+- Local LLM endpoints (LM Studio, OpenAI-compatible) are trusted at the network level — only point Termul at servers you control.

@@ -30,7 +30,7 @@ import {
   HashtagIcon,
   TerminalIcon,
 } from "@hugeicons/core-free-icons";
-import { SLASH_COMMANDS, IJT_CMD_RE } from "../lib/slashCommands";
+import { SLASH_COMMANDS, TERMUL_CMD_RE } from "../lib/slashCommands";
 import { Spinner } from "@/components/ui/spinner";
 import { useChatStore, sendMessage } from "../store/chatStore";
 import type {
@@ -209,7 +209,7 @@ export function AiChatView({
       <Conversation>
         <ConversationContent>
           <ConversationEmptyState
-            title="Ask Its Just Terminal anything"
+            title="Ask Termul anything"
             description="Explain command output, fix errors, generate snippets, or run a task."
           />
         </ConversationContent>
@@ -346,7 +346,7 @@ const RenderedMessage = memo(function RenderedMessage({
       .map((p) => p.text)
       .join("\n");
 
-    const cmdMatch = rawText.match(IJT_CMD_RE);
+    const cmdMatch = rawText.match(TERMUL_CMD_RE);
     const commandName = cmdMatch?.[1] ?? null;
     const withoutCmd = cmdMatch ? rawText.slice(cmdMatch[0].length) : rawText;
     const stripped = stripUserContextBlocks(withoutCmd);
@@ -522,7 +522,7 @@ const ReadGroup = memo(function ReadGroup({ parts }: { parts: AnyPart[] }) {
           </span>
         ) : null}
       </CollapsibleTrigger>
-      <CollapsibleContent className="ijt-collapsible-content border-t border-border/30">
+      <CollapsibleContent className="termul-collapsible-content border-t border-border/30">
         <ul className="flex flex-col gap-0.5 px-2 py-1.5">
           {paths.map((path) => (
             <li
