@@ -98,7 +98,6 @@ import {
 } from "@/modules/source-control";
 import { StatusBar } from "@/modules/statusbar";
 import {
-  MAX_PANES_PER_TAB,
   remoteHostOf,
   type TabGroupControls,
   TabSearch,
@@ -501,6 +500,7 @@ export default function App() {
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const userShortcuts = usePreferencesStore((s) => s.shortcuts);
+  const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
   const miniOpen = useChatStore((s) => s.mini.open);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const openMini = useChatStore((s) => s.openMini);
@@ -1784,7 +1784,7 @@ export default function App() {
             onSplit={splitActivePaneInActiveTab}
             canSplit={
               activeTerminalTab !== null &&
-              leafIds(activeTerminalTab.paneTree).length < MAX_PANES_PER_TAB
+              leafIds(activeTerminalTab.paneTree).length < maxPanesPerTab
             }
             onActivateAgent={onActivateAgent}
             onActivateLocalAgent={onActivateLocalAgent}

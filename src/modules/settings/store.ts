@@ -74,6 +74,9 @@ export type Preferences = {
   terminalLetterSpacing: number;
   terminalFontSize: number;
   terminalScrollback: number;
+  /** Max panes a single terminal tab can be split into. Clamped to the
+   * renderer pool size so panes never evict each other. */
+  maxPanesPerTab: number;
   /** Inline shell-history autocomplete (ghost text + Ctrl+Space dropdown). */
   historyAutocomplete: boolean;
   lastWslDistro: string | null;
@@ -121,6 +124,7 @@ const KEY_TERMINAL_FONT_FAMILY = "terminalFontFamily";
 const KEY_TERMINAL_LETTER_SPACING = "terminalLetterSpacing";
 const KEY_TERMINAL_FONT_SIZE = "terminalFontSize";
 const KEY_TERMINAL_SCROLLBACK = "terminalScrollback";
+const KEY_MAX_PANES_PER_TAB = "maxPanesPerTab";
 const KEY_HISTORY_AUTOCOMPLETE = "historyAutocomplete";
 const KEY_LAST_WSL_DISTRO = "lastWslDistro";
 const KEY_ZOOM_LEVEL = "zoomLevel";
@@ -143,6 +147,12 @@ export const TERMINAL_SCROLLBACK_MAX = 50_000;
 export const TERMINAL_SCROLLBACK_PRESETS = [
   500, 1000, 2000, 5000, 10_000, 25_000,
 ] as const;
+
+// Per-tab pane split cap. Max ties to the renderer pool size (POOL_MAX_SIZE)
+// so panes within a tab never evict one another.
+export const MAX_PANES_PER_TAB_DEFAULT = 10;
+export const MAX_PANES_PER_TAB_MIN = 2;
+export const MAX_PANES_PER_TAB_MAX = 10;
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
@@ -180,6 +190,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   terminalLetterSpacing: 0,
   terminalFontSize: TERMINAL_FONT_SIZE_DEFAULT,
   terminalScrollback: TERMINAL_SCROLLBACK_DEFAULT,
+  maxPanesPerTab: MAX_PANES_PER_TAB_DEFAULT,
   historyAutocomplete: true,
   lastWslDistro: null,
   zoomLevel: 1.0,
@@ -311,6 +322,10 @@ export async function loadPreferences(): Promise<Preferences> {
     terminalScrollback: clampScrollback(
       get<number>(KEY_TERMINAL_SCROLLBACK) ??
         DEFAULT_PREFERENCES.terminalScrollback,
+    ),
+    maxPanesPerTab: clampMaxPanesPerTab(
+      get<number>(KEY_MAX_PANES_PER_TAB) ??
+        DEFAULT_PREFERENCES.maxPanesPerTab,
     ),
     historyAutocomplete:
       get<boolean>(KEY_HISTORY_AUTOCOMPLETE) ??
@@ -514,6 +529,18 @@ export async function setTerminalScrollback(value: number): Promise<void> {
   await writePref(KEY_TERMINAL_SCROLLBACK, clampScrollback(value));
 }
 
+export function clampMaxPanesPerTab(value: number): number {
+  if (!Number.isFinite(value)) return MAX_PANES_PER_TAB_DEFAULT;
+  return Math.min(
+    MAX_PANES_PER_TAB_MAX,
+    Math.max(MAX_PANES_PER_TAB_MIN, Math.round(value)),
+  );
+}
+
+export async function setMaxPanesPerTab(value: number): Promise<void> {
+  await writePref(KEY_MAX_PANES_PER_TAB, clampMaxPanesPerTab(value));
+}
+
 export async function setHistoryAutocomplete(value: boolean): Promise<void> {
   await writePref(KEY_HISTORY_AUTOCOMPLETE, value);
 }
@@ -591,6 +618,7 @@ export async function onPreferencesChange(
     [KEY_TERMINAL_LETTER_SPACING]: "terminalLetterSpacing",
     [KEY_TERMINAL_FONT_SIZE]: "terminalFontSize",
     [KEY_TERMINAL_SCROLLBACK]: "terminalScrollback",
+    [KEY_MAX_PANES_PER_TAB]: "maxPanesPerTab",
     [KEY_HISTORY_AUTOCOMPLETE]: "historyAutocomplete",
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
     [KEY_ZOOM_LEVEL]: "zoomLevel",

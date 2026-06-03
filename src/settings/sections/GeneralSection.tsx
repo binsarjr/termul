@@ -18,9 +18,12 @@ import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { ThemePref } from "@/modules/settings/store";
 import {
+  MAX_PANES_PER_TAB_MAX,
+  MAX_PANES_PER_TAB_MIN,
   TERMINAL_FONT_SIZES,
   TERMINAL_SCROLLBACK_PRESETS,
   setAgentNotifications,
+  setMaxPanesPerTab,
   setAutostart,
   setEditorAutoSave,
   setEditorAutoSaveDelay,
@@ -96,6 +99,7 @@ export function GeneralSection() {
   );
   const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize);
   const terminalScrollback = usePreferencesStore((s) => s.terminalScrollback);
+  const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
   const zoomLevel = usePreferencesStore((s) => s.zoomLevel);
   const agentNotifications = usePreferencesStore((s) => s.agentNotifications);
 
@@ -324,6 +328,29 @@ export function GeneralSection() {
                   className="text-[12px]"
                 >
                   {lines.toLocaleString()} lines
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingRow>
+        <SettingRow
+          title="Max panes per tab"
+          description="How many terminals a single tab can be split into. Higher keeps more live renderers in memory."
+        >
+          <Select
+            value={String(maxPanesPerTab)}
+            onValueChange={(v) => void setMaxPanesPerTab(Number(v))}
+          >
+            <SelectTrigger size="sm" className="h-8 w-28 text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from(
+                { length: MAX_PANES_PER_TAB_MAX - MAX_PANES_PER_TAB_MIN + 1 },
+                (_, i) => MAX_PANES_PER_TAB_MIN + i,
+              ).map((n) => (
+                <SelectItem key={n} value={String(n)} className="text-[12px]">
+                  {n} panes
                 </SelectItem>
               ))}
             </SelectContent>
