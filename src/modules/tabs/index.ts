@@ -1,4 +1,5 @@
 export { TabBar, TabIcon, labelFor, type TabGroupControls } from "./TabBar";
+export { remoteHostOf } from "./lib/labelFor";
 export {
   visibleTabs,
   type GroupColorId,

@@ -20,6 +20,17 @@ export function remoteIdentity(t: Tab): RemoteRef | null {
 }
 
 /**
+ * The remote SSH host a tab belongs to, for the explorer's auto-follow: a
+ * terminal's detected `sshHost`, or the host of a remote (`ssh://`) file tab —
+ * so opening a remote file keeps the explorer rooted on that host instead of
+ * snapping back to the local tree. Null for local tabs.
+ */
+export function remoteHostOf(t: Tab): string | null {
+  if (t.kind === "terminal") return t.sshHost ?? null;
+  return remoteIdentity(t)?.host ?? null;
+}
+
+/**
  * Display label for a tab. Terminal tabs show their user-pinned `customTitle`
  * when set; otherwise the dynamic basename of their cwd — the remote (SSH) cwd
  * when the shell has roamed onto another host, else the local cwd (falling back

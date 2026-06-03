@@ -25,8 +25,13 @@ export type SshRootState =
 export function useSshExplorerRoot(sshHost: string | null): {
   sshRoot: string | null;
   status: SshRootState;
+  retry: () => void;
 } {
   const [state, setState] = useState<SshRootState>({ status: "idle" });
+  // Bumped by retry() to re-run the connect effect when the host is unchanged —
+  // re-running `ssh <host>` in the terminal sets the same `sshHost`, so without
+  // this a failed connection could never be retried from the UI.
+  const [retryNonce, setRetryNonce] = useState(0);
   const homesRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -65,8 +70,9 @@ export function useSshExplorerRoot(sshHost: string | null): {
     return () => {
       alive = false;
     };
-  }, [sshHost]);
+  }, [sshHost, retryNonce]);
 
   const sshRoot = state.status === "ready" ? state.root : null;
-  return { sshRoot, status: state };
+  const retry = () => setRetryNonce((n) => n + 1);
+  return { sshRoot, status: state, retry };
 }

@@ -31,6 +31,7 @@ import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
 import { useExplorerGitStatus } from "./lib/useExplorerGitStatus";
 import { useFileTree } from "./lib/useFileTree";
+import type { SshRootState } from "./lib/useSshExplorerRoot";
 import { useGlobalShortcuts } from "@/modules/shortcuts";
 import { isRemotePath } from "@/modules/workspace";
 
@@ -41,6 +42,9 @@ export type FileExplorerHandle = {
 
 type Props = {
   rootPath: string | null;
+  /** Auto-follow SSH connection state, for the connecting/error banner. */
+  sshStatus?: SshRootState;
+  onRetrySsh?: () => void;
   onOpenFile: (path: string, pin?: boolean) => void;
   onPathRenamed?: (from: string, to: string) => void;
   onPathDeleted?: (path: string) => void;
@@ -146,6 +150,8 @@ function buildRows(
 
 export function FileExplorer({
   rootPath,
+  sshStatus,
+  onRetrySsh,
   onOpenFile,
   onPathRenamed,
   onPathDeleted,
@@ -377,6 +383,29 @@ export function FileExplorer({
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >
+        {sshStatus?.status === "connecting" && (
+          <div className="flex h-7 shrink-0 items-center gap-2 border-b border-border/60 bg-muted/40 px-2 text-[11px] text-muted-foreground">
+            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-muted-foreground/70" />
+            <span className="truncate">Connecting to {sshStatus.host}…</span>
+          </div>
+        )}
+        {sshStatus?.status === "error" && (
+          <div
+            className="flex h-7 shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-2 text-[11px] text-destructive"
+            title={sshStatus.message}
+          >
+            <span className="truncate">Couldn’t reach {sshStatus.host}</span>
+            {onRetrySsh && (
+              <button
+                type="button"
+                className="ml-auto shrink-0 rounded px-1.5 py-0.5 font-medium hover:bg-destructive/15"
+                onClick={onRetrySsh}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
         <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border/60 px-2">
           <span
             className="flex flex-1 items-center truncate text-xs font-medium text-foreground/80"

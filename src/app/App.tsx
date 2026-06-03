@@ -99,6 +99,7 @@ import {
 import { StatusBar } from "@/modules/statusbar";
 import {
   MAX_PANES_PER_TAB,
+  remoteHostOf,
   type TabGroupControls,
   TabSearch,
   useTabs,
@@ -1114,12 +1115,18 @@ export default function App() {
   const activeSshHost =
     activeTab?.kind === "terminal" ? (activeTab.sshHost ?? null) : null;
 
-  // Auto-follow SSH: when the active tab is in an ssh session, root the file
-  // explorer at that host's remote home (ssh://host/home). Falls back to the
-  // local explorer root while connecting, when no ssh tab is active, or if the
-  // connection fails. Only the explorer follows — git/source-control still
-  // operate on the local workspace.
-  const { sshRoot: sshExplorerRoot } = useSshExplorerRoot(activeSshHost);
+  // Auto-follow SSH: root the file explorer at the active tab's remote host —
+  // an ssh terminal's host, OR the host of a remote (ssh://) file tab, so
+  // opening a remote file keeps the tree on that host instead of snapping back
+  // to local. Falls back to the local explorer root while connecting, when the
+  // active tab is local, or if the connection fails. Only the explorer follows —
+  // git/source-control still operate on the local workspace.
+  const explorerSshHost = activeTab ? remoteHostOf(activeTab) : null;
+  const {
+    sshRoot: sshExplorerRoot,
+    status: sshExplorerStatus,
+    retry: retrySshExplorer,
+  } = useSshExplorerRoot(explorerSshHost);
   const effectiveExplorerRoot = sshExplorerRoot ?? explorerRoot;
 
   const activeFilePath = (() => {
@@ -1809,6 +1816,8 @@ export default function App() {
                       <FileExplorer
                         ref={explorerRef}
                         rootPath={effectiveExplorerRoot}
+                        sshStatus={sshExplorerStatus}
+                        onRetrySsh={retrySshExplorer}
                         onOpenFile={handleOpenFile}
                         onPathRenamed={handlePathRenamed}
                         onPathDeleted={handlePathDeleted}
