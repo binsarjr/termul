@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { native, type GitStatusSnapshot } from "@/modules/ai/lib/native";
+import { isRemotePath } from "@/modules/workspace";
 import {
   fileStatusCode,
   moreProminentStatus,
@@ -71,7 +72,9 @@ export function useExplorerGitStatus(rootPath: string | null): GitDecorations {
   const repoRootRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!rootPath) {
+    // No local git for a remote (SSH) root — skip resolution entirely so we
+    // don't fire a failing git_panel_snapshot on every remote tree refresh.
+    if (!rootPath || isRemotePath(rootPath)) {
       repoRootRef.current = null;
       setDecorations(EMPTY);
       return;

@@ -51,7 +51,11 @@ import { getLaunchDir } from "@/lib/launchDir";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { useLazyRef } from "@/lib/useLazyRef";
 import { useZoom } from "@/lib/useZoom";
-import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
+import {
+  FileExplorer,
+  type FileExplorerHandle,
+  useSshExplorerRoot,
+} from "@/modules/explorer";
 import {
   listenFsChanged,
   parentDir,
@@ -1109,6 +1113,14 @@ export default function App() {
   const activeSshHost =
     activeTab?.kind === "terminal" ? (activeTab.sshHost ?? null) : null;
 
+  // Auto-follow SSH: when the active tab is in an ssh session, root the file
+  // explorer at that host's remote home (ssh://host/home). Falls back to the
+  // local explorer root while connecting, when no ssh tab is active, or if the
+  // connection fails. Only the explorer follows — git/source-control still
+  // operate on the local workspace.
+  const { sshRoot: sshExplorerRoot } = useSshExplorerRoot(activeSshHost);
+  const effectiveExplorerRoot = sshExplorerRoot ?? explorerRoot;
+
   const activeFilePath = (() => {
     if (activeTab?.kind === "editor") return activeTab.path;
     if (activeTab?.kind === "git-diff") {
@@ -1784,7 +1796,7 @@ export default function App() {
                     {sidebarView === "explorer" ? (
                       <FileExplorer
                         ref={explorerRef}
-                        rootPath={explorerRoot}
+                        rootPath={effectiveExplorerRoot}
                         onOpenFile={handleOpenFile}
                         onPathRenamed={handlePathRenamed}
                         onPathDeleted={handlePathDeleted}
