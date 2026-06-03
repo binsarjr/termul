@@ -1,4 +1,23 @@
+import { parseRemoteUri, type RemoteRef } from "@/modules/workspace";
 import type { Tab } from "./useTabs";
+
+/**
+ * The remote (SSH) identity of a file-backed tab whose path is an `ssh://host`
+ * URI — editor / markdown / pdf / image opened from a remote explorer — else
+ * null. Lets the TabBar badge the tab with its host so a remote `notes.txt` is
+ * distinguishable from a local one of the same name.
+ */
+export function remoteIdentity(t: Tab): RemoteRef | null {
+  if (
+    t.kind === "editor" ||
+    t.kind === "markdown" ||
+    t.kind === "pdf" ||
+    t.kind === "image"
+  ) {
+    return parseRemoteUri(t.path);
+  }
+  return null;
+}
 
 /**
  * Display label for a tab. Terminal tabs show their user-pinned `customTitle`

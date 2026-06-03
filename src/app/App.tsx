@@ -1123,7 +1123,11 @@ export default function App() {
   const effectiveExplorerRoot = sshExplorerRoot ?? explorerRoot;
 
   const activeFilePath = (() => {
-    if (activeTab?.kind === "editor") return activeTab.path;
+    // The breadcrumb navigates the LOCAL filesystem; a remote (ssh://) editor
+    // path would render as raw `ssh:`-prefixed segments, so fall back to the
+    // local cwd (the tab's host badge conveys the remote identity instead).
+    if (activeTab?.kind === "editor")
+      return isRemotePath(activeTab.path) ? null : activeTab.path;
     if (activeTab?.kind === "git-diff") {
       if (/^([A-Za-z]:|\/|\\)/.test(activeTab.path)) return activeTab.path;
       const root = activeTab.repoRoot.replace(/[\\/]+$/, "");

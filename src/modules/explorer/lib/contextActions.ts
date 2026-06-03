@@ -1,4 +1,5 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { isRemotePath } from "@/modules/workspace";
 
 export async function copyToClipboard(text: string): Promise<void> {
   try {
@@ -15,6 +16,8 @@ export function relativePath(rootPath: string, path: string): string {
 }
 
 export async function revealInFinder(path: string): Promise<void> {
+  // A remote (ssh://) path has no local Finder/Explorer entry to reveal.
+  if (isRemotePath(path)) return;
   try {
     await revealItemInDir(path);
   } catch (e) {

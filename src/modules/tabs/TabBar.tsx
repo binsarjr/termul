@@ -44,7 +44,7 @@ import {
   type TabGroup,
   type TabGroupMap,
 } from "./lib/groups";
-import { labelFor } from "./lib/labelFor";
+import { labelFor, remoteIdentity } from "./lib/labelFor";
 import type { EditorTab, Tab } from "./lib/useTabs";
 import { TabRenameField } from "./TabRenameField";
 
@@ -208,6 +208,7 @@ export function TabBar({
               }
               const t = row.tab;
               const isPreview = t.kind === "editor" && (t as EditorTab).preview;
+              const remote = remoteIdentity(t);
               const memberGroupId = tabGroupOf[t.id];
               const memberColor =
                 memberGroupId != null
@@ -342,6 +343,7 @@ export function TabBar({
                           "flex items-center gap-1.5 truncate",
                           compact ? "max-w-48" : "max-w-80",
                         )}
+                        title={remote ? `${remote.host}:${remote.path}` : undefined}
                       >
                         <TabIcon tab={t} />
                         {/* Preview tabs use italic to signal the transient
@@ -349,6 +351,16 @@ export function TabBar({
                         <span className={cn("truncate", isPreview && "italic")}>
                           {labelFor(t)}
                         </span>
+                        {/* A remote (SSH) file tab carries a small host badge so
+                            it's distinguishable from a same-named local file. */}
+                        {remote ? (
+                          <span
+                            className="shrink-0 rounded bg-muted px-1 text-[9px] leading-tight text-muted-foreground"
+                            aria-label={`Remote host ${remote.host}`}
+                          >
+                            {remote.host}
+                          </span>
+                        ) : null}
                         {t.kind === "editor" && t.dirty ? (
                           <span
                             aria-label="Unsaved changes"
