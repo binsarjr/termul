@@ -13,6 +13,7 @@ import {
 } from "@/modules/terminal/lib/panes";
 import { disposeSession } from "@/modules/terminal/lib/useTerminalSession";
 import type { SettingsSection } from "@/modules/settings/openSettings";
+import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
   assignTabToGroup as assignTabToGroupPure,
   detachTabFromGroup,
@@ -22,9 +23,6 @@ import {
   type TabGroup,
   type TabGroupMap,
 } from "./groups";
-
-// Matches the renderer slot pool size — over this we'd evict an active leaf.
-export const MAX_PANES_PER_TAB = 4;
 
 export type TerminalTab = {
   id: number;
@@ -210,6 +208,14 @@ export function useTabs(initial?: Partial<TerminalTab>) {
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+
+  // Live per-tab pane cap from preferences, mirrored to a ref so the stable
+  // splitActivePane callback reads the current value without re-creating.
+  const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
+  const maxPanesPerTabRef = useRef(maxPanesPerTab);
+  useEffect(() => {
+    maxPanesPerTabRef.current = maxPanesPerTab;
+  }, [maxPanesPerTab]);
 
   // Tab groups: lightweight metadata + a tabId->groupId map kept beside `tabs`
   // (the Tab union is untouched). Refs mirror them so actions that reorder on
@@ -912,7 +918,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
       setTabs((curr) =>
         curr.map((t) => {
           if (t.id !== tabId || t.kind !== "terminal") return t;
-          if (leafIds(t.paneTree).length >= MAX_PANES_PER_TAB) return t;
+          if (leafIds(t.paneTree).length >= maxPanesPerTabRef.current) return t;
           const splitId = nextIdRef.current++;
           const leafId = nextIdRef.current++;
           newLeafId = leafId;

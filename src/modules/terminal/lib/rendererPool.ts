@@ -14,7 +14,10 @@ import {
   terminalWordNavigationSequence,
 } from "./keymap";
 
-export const POOL_MAX_SIZE = 5;
+// Upper bound on live xterm renderer slots. Must be >= the max panes a single
+// tab can hold (see MAX_PANES_PER_TAB_MAX) so panes in one tab never evict each
+// other; the user-configurable per-tab cap is clamped to this.
+export const POOL_MAX_SIZE = 10;
 const FIT_DEBOUNCE_MS = 8;
 const PTY_RESIZE_DEBOUNCE_MS = 256;
 const SNAPSHOT_SCROLLBACK_CAP = 5_000;

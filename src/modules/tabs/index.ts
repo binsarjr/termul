@@ -8,7 +8,6 @@ export {
 } from "./lib/groups";
 export { TabSearch } from "./TabSearch";
 export {
-  MAX_PANES_PER_TAB,
   useTabs,
   type Tab,
   type TerminalTab,
