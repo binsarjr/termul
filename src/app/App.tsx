@@ -501,10 +501,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const userShortcuts = usePreferencesStore((s) => s.shortcuts);
   const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
-<<<<<<< HEAD
   const dimInactivePanes = usePreferencesStore((s) => s.dimInactivePanes);
-=======
->>>>>>> afff74d6cf9ea0fe92b8cf88530bd94eca2ee98d
   const miniOpen = useChatStore((s) => s.mini.open);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const openMini = useChatStore((s) => s.openMini);
