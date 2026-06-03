@@ -122,6 +122,31 @@ pub fn parse_dir_listing(stdout: &[u8], show_hidden: bool) -> Vec<RemoteEntry> {
     entries
 }
 
+/// The `ssh://<host><abs-path>` identity the frontend uses for a remote path.
+/// `path` is absolute (leading `/`), so no separator is inserted.
+pub fn remote_uri(host: &str, path: &str) -> String {
+    format!("ssh://{host}{path}")
+}
+
+/// Parse the NUL-delimited `signature\tdir` records from the watch poll into
+/// (dir, signature) pairs. The signature is a `cksum` line (no tab), so
+/// splitting on the first tab keeps a dir path that contains tabs intact.
+pub fn parse_watch_signatures(stdout: &[u8]) -> Vec<(String, String)> {
+    String::from_utf8_lossy(stdout)
+        .split('\0')
+        .filter(|r| !r.is_empty())
+        .filter_map(|rec| {
+            let mut it = rec.splitn(2, '\t');
+            let sig = it.next()?;
+            let dir = it.next()?;
+            if dir.is_empty() {
+                return None;
+            }
+            Some((dir.to_string(), sig.to_string()))
+        })
+        .collect()
+}
+
 /// Parse the single `type\tsize\tmtime` line from the remote stat script.
 pub fn parse_stat_line(stdout: &str) -> Option<(RemoteKind, u64, u64)> {
     let line = stdout.lines().find(|l| !l.trim().is_empty())?;
@@ -247,5 +272,25 @@ mod tests {
             Some((RemoteKind::Dir, 4096, 1700000000000))
         );
         assert_eq!(parse_stat_line("   \n"), None);
+    }
+
+    #[test]
+    fn remote_uri_joins_host_and_abs_path() {
+        assert_eq!(remote_uri("pi", "/home/pi/x"), "ssh://pi/home/pi/x");
+        assert_eq!(
+            remote_uri("user@host", "/etc/hosts"),
+            "ssh://user@host/etc/hosts"
+        );
+    }
+
+    #[test]
+    fn watch_signatures_parse_and_keep_tabbed_dirs() {
+        // signature \t dir ; signature (cksum line) has no tab, dir might.
+        let raw = b"123 45\t/home/pi\0999 0\t/home/pi/od\td\0";
+        let out = parse_watch_signatures(raw);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0], ("/home/pi".to_string(), "123 45".to_string()));
+        // dir with an embedded tab stays intact (split only on the first tab).
+        assert_eq!(out[1], ("/home/pi/od\td".to_string(), "999 0".to_string()));
     }
 }

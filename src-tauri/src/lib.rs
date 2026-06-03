@@ -61,6 +61,7 @@ pub fn run() {
         .manage(secrets::SecretsState::default())
         .manage(fs::watch::FsWatchState::default())
         .manage(ssh::SshState::default())
+        .manage(ssh::SshWatchState::default())
         .manage({
             let registry = workspace::WorkspaceRegistry::default();
             workspace::bootstrap_registry(&registry);
@@ -135,6 +136,8 @@ pub fn run() {
             ssh::ssh_create_dir,
             ssh::ssh_rename,
             ssh::ssh_delete,
+            ssh::ssh_watch_add,
+            ssh::ssh_watch_remove,
             workspace::wsl_list_distros,
             workspace::wsl_default_distro,
             workspace::wsl_home,

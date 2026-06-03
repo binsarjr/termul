@@ -4,20 +4,16 @@
 pub mod ops;
 pub mod parse;
 pub mod session;
+pub mod watch;
 
 pub use session::SshState;
+pub use watch::SshWatchState;
 
 use serde::Serialize;
 use tauri::Emitter;
 
 use crate::modules::fs::file::{FileStat, ReadResult};
 use crate::modules::fs::tree::DirEntry;
-
-/// The `ssh://<host><abs-path>` URI the frontend uses as a remote file's
-/// identity. `path` is absolute (starts with `/`), so no extra separator.
-fn remote_uri(host: &str, path: &str) -> String {
-    format!("ssh://{host}{path}")
-}
 
 #[derive(Serialize, Clone)]
 struct FileWrittenEvent {
@@ -50,12 +46,15 @@ pub async fn ssh_connect(
     blocking(move || session::home(&st, &host)).await
 }
 
-/// Tear down the ControlMaster for `host` (called when no tab uses it anymore).
+/// Tear down the ControlMaster for `host` (called when no tab uses it anymore),
+/// stopping its poll watcher first.
 #[tauri::command]
 pub async fn ssh_disconnect(
     host: String,
     state: tauri::State<'_, SshState>,
+    watch: tauri::State<'_, SshWatchState>,
 ) -> Result<(), String> {
+    watch::clear_host(watch.inner(), &host);
     let st = state.inner().clone();
     blocking(move || session::disconnect(&st, &host)).await
 }
@@ -124,7 +123,7 @@ pub async fn ssh_write_file(
     state: tauri::State<'_, SshState>,
 ) -> Result<(), String> {
     let st = state.inner().clone();
-    let uri = remote_uri(&host, &path);
+    let uri = parse::remote_uri(&host, &path);
     blocking(move || ops::write_file(&st, &host, &path, &content)).await?;
     // Mirror the local fs_write_file event so the markdown preview / sibling
     // editor reload path works for remote files too (keyed by the ssh:// uri).
@@ -171,4 +170,28 @@ pub async fn ssh_delete(
 ) -> Result<(), String> {
     let st = state.inner().clone();
     blocking(move || ops::delete(&st, &host, &path)).await
+}
+
+/// Begin polling `paths` (bare remote dirs) on `host` for changes; emits
+/// fs:changed when a watched directory's contents shift.
+#[tauri::command]
+pub fn ssh_watch_add(
+    app: tauri::AppHandle,
+    host: String,
+    paths: Vec<String>,
+    state: tauri::State<SshState>,
+    watch: tauri::State<SshWatchState>,
+) -> Result<(), String> {
+    watch::watch_add(&app, state.inner(), watch.inner(), &host, paths);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn ssh_watch_remove(
+    host: String,
+    paths: Vec<String>,
+    watch: tauri::State<SshWatchState>,
+) -> Result<(), String> {
+    watch::watch_remove(watch.inner(), &host, paths);
+    Ok(())
 }
