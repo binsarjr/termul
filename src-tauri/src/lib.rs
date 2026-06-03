@@ -2,7 +2,7 @@ pub mod modules;
 
 use modules::{agent, fs, git, history, net, pty, secrets, shell, ssh, workspace};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{Manager, State};
 use tauri_plugin_window_state::StateFlags;
 
 /// Drained on first read so HMR / re-mounts can't replay the launch dir.
@@ -160,6 +160,13 @@ pub fn run() {
             pty::cleanup_spill_dir(app.handle());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Reap any daemonized SSH ControlMasters on exit so they don't
+            // outlive the app until ControlPersist times them out.
+            if let tauri::RunEvent::Exit = event {
+                ssh::session::disconnect_all(&app_handle.state::<ssh::SshState>());
+            }
+        });
 }

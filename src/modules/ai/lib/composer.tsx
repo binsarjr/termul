@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import {
   createContext,
   use,
@@ -11,7 +10,7 @@ import { expandSnippetTokens, type Snippet } from "../lib/snippets";
 import { tryRunSlashCommand, type SlashCommandMeta } from "./slashCommands";
 import { getOrCreateChat, useChatStore } from "../store/chatStore";
 import { useSnippetsStore } from "../store/snippetsStore";
-import { currentWorkspaceEnv } from "@/modules/workspace";
+import { fsBridge } from "@/modules/workspace";
 
 export type FileAttachment = {
   id: string;
@@ -178,14 +177,7 @@ export function AiComposerProvider({ children }: ProviderProps) {
 
   const attachFileByPath = async (path: string) => {
     try {
-      type ReadResult =
-        | { kind: "text"; content: string; size: number }
-        | { kind: "binary"; size: number }
-        | { kind: "toolarge"; size: number; limit: number };
-      const result = await invoke<ReadResult>("fs_read_file", {
-        path,
-        workspace: currentWorkspaceEnv(),
-      });
+      const result = await fsBridge.readFile(path);
       if (result.kind !== "text") {
         // Binary/oversize files: skip (could surface a toast in future).
         console.warn("attachFileByPath: skipped non-text file", path, result);

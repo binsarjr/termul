@@ -200,6 +200,9 @@ pub fn ssh_watch_add(
     state: tauri::State<SshState>,
     watch: tauri::State<SshWatchState>,
 ) -> Result<(), String> {
+    if !parse::is_valid_host(&host) {
+        return Err(format!("invalid ssh host: {host}"));
+    }
     watch::watch_add(&app, state.inner(), watch.inner(), &host, paths);
     Ok(())
 }
