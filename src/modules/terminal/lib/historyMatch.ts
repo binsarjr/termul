@@ -56,3 +56,28 @@ export function deriveInputFromRow(
   if (startCol < 0 || cursorX <= startCol) return "";
   return rowText.slice(startCol, cursorX);
 }
+
+/** Prompt sigils that conventionally sit at the END of a shell prompt, just
+ * before the command: bash `$`, root `#`, zsh `%`, starship/pure `❯`. `>` is
+ * deliberately excluded so a `>`/`>>` redirect in the command isn't mistaken
+ * for the prompt boundary. */
+const PROMPT_SIGILS = "$#%❯";
+const PROMPT_BOUNDARY = new RegExp(`[${PROMPT_SIGILS}][ \\t]`, "g");
+
+/**
+ * Best-effort column where the command starts on a prompt row that carries NO
+ * shell integration (a stock remote shell over SSH): the position just past the
+ * last prompt sigil-then-space at or before `cursorX`. Returns -1 when no
+ * recognizable boundary is found, so the caller suggests nothing rather than
+ * guessing the whole row. Pure, so the heuristic is unit-tested directly.
+ */
+export function promptInputStart(rowText: string, cursorX: number): number {
+  const upToCursor = rowText.slice(0, Math.max(0, cursorX));
+  PROMPT_BOUNDARY.lastIndex = 0;
+  let end = -1;
+  let m: RegExpExecArray | null;
+  while ((m = PROMPT_BOUNDARY.exec(upToCursor)) !== null) {
+    end = m.index + m[0].length;
+  }
+  return end;
+}

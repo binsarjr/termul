@@ -2,7 +2,12 @@ import type { Terminal } from "@xterm/xterm";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { useHistoryStore } from "./historyStore";
 import { useRemoteHistoryStore } from "./remoteHistoryStore";
-import { deriveInputFromRow, ghostSuffix, matchHistory } from "./historyMatch";
+import {
+  deriveInputFromRow,
+  ghostSuffix,
+  matchHistory,
+  promptInputStart,
+} from "./historyMatch";
 
 /** Max rows shown in the Ctrl+Space dropdown. */
 const DROPDOWN_MAX = 8;
@@ -82,22 +87,38 @@ export class AutocompleteController {
   }
 
   /** The current command input, read live from the buffer's prompt row. Empty
-   * when there's no live prompt marker, on the alt screen, on a wrapped/multi-row
-   * line, or when the cursor sits at/before the command-start column. */
+   * on the alt screen, on a wrapped/multi-row line, or when the cursor sits
+   * at/before the command-start column.
+   *
+   * Two ways to locate where the command starts on the cursor row:
+   *  - the OSC 133 prompt-end marker the local shell integration pins (precise);
+   *  - in a remote SSH session, where a stock shell emits no OSC 133, a prompt
+   *    heuristic ({@link promptInputStart}). Without this the remote case has no
+   *    marker → empty input → the autocomplete could never suggest anything. */
   private currentInput(): string {
-    const start = this.getCommandStart();
-    if (!start) return "";
     const buf = this.term.buffer.active;
     if (buf.type === "alternate") return "";
     const cursorRow = buf.baseY + buf.cursorY;
-    // Multi-row / wrapped input — bail. Safe: only costs a suggestion.
-    if (cursorRow !== start.line) return "";
-    // Untrimmed (trimRight=false): translateToString(true) drops trailing
-    // whitespace, which would swallow a just-typed trailing space (e.g. "git ")
-    // and make the ghost double-space the next word. The slice is bounded by
-    // cursorX, so RPROMPT / right-aligned text past the cursor is still excluded.
-    const rowText = buf.getLine(start.line)?.translateToString(false) ?? "";
-    return deriveInputFromRow(rowText, start.col, buf.cursorX);
+
+    const start = this.getCommandStart();
+    if (start) {
+      // Multi-row / wrapped input — bail. Safe: only costs a suggestion.
+      if (cursorRow !== start.line) return "";
+      // Untrimmed (trimRight=false): translateToString(true) drops trailing
+      // whitespace, which would swallow a just-typed trailing space (e.g. "git ")
+      // and make the ghost double-space the next word. The slice is bounded by
+      // cursorX, so RPROMPT / right-aligned text past the cursor is still excluded.
+      const rowText = buf.getLine(start.line)?.translateToString(false) ?? "";
+      return deriveInputFromRow(rowText, start.col, buf.cursorX);
+    }
+
+    // No marker. Only fall back to the prompt heuristic inside an ssh session,
+    // so local behavior (which always has a marker) is left exactly as-is.
+    if (!this.host()) return "";
+    const rowText = buf.getLine(cursorRow)?.translateToString(false) ?? "";
+    const col = promptInputStart(rowText, buf.cursorX);
+    if (col < 0) return "";
+    return deriveInputFromRow(rowText, col, buf.cursorX);
   }
 
   private onData(d: string): void {

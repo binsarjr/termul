@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { deriveInputFromRow, ghostSuffix, matchHistory } from "./historyMatch";
+import {
+  deriveInputFromRow,
+  ghostSuffix,
+  matchHistory,
+  promptInputStart,
+} from "./historyMatch";
 
 const HIST = ["git status", "git stash pop", "git status -sb", "npm run dev"];
 
@@ -72,5 +77,55 @@ describe("deriveInputFromRow", () => {
 
   it("is empty when the start col is negative (invalid marker)", () => {
     expect(deriveInputFromRow("git status", -1, 5)).toBe("");
+  });
+});
+
+describe("promptInputStart", () => {
+  it("finds the boundary after a `$ ` bash prompt", () => {
+    const row = "pi@raspberrypi:~/Desktop $ ls -la";
+    const col = promptInputStart(row, row.length);
+    expect(row.slice(col)).toBe("ls -la");
+  });
+
+  it("handles a root `# ` prompt", () => {
+    const row = "root@host:/etc # cat hosts";
+    const col = promptInputStart(row, row.length);
+    expect(row.slice(col)).toBe("cat hosts");
+  });
+
+  it("handles a zsh `% ` prompt", () => {
+    const row = "host% git status";
+    const col = promptInputStart(row, row.length);
+    expect(row.slice(col)).toBe("git status");
+  });
+
+  it("handles a starship `❯ ` prompt", () => {
+    const row = "~/code ❯ npm run dev";
+    const col = promptInputStart(row, row.length);
+    expect(row.slice(col)).toBe("npm run dev");
+  });
+
+  it("uses the LAST boundary when the path itself contains a sigil", () => {
+    // The `#anchor` in the path must not win over the real `$ ` boundary.
+    const row = "u@h:~/a#b $ echo hi";
+    const col = promptInputStart(row, row.length);
+    expect(row.slice(col)).toBe("echo hi");
+  });
+
+  it("returns -1 when there is no recognizable prompt boundary", () => {
+    expect(promptInputStart("just some text", 14)).toBe(-1);
+  });
+
+  it("is bounded by the cursor, ignoring text to its right", () => {
+    const row = "host $ ls -la --color";
+    // Cursor sits right after "ls".
+    const col = promptInputStart(row, 9);
+    expect(row.slice(col, 9)).toBe("ls");
+  });
+
+  it("does not treat a `>` redirect as a prompt boundary", () => {
+    const row = "host $ echo x > file";
+    const col = promptInputStart(row, row.length);
+    expect(row.slice(col)).toBe("echo x > file");
   });
 });
