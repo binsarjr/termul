@@ -44,6 +44,39 @@ const CANON_SCRIPT: &str =
 
 const READ_SCRIPT: &str = r#"cat -- "$1""#;
 
+/// Atomic write of stdin to `$1`: a `mktemp` in the target's own dir (secure
+/// random name + O_EXCL, so no pre-staged-symlink attack), stream the content,
+/// preserve the target's mode if it existed, then `mv` (same-filesystem rename
+/// = atomic). Mirrors the local `write_atomic`.
+const WRITE_SCRIPT: &str = r#"target=$1
+dir=$(dirname -- "$target")
+tmp=$(mktemp "$dir/.ijt-XXXXXXXX") || exit 5
+mode=$(stat -c '%a' -- "$target" 2>/dev/null || stat -f '%Lp' -- "$target" 2>/dev/null || echo "")
+cat > "$tmp" || { rm -f -- "$tmp"; exit 6; }
+[ -n "$mode" ] && chmod "$mode" "$tmp"
+mv -- "$tmp" "$target" || { rm -f -- "$tmp"; exit 7; }"#;
+
+const CREATE_FILE_SCRIPT: &str = r#"p=$1
+if [ -e "$p" ] || [ -L "$p" ]; then printf '%s' "already exists: $p" >&2; exit 1; fi
+: > "$p" || exit 2"#;
+
+const CREATE_DIR_SCRIPT: &str = r#"p=$1
+if [ -e "$p" ] || [ -L "$p" ]; then printf '%s' "already exists: $p" >&2; exit 1; fi
+mkdir -p -- "$p""#;
+
+const RENAME_SCRIPT: &str = r#"from=$1
+to=$2
+if [ ! -e "$from" ] && [ ! -L "$from" ]; then printf '%s' "not found: $from" >&2; exit 1; fi
+if [ -e "$to" ] || [ -L "$to" ]; then printf '%s' "already exists: $to" >&2; exit 1; fi
+mv -- "$from" "$to""#;
+
+// `rm -rf` removes a symlink itself (never recurses through it), matching the
+// local `symlink_metadata` + remove guarantee. Reject a missing path first so
+// the result matches the local "not found" error rather than silently succeeding.
+const DELETE_SCRIPT: &str = r#"p=$1
+if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf '%s' "not found: $p" >&2; exit 1; fi
+rm -rf -- "$p""#;
+
 fn entry_kind(k: RemoteKind) -> EntryKind {
     match k {
         RemoteKind::Dir => EntryKind::Dir,
@@ -157,4 +190,51 @@ pub fn canonicalize(state: &SshState, host: &str, path: &str) -> Result<String, 
     } else {
         Ok(out)
     }
+}
+
+pub fn write_file(state: &SshState, host: &str, path: &str, content: &str) -> Result<(), String> {
+    let run = session::exec_stdin(
+        state,
+        host,
+        WRITE_SCRIPT,
+        &[path],
+        content.as_bytes().to_vec(),
+        dur(),
+    )?;
+    if !run.ok() {
+        return Err(op_error(host, "write", &run));
+    }
+    Ok(())
+}
+
+pub fn create_file(state: &SshState, host: &str, path: &str) -> Result<(), String> {
+    let run = session::exec(state, host, CREATE_FILE_SCRIPT, &[path], dur())?;
+    if !run.ok() {
+        return Err(op_error(host, "create file", &run));
+    }
+    Ok(())
+}
+
+pub fn create_dir(state: &SshState, host: &str, path: &str) -> Result<(), String> {
+    let run = session::exec(state, host, CREATE_DIR_SCRIPT, &[path], dur())?;
+    if !run.ok() {
+        return Err(op_error(host, "create dir", &run));
+    }
+    Ok(())
+}
+
+pub fn rename(state: &SshState, host: &str, from: &str, to: &str) -> Result<(), String> {
+    let run = session::exec(state, host, RENAME_SCRIPT, &[from, to], dur())?;
+    if !run.ok() {
+        return Err(op_error(host, "rename", &run));
+    }
+    Ok(())
+}
+
+pub fn delete(state: &SshState, host: &str, path: &str) -> Result<(), String> {
+    let run = session::exec(state, host, DELETE_SCRIPT, &[path], dur())?;
+    if !run.ok() {
+        return Err(op_error(host, "delete", &run));
+    }
+    Ok(())
 }

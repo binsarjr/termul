@@ -7,8 +7,24 @@ pub mod session;
 
 pub use session::SshState;
 
+use serde::Serialize;
+use tauri::Emitter;
+
 use crate::modules::fs::file::{FileStat, ReadResult};
 use crate::modules::fs::tree::DirEntry;
+
+/// The `ssh://<host><abs-path>` URI the frontend uses as a remote file's
+/// identity. `path` is absolute (starts with `/`), so no extra separator.
+fn remote_uri(host: &str, path: &str) -> String {
+    format!("ssh://{host}{path}")
+}
+
+#[derive(Serialize, Clone)]
+struct FileWrittenEvent {
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+}
 
 /// Run a blocking ssh op off the Tauri async runtime. `tauri::State` can't cross
 /// the thread boundary, so callers clone an owned `SshState` (it's `Arc`-backed)
@@ -96,4 +112,63 @@ pub async fn ssh_canonicalize(
 ) -> Result<String, String> {
     let st = state.inner().clone();
     blocking(move || ops::canonicalize(&st, &host, &path)).await
+}
+
+#[tauri::command]
+pub async fn ssh_write_file(
+    host: String,
+    path: String,
+    content: String,
+    source: Option<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SshState>,
+) -> Result<(), String> {
+    let st = state.inner().clone();
+    let uri = remote_uri(&host, &path);
+    blocking(move || ops::write_file(&st, &host, &path, &content)).await?;
+    // Mirror the local fs_write_file event so the markdown preview / sibling
+    // editor reload path works for remote files too (keyed by the ssh:// uri).
+    let _ = app.emit("fs:file-written", FileWrittenEvent { path: uri, source });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn ssh_create_file(
+    host: String,
+    path: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<(), String> {
+    let st = state.inner().clone();
+    blocking(move || ops::create_file(&st, &host, &path)).await
+}
+
+#[tauri::command]
+pub async fn ssh_create_dir(
+    host: String,
+    path: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<(), String> {
+    let st = state.inner().clone();
+    blocking(move || ops::create_dir(&st, &host, &path)).await
+}
+
+#[tauri::command]
+pub async fn ssh_rename(
+    host: String,
+    from: String,
+    to: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<(), String> {
+    let st = state.inner().clone();
+    blocking(move || ops::rename(&st, &host, &from, &to)).await
+}
+
+#[tauri::command]
+pub async fn ssh_delete(
+    host: String,
+    path: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<(), String> {
+    let st = state.inner().clone();
+    blocking(move || ops::delete(&st, &host, &path)).await
 }

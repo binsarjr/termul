@@ -13,7 +13,7 @@
 //! surface, instead of hanging on a hidden prompt.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
@@ -120,9 +120,34 @@ pub fn socket_path(host: &str) -> Result<PathBuf, String> {
 /// mirroring `shell::run_blocking`: piped stdout/stderr drained on their own
 /// threads while a waiter thread feeds `recv_timeout`.
 pub fn run(program: &str, args: &[String], dur: Duration) -> Result<Run, String> {
+    run_inner(program, args, None, dur)
+}
+
+/// Like `run`, but feeds `stdin` to the child on a dedicated thread so a large
+/// payload can't deadlock against the child's own output. Used for remote
+/// writes, where the file content is streamed to `cat > tmp` over the master.
+pub fn run_with_stdin(
+    program: &str,
+    args: &[String],
+    stdin: Vec<u8>,
+    dur: Duration,
+) -> Result<Run, String> {
+    run_inner(program, args, Some(stdin), dur)
+}
+
+fn run_inner(
+    program: &str,
+    args: &[String],
+    stdin: Option<Vec<u8>>,
+    dur: Duration,
+) -> Result<Run, String> {
     let mut cmd = Command::new(program);
     cmd.args(args)
-        .stdin(Stdio::null())
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     crate::modules::proc::hide_console(&mut cmd);
@@ -135,6 +160,17 @@ pub fn run(program: &str, args: &[String], dur: Duration) -> Result<Run, String>
             e.to_string()
         }
     })?);
+
+    // Feed stdin on its own thread; dropping the handle closes the pipe (EOF).
+    let in_handle = stdin.map(|bytes| {
+        let mut in_pipe = child.take_stdin();
+        thread::spawn(move || {
+            if let Some(pipe) = in_pipe.as_mut() {
+                let _ = pipe.write_all(&bytes);
+                let _ = pipe.flush();
+            }
+        })
+    });
 
     let mut out_pipe = child.take_stdout().ok_or_else(|| {
         let _ = child.kill();
@@ -175,6 +211,9 @@ pub fn run(program: &str, args: &[String], dur: Duration) -> Result<Run, String>
         }
     };
 
+    if let Some(h) = in_handle {
+        let _ = h.join();
+    }
     let stdout = out_handle.join().unwrap_or_default();
     let stderr = String::from_utf8_lossy(&err_handle.join().unwrap_or_default())
         .trim()
@@ -209,6 +248,31 @@ pub fn exec(
     run(
         "ssh",
         &[String::from("-S"), sock, host.to_string(), remote],
+        dur,
+    )
+}
+
+/// `exec`, but streams `stdin` to the remote script (e.g. file content piped to
+/// `cat > tmp` for an atomic write).
+pub fn exec_stdin(
+    state: &SshState,
+    host: &str,
+    script: &str,
+    args: &[&str],
+    stdin: Vec<u8>,
+    dur: Duration,
+) -> Result<Run, String> {
+    ensure_master(state, host)?;
+    let sock = socket_path(host)?.to_string_lossy().into_owned();
+    let mut remote = format!("sh -c {} _", super::parse::sq(script));
+    for a in args {
+        remote.push(' ');
+        remote.push_str(&super::parse::sq(a));
+    }
+    run_with_stdin(
+        "ssh",
+        &[String::from("-S"), sock, host.to_string(), remote],
+        stdin,
         dur,
     )
 }
