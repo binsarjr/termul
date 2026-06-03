@@ -1,6 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { useHistoryStore } from "./historyStore";
+import { useRemoteHistoryStore } from "./remoteHistoryStore";
 import { deriveInputFromRow, ghostSuffix, matchHistory } from "./historyMatch";
 
 /** Max rows shown in the Ctrl+Space dropdown. */
@@ -46,6 +47,9 @@ export class AutocompleteController {
       line: number;
       col: number;
     } | null,
+    /** The session's current SSH target (`[user@]host`) when it's in an `ssh`
+     * session, else null — so matching draws on the remote shell's history. */
+    private readonly getSshHost: () => string | null = () => null,
   ) {
     // Make sure history is loaded for matching (deduped in the store).
     void useHistoryStore.getState().load();
@@ -61,7 +65,19 @@ export class AutocompleteController {
     return usePreferencesStore.getState().historyAutocomplete;
   }
 
+  /** The active SSH target, or null when this session is on the local shell. */
+  private host(): string | null {
+    const h = this.getSshHost();
+    return h && h.length > 0 ? h : null;
+  }
+
   private entries(): string[] {
+    const host = this.host();
+    if (host) {
+      // Lazily fetch the remote shell's history (deduped per host in the store).
+      useRemoteHistoryStore.getState().ensure(host);
+      return useRemoteHistoryStore.getState().entriesFor(host);
+    }
     return useHistoryStore.getState().entries;
   }
 
@@ -90,7 +106,11 @@ export class AutocompleteController {
     // the cursor at the start col → empty → never captured (no-secret-capture).
     if (d === "\r") {
       const input = this.currentInput();
-      if (input.trim()) useHistoryStore.getState().addRecent(input);
+      if (input.trim()) {
+        const host = this.host();
+        if (host) useRemoteHistoryStore.getState().addRecent(host, input);
+        else useHistoryStore.getState().addRecent(input);
+      }
     }
     if (this.dropdownOpen) this.clampSelection();
   }

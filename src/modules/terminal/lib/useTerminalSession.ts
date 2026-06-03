@@ -55,6 +55,10 @@ type Session = {
   // Whether lastCwd came from a remote (SSH) shell. Display-only: a remote cwd
   // updates the tab label/status pill but never the local explorer.
   lastCwdRemote: boolean;
+  // The detected `ssh <target>` this session is currently in (mirrors what the
+  // tab's sshHost holds), or null on the local shell. Read by the autocomplete
+  // controller to match against the remote host's history instead of local.
+  sshHost: string | null;
   pendingExit: number | null;
   shellExited: boolean;
   callbacks: Callbacks;
@@ -221,6 +225,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     initialCwd,
     lastCwd: null,
     lastCwdRemote: false,
+    sshHost: null,
     pendingExit: null,
     shellExited: false,
     callbacks: {},
@@ -429,11 +434,17 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         // local ssh process exits → OSC 133 D).
         onCommand: (cmd) => {
           // The FULL target (`user@host`), not the bare host, so the remote
-          // browser connects as the same identity the terminal did.
+          // browser connects as the same identity the terminal did. Mirror it
+          // onto the session so the autocomplete controller matches against the
+          // remote host's history for the session's lifetime.
           const target = parseSshTarget(cmd);
+          s.sshHost = target;
           if (target) s.callbacks.onSshHost?.(target);
         },
-        onCommandEnd: () => s.callbacks.onSshHost?.(null),
+        onCommandEnd: () => {
+          s.sshHost = null;
+          s.callbacks.onSshHost?.(null);
+        },
       });
       // Expose the slot's command-block ring to the session so getLastBlock /
       // getBlocks can read it. The prompt tracker disposes the ring on its own
@@ -447,6 +458,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         term,
         (data) => s.pty?.write(data),
         prompt.getCommandStart,
+        () => s.sshHost,
       );
       s.autocompleteCtl = autocompleteCtl;
       const cwd = registerCwdHandler(

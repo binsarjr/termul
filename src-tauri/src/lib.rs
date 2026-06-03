@@ -129,6 +129,7 @@ pub fn run() {
             ssh::ssh_read_dir,
             ssh::ssh_read_file,
             ssh::ssh_read_bytes,
+            ssh::ssh_read_history,
             ssh::ssh_stat,
             ssh::ssh_canonicalize,
             ssh::ssh_write_file,

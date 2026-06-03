@@ -44,6 +44,26 @@ const CANON_SCRIPT: &str =
 
 const READ_SCRIPT: &str = r#"cat -- "$1""#;
 
+/// Emit `IJTSHELL:<shell>` then the raw history file for the remote login shell,
+/// so the same `history.rs` parser handles it. Picks the file from `$SHELL`,
+/// falling back to whichever of the known history files is readable. `tail`
+/// bounds the payload to the most-recent lines for users with huge histories.
+const HISTORY_SCRIPT: &str = r#"s=unknown
+f=
+case "${SHELL##*/}" in
+  zsh) s=zsh; f=$HOME/.zsh_history ;;
+  bash) s=bash; f=$HOME/.bash_history ;;
+  fish) s=fish; f=$HOME/.local/share/fish/fish_history ;;
+esac
+if [ -z "$f" ] || [ ! -r "$f" ]; then
+  for pair in zsh:.zsh_history bash:.bash_history fish:.local/share/fish/fish_history; do
+    t=${pair%%:*}; rel=${pair#*:}
+    if [ -r "$HOME/$rel" ]; then s=$t; f=$HOME/$rel; break; fi
+  done
+fi
+printf 'IJTSHELL:%s\n' "$s"
+if [ -n "$f" ] && [ -r "$f" ]; then tail -n 8000 "$f" 2>/dev/null; fi"#;
+
 /// Atomic write of stdin to `$1`: a `mktemp` in the target's own dir (secure
 /// random name + O_EXCL, so no pre-staged-symlink attack), stream the content,
 /// preserve the target's mode if it existed, then `mv` (same-filesystem rename
@@ -170,6 +190,26 @@ pub fn read_bytes(state: &SshState, host: &str, path: &str) -> Result<Vec<u8>, S
         return Err(format!("toolarge:{size}:{MAX_READ_BYTES_BINARY}"));
     }
     cat(state, host, path)
+}
+
+/// Read the remote login shell's history, returning `(shell, raw_file_text)` for
+/// `history::build_shell_history` to parse. Best-effort: an unreadable/missing
+/// file yields an empty body, never an error.
+pub fn read_history(state: &SshState, host: &str) -> Result<(String, String), String> {
+    let run = session::exec(state, host, HISTORY_SCRIPT, &[], dur())?;
+    if !run.ok() {
+        return Err(op_error(host, "history", &run));
+    }
+    let out = run.stdout_string();
+    // First line is the `IJTSHELL:<shell>` marker; everything after it is the
+    // raw history file.
+    match out.split_once('\n') {
+        Some((first, rest)) => {
+            let shell = first.strip_prefix("IJTSHELL:").unwrap_or("unknown").trim();
+            Ok((shell.to_string(), rest.to_string()))
+        }
+        None => Ok(("unknown".to_string(), String::new())),
+    }
 }
 
 pub fn canonicalize(state: &SshState, host: &str, path: &str) -> Result<String, String> {

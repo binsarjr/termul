@@ -103,6 +103,24 @@ pub async fn ssh_stat(
     blocking(move || ops::stat(&st, &host, &path)).await
 }
 
+/// The remote login shell's history, parsed into the same `ShellHistory` shape
+/// the local reader returns — so the inline autocomplete suggests remote
+/// commands while a tab is SSHed in.
+#[tauri::command]
+pub async fn ssh_read_history(
+    host: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<crate::modules::history::ShellHistory, String> {
+    let st = state.inner().clone();
+    blocking(move || {
+        let (shell, raw) = ops::read_history(&st, &host)?;
+        Ok(crate::modules::history::build_shell_history(
+            shell, None, &raw, None,
+        ))
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn ssh_canonicalize(
     host: String,

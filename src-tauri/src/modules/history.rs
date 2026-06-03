@@ -82,7 +82,7 @@ fn unescape_fish(value: &str) -> String {
 }
 
 /// Parse raw history-file text into commands in file order (oldest first).
-fn parse_history(shell: &str, raw: &str) -> Vec<String> {
+pub(crate) fn parse_history(shell: &str, raw: &str) -> Vec<String> {
     match shell {
         "fish" => raw
             .lines()
@@ -104,19 +104,17 @@ fn parse_history(shell: &str, raw: &str) -> Vec<String> {
     }
 }
 
-#[tauri::command]
-pub fn read_shell_history(limit: Option<usize>) -> Result<ShellHistory, String> {
-    let Some((shell, path)) = shell_init::history_file() else {
-        return Ok(ShellHistory {
-            shell: "unknown".to_string(),
-            path: None,
-            entries: Vec::new(),
-        });
-    };
-    // Missing/unreadable file → empty list, not an error (fresh machine, etc).
-    let raw = std::fs::read_to_string(&path).unwrap_or_default();
-    let parsed = parse_history(&shell, &raw);
-
+/// Parse `raw` history text for `shell` into a `ShellHistory`: most-recent-first,
+/// de-duplicated (newest occurrence wins), capped at `limit` (and `MAX_ENTRIES`).
+/// Shared by the local reader and the remote (SSH) reader so both apply the same
+/// parsing/dedup/cap rules.
+pub(crate) fn build_shell_history(
+    shell: String,
+    path: Option<String>,
+    raw: &str,
+    limit: Option<usize>,
+) -> ShellHistory {
+    let parsed = parse_history(&shell, raw);
     let cap = limit.unwrap_or(MAX_ENTRIES).min(MAX_ENTRIES);
     let mut seen = HashSet::new();
     let mut entries = Vec::new();
@@ -131,12 +129,30 @@ pub fn read_shell_history(limit: Option<usize>) -> Result<ShellHistory, String> 
             }
         }
     }
-
-    Ok(ShellHistory {
+    ShellHistory {
         shell,
-        path: Some(path.to_string_lossy().into_owned()),
+        path,
         entries,
-    })
+    }
+}
+
+#[tauri::command]
+pub fn read_shell_history(limit: Option<usize>) -> Result<ShellHistory, String> {
+    let Some((shell, path)) = shell_init::history_file() else {
+        return Ok(ShellHistory {
+            shell: "unknown".to_string(),
+            path: None,
+            entries: Vec::new(),
+        });
+    };
+    // Missing/unreadable file → empty list, not an error (fresh machine, etc).
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    Ok(build_shell_history(
+        shell,
+        Some(path.to_string_lossy().into_owned()),
+        &raw,
+        limit,
+    ))
 }
 
 /// Drop every history record whose command equals `command`. Line-based shells
