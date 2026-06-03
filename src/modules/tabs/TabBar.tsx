@@ -226,7 +226,7 @@ export function TabBar({
                     key={t.id}
                     data-tab-id={t.id}
                     className={cn(
-                      "flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent text-xs text-foreground",
+                      "flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-foreground/15 text-xs text-foreground",
                       compact ? "px-1.5" : "px-2",
                     )}
                   >
@@ -318,8 +318,12 @@ export function TabBar({
                             }
                           : undefined
                       }
+                      // Active fill is a translucent foreground overlay, not
+                      // bg-accent: the tab strip sits on the bg-card titlebar and
+                      // accent (only ~1.17:1 against card) reads as flat there.
+                      // foreground/15 lifts the active tab clearly in both themes.
                       className={cn(
-                        "group relative h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors data-[state=active]:bg-accent data-[state=active]:text-foreground hover:text-foreground/80 justify-between",
+                        "group relative h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors data-[state=active]:bg-foreground/15 data-[state=active]:text-foreground dark:data-[state=active]:bg-foreground/15 dark:data-[state=active]:text-foreground data-[state=inactive]:hover:bg-foreground/8 hover:text-foreground/80 justify-between",
                         compact
                           ? "px-1.5!"
                           : tabs.length === 1
