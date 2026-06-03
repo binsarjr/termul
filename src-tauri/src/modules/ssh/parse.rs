@@ -136,9 +136,7 @@ pub fn parse_watch_signatures(stdout: &[u8]) -> Vec<(String, String)> {
         .split('\0')
         .filter(|r| !r.is_empty())
         .filter_map(|rec| {
-            let mut it = rec.splitn(2, '\t');
-            let sig = it.next()?;
-            let dir = it.next()?;
+            let (sig, dir) = rec.split_once('\t')?;
             if dir.is_empty() {
                 return None;
             }
