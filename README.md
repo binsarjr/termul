@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="public/logo.png" width="144" height="144" alt="it's just a terminal" />
-  <h1>it's just a terminal</h1>
+  <img src="public/logo.png" width="144" height="144" alt="Termul" />
+  <h1>Termul</h1>
 
   <p><em>(it's not just a terminal.)</em></p>
   <p><strong>Lightweight, terminal-first, AI-native dev workspace.</strong></p>
@@ -20,7 +20,7 @@
 
 ---
 
-**it's just a terminal** is a lightweight open-source terminal (ADE) built on Tauri 2 + Rust and React 19. A native PTY backend with a WebGL renderer, an agentic AI side-panel that runs against your own keys or fully local models, plus a code editor, file explorer, and source control with a git graph built in. About 7-8 MB on disk. No telemetry. No account.
+**Termul** is a lightweight open-source terminal (ADE) built on Tauri 2 + Rust and React 19. A native PTY backend with a WebGL renderer, an agentic AI side-panel that runs against your own keys or fully local models, plus a code editor, file explorer, and source control with a git graph built in. About 7-8 MB on disk. No telemetry. No account.
 
 > A fork of [Terax](https://github.com/crynta/terax-ai). See [Credits](#credits).
 
@@ -153,7 +153,7 @@ Issues and PRs are welcome! Feel free to open issues, suggest features, or submi
 
 ## Credits
 
-**it's just a terminal** is a fork of [Terax](https://github.com/crynta/terax-ai) by Crynta — an excellent open-source AI-native terminal that this project is built on top of. Huge thanks to the original authors; this would not exist without their work.
+**Termul** is a fork of [Terax](https://github.com/crynta/terax-ai) by Crynta — an excellent open-source AI-native terminal that this project is built on top of. Huge thanks to the original authors; this would not exist without their work.
 
 The original code is licensed under Apache-2.0 (`Copyright 2026 Crynta`). That notice is preserved in [LICENSE](LICENSE) and the attribution lives in [NOTICE](NOTICE). Changes made in this fork are tracked in the git history.
 
