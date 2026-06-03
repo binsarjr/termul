@@ -83,6 +83,12 @@ const loaders: Record<string, LanguageLoader> = {
   gemspec: rubyLoader,
   ru: rubyLoader,
 
+  // HashiCorp HCL: Terraform (.tf/.tfvars), Packer, Nomad, Consul, Vault
+  tf: () => import("codemirror-lang-hcl").then((m) => m.hcl()),
+  tfvars: () => import("codemirror-lang-hcl").then((m) => m.hcl()),
+  hcl: () => import("codemirror-lang-hcl").then((m) => m.hcl()),
+  nomad: () => import("codemirror-lang-hcl").then((m) => m.hcl()),
+
   // C / C++ family
   c: () => import("@codemirror/legacy-modes/mode/clike").then((m) => m.c),
   h: () => import("@codemirror/legacy-modes/mode/clike").then((m) => m.c),
