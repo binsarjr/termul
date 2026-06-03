@@ -1,6 +1,6 @@
 pub mod modules;
 
-use modules::{agent, fs, git, history, net, pty, secrets, shell, workspace};
+use modules::{agent, fs, git, history, net, pty, secrets, shell, ssh, workspace};
 use std::sync::Mutex;
 use tauri::State;
 use tauri_plugin_window_state::StateFlags;
@@ -60,6 +60,7 @@ pub fn run() {
         .manage(shell::ShellState::default())
         .manage(secrets::SecretsState::default())
         .manage(fs::watch::FsWatchState::default())
+        .manage(ssh::SshState::default())
         .manage({
             let registry = workspace::WorkspaceRegistry::default();
             workspace::bootstrap_registry(&registry);
@@ -122,6 +123,8 @@ pub fn run() {
             history::read_shell_history,
             history::delete_shell_history_entry,
             history::clear_shell_history,
+            ssh::ssh_connect,
+            ssh::ssh_disconnect,
             workspace::wsl_list_distros,
             workspace::wsl_default_distro,
             workspace::wsl_home,
