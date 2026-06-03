@@ -81,3 +81,17 @@ export function promptInputStart(rowText: string, cursorX: number): number {
   }
   return end;
 }
+
+/** The cwd shown in a stock remote shell's prompt, for the file explorer to
+ * follow when an SSH session has no OSC 7 of its own. Pulls the trailing
+ * `~`/`~/…`/`/…` path token that sits just before the prompt sigil on a clean
+ * prompt row — the `\w` field of the common default PS1 (`\u@\h:\w\$`), e.g.
+ * `pi@raspberrypi:~/Backups $` → `~/Backups`. Returns null when the row isn't a
+ * clean prompt (a command is being typed, mid-output, or a custom prompt with
+ * no path), so the caller keeps the last known cwd instead of guessing. `~` is
+ * left unresolved — the caller expands it against the known remote home. */
+const PROMPT_CWD = new RegExp(`([~/][^\\s]*)\\s*[${PROMPT_SIGILS}]\\s*$`);
+export function promptCwd(rowText: string): string | null {
+  const m = rowText.match(PROMPT_CWD);
+  return m ? m[1] : null;
+}
