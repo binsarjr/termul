@@ -15,6 +15,7 @@ function makeFakeTerm() {
   let rowText = "$ ";
   let cursorX = 2;
   let bufType: "normal" | "alternate" = "normal";
+  let viewportY = 0;
   const dataHandlers: ((d: string) => void)[] = [];
 
   const screen = {
@@ -39,16 +40,25 @@ function makeFakeTerm() {
           return bufType;
         },
         baseY: 0,
+        get viewportY() {
+          return viewportY;
+        },
         get cursorX() {
           return cursorX;
         },
         cursorY: 0,
         getLine: (_line: number) => ({
-          // Honor trimRight like the real xterm BufferLine: trimming drops
-          // trailing whitespace, so currentInput() must read untrimmed to keep
-          // a just-typed trailing space.
-          translateToString: (trim?: boolean) =>
-            trim ? rowText.replace(/\s+$/, "") : rowText,
+          // Honor trimRight and the column args like the real xterm BufferLine
+          // (the fake rows are ASCII-only, so columns equal string indices).
+          // Untrimmed reads keep a just-typed trailing space.
+          translateToString: (
+            trim?: boolean,
+            startCol?: number,
+            endCol?: number,
+          ) => {
+            const s = trim ? rowText.replace(/\s+$/, "") : rowText;
+            return s.slice(startCol ?? 0, endCol ?? s.length);
+          },
         }),
       },
     },
@@ -70,6 +80,9 @@ function makeFakeTerm() {
     setAltScreen: (v: boolean) => {
       bufType = v ? "alternate" : "normal";
     },
+    setViewportY: (v: number) => {
+      viewportY = v;
+    },
     sendData: (d: string) => {
       for (const cb of dataHandlers) cb(d);
     },
@@ -79,6 +92,22 @@ function makeFakeTerm() {
 const HIST = ["git status", "git stash pop", "npm run dev"];
 // Command start col = 2 (just past the "$ " prompt), single row.
 const START = () => ({ line: 0, col: 2 });
+
+function key(
+  code: string,
+  k: string,
+  mods: Partial<KeyboardEvent> = {},
+): KeyboardEvent {
+  return {
+    key: k,
+    code,
+    metaKey: false,
+    altKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    ...mods,
+  } as KeyboardEvent;
+}
 
 beforeEach(() => {
   useHistoryStore.setState({ entries: [...HIST], loaded: true });
@@ -109,18 +138,48 @@ describe("AutocompleteController — buffer-derived input", () => {
     expect(ctl.getRender()?.ghost).toBe("s");
   });
 
-  it("Tab repro: ArrowLeft mid-line still derives on-row input → ghost shows", () => {
+  it("ArrowLeft mid-line: ghost is suppressed and Right-arrow falls through", () => {
     const fake = makeFakeTerm();
-    const ctl = new AutocompleteController(fake.term, () => {}, START);
+    let written = "";
+    const ctl = new AutocompleteController(
+      fake.term,
+      (d) => {
+        written += d;
+      },
+      START,
+    );
 
-    // After accepting a dropdown pick the row holds "git st".
     fake.setRow("$ git st", 8);
     expect(ctl.getRender()?.ghost).toBe("atus");
 
-    // ArrowLeft: cursor moves left on the SAME row (mid-line edit). The input is
-    // now "git s" (col 2 .. cursor 7) and a ghost for that still resolves.
+    // ArrowLeft: cursor mid-line with "t" right of it. No ghost may render, and
+    // a plain Right-arrow must reach the shell as cursor movement — accepting
+    // here would splice the suffix into the middle of the line.
     fake.setCursorX(7);
-    expect(ctl.getRender()?.ghost).toBe("tatus");
+    expect(ctl.getRender()).toBeNull();
+    const consumed = ctl.handleKey({
+      key: "ArrowRight",
+      code: "ArrowRight",
+      metaKey: false,
+      altKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+    } as KeyboardEvent);
+    expect(consumed).toBe(false);
+    expect(written).toBe("");
+  });
+
+  it("scrolled-back viewport → nothing rendered (geometry would be stale)", () => {
+    const fake = makeFakeTerm();
+    const ctl = new AutocompleteController(fake.term, () => {}, START);
+
+    fake.setRow("$ git st", 8);
+    expect(ctl.getRender()?.ghost).toBe("atus");
+
+    // Wheel up one line: viewportY detaches from baseY. cursorY-based geometry
+    // would paint the ghost over scrollback rows, so the overlay must go dark.
+    fake.setViewportY(-1);
+    expect(ctl.getRender()).toBeNull();
   });
 
   it("alt-screen buffer yields no input → no ghost", () => {
@@ -194,6 +253,58 @@ describe("AutocompleteController — buffer-derived input", () => {
     expect(accepted).toBe(true);
     // Accept writes exactly "status" → final command "git status", no double space.
     expect(written).toBe("status");
+  });
+
+  it("leading-space command is not promoted (ignorespace convention)", () => {
+    const fake = makeFakeTerm();
+    new AutocompleteController(fake.term, () => {}, START);
+
+    fake.setRow("$  secret --token abc", 21);
+    fake.sendData("\r");
+    expect(useHistoryStore.getState().entries).toEqual(HIST);
+  });
+
+  it("alt screen: keys never consumed, stale dropdown dropped", () => {
+    const fake = makeFakeTerm();
+    let written = "";
+    const ctl = new AutocompleteController(
+      fake.term,
+      (d) => {
+        written += d;
+      },
+      START,
+    );
+
+    fake.setRow("$ git st", 8);
+    expect(ctl.handleKey(key("Space", " ", { ctrlKey: true }))).toBe(true);
+
+    // A TUI takes the alt screen while the dropdown is still open: its keys
+    // must all reach the TUI (no swallowed arrows/Escape, no pasted entry).
+    fake.setAltScreen(true);
+    expect(ctl.handleKey(key("ArrowDown", "ArrowDown"))).toBe(false);
+    expect(ctl.handleKey(key("Escape", "Escape"))).toBe(false);
+    expect(ctl.handleKey(key("Enter", "Enter"))).toBe(false);
+    expect(ctl.handleKey(key("Space", " ", { ctrlKey: true }))).toBe(false);
+    expect(written).toBe("");
+
+    // Back on the normal screen the stale dropdown is gone for good.
+    fake.setAltScreen(false);
+    expect(ctl.getRender()?.dropdown ?? null).toBeNull();
+  });
+
+  it("an Enter that reaches the PTY closes the dropdown", () => {
+    const fake = makeFakeTerm();
+    const ctl = new AutocompleteController(fake.term, () => {}, START);
+
+    fake.setRow("$ zzz", 5);
+    expect(ctl.handleKey(key("Space", " ", { ctrlKey: true }))).toBe(true);
+    // "zzz" matches nothing, so Enter isn't consumed by acceptSelected — it
+    // submits the line, and the dropdown must close with it.
+    expect(ctl.handleKey(key("Enter", "Enter"))).toBe(false);
+    fake.sendData("\r");
+
+    fake.setRow("$ ", 2);
+    expect(ctl.getRender()).toBeNull();
   });
 
   it("accepting the ghost writes only the remainder", () => {

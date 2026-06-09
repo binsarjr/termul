@@ -318,12 +318,16 @@ export function TabBar({
                             }
                           : undefined
                       }
-                      // Active fill is a translucent foreground overlay, not
-                      // bg-accent: the tab strip sits on the bg-card titlebar and
-                      // accent (only ~1.17:1 against card) reads as flat there.
-                      // foreground/15 lifts the active tab clearly in both themes.
+                      // Styled via aria-selected, NOT data-state: the
+                      // ContextMenuTrigger asChild wrapper injects its own
+                      // data-state ("closed"/"open") which overwrites the
+                      // "active"/"inactive" value radix Tabs.Trigger sets, so
+                      // data-[state=active] selectors never match here.
+                      // aria-selected survives the merge. Active fill is a
+                      // translucent foreground overlay (bg-accent reads flat
+                      // on the bg-card titlebar at ~1.17:1).
                       className={cn(
-                        "group relative h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors data-[state=active]:bg-foreground/15 data-[state=active]:text-foreground dark:data-[state=active]:bg-foreground/15 dark:data-[state=active]:text-foreground data-[state=inactive]:hover:bg-foreground/8 hover:text-foreground/80 justify-between",
+                        "group relative h-7 shrink-0 gap-1.5 rounded-md text-xs text-muted-foreground transition-colors aria-selected:bg-foreground/15 aria-selected:text-foreground aria-[selected=false]:hover:bg-foreground/8 aria-[selected=false]:hover:text-foreground/80 justify-between",
                         compact
                           ? "px-1.5!"
                           : tabs.length === 1

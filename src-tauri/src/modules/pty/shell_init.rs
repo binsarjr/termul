@@ -272,18 +272,43 @@ mod unix {
 pub(crate) fn history_file() -> Option<(String, std::path::PathBuf)> {
     let home = dirs::home_dir()?;
     let (shell, _path) = unix::Shell::detect();
-    let (name, rel): (&str, &str) = match shell {
-        unix::Shell::Zsh => ("zsh", ".zsh_history"),
-        unix::Shell::Bash => ("bash", ".bash_history"),
-        unix::Shell::Fish => ("fish", ".local/share/fish/fish_history"),
+    // fish keeps history under $XDG_DATA_HOME (default ~/.local/share).
+    let fish_history = || {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .unwrap_or_else(|| home.join(".local").join("share"))
+            .join("fish")
+            .join("fish_history")
+    };
+    let (name, path): (&str, PathBuf) = match shell {
+        unix::Shell::Zsh | unix::Shell::Bash => {
+            let name = if matches!(shell, unix::Shell::Zsh) {
+                "zsh"
+            } else {
+                "bash"
+            };
+            // HISTFILE is usually a shell-local variable, but when the user
+            // exports it (custom/XDG history location) honor it over the
+            // default — otherwise autocomplete reads a stale default file.
+            let custom = std::env::var_os("HISTFILE")
+                .map(PathBuf::from)
+                .filter(|p| p.is_file());
+            let default = home.join(if matches!(shell, unix::Shell::Zsh) {
+                ".zsh_history"
+            } else {
+                ".bash_history"
+            });
+            (name, custom.unwrap_or(default))
+        }
+        unix::Shell::Fish => ("fish", fish_history()),
         unix::Shell::Other => {
             // Unknown shell: fall back to whichever common history file exists.
-            for (n, r) in [
-                ("zsh", ".zsh_history"),
-                ("bash", ".bash_history"),
-                ("fish", ".local/share/fish/fish_history"),
+            for (n, p) in [
+                ("zsh", home.join(".zsh_history")),
+                ("bash", home.join(".bash_history")),
+                ("fish", fish_history()),
             ] {
-                let p = home.join(r);
                 if p.is_file() {
                     return Some((n.to_string(), p));
                 }
@@ -291,7 +316,7 @@ pub(crate) fn history_file() -> Option<(String, std::path::PathBuf)> {
             return None;
         }
     };
-    Some((name.to_string(), home.join(rel)))
+    Some((name.to_string(), path))
 }
 
 #[cfg(windows)]

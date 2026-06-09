@@ -190,6 +190,12 @@ export function TerminalPane({
     () => session.getAutocomplete()?.getRender() ?? null,
     [session],
   );
+  const acceptAutocompleteItem = useCallback(
+    (index: number) => {
+      session.getAutocomplete()?.acceptDropdownIndex(index);
+    },
+    [session],
+  );
 
   return (
     <>
@@ -226,8 +232,8 @@ export function TerminalPane({
           />
           <TerminalAutocompleteLayer
             active={visible && focused}
-            zoom={zoom}
             getRender={getAutocompleteRender}
+            onPick={acceptAutocompleteItem}
           />
         </div>
       </BlockContextMenu>
