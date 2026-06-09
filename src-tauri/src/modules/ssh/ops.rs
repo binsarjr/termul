@@ -200,16 +200,21 @@ pub fn read_history(state: &SshState, host: &str) -> Result<(String, String), St
     if !run.ok() {
         return Err(op_error(host, "history", &run));
     }
-    let out = run.stdout_string();
-    // First line is the `TERMULSHELL:<shell>` marker; everything after it is the
-    // raw history file.
-    match out.split_once('\n') {
-        Some((first, rest)) => {
-            let shell = first.strip_prefix("TERMULSHELL:").unwrap_or("unknown").trim();
-            Ok((shell.to_string(), rest.to_string()))
-        }
-        None => Ok(("unknown".to_string(), String::new())),
-    }
+    // First line is the `TERMULSHELL:<shell>` marker; everything after it is
+    // the raw history file. Split on BYTES before decoding: a remote zsh file
+    // is metafied (not valid UTF-8) and must be unmetafied, not lossy-mangled.
+    let bytes = &run.stdout;
+    let Some(nl) = bytes.iter().position(|&b| b == b'\n') else {
+        return Ok(("unknown".to_string(), String::new()));
+    };
+    let first = String::from_utf8_lossy(&bytes[..nl]);
+    let shell = first
+        .strip_prefix("TERMULSHELL:")
+        .unwrap_or("unknown")
+        .trim()
+        .to_string();
+    let text = crate::modules::history::decode_history_bytes(&shell, &bytes[nl + 1..]);
+    Ok((shell, text))
 }
 
 pub fn canonicalize(state: &SshState, host: &str, path: &str) -> Result<String, String> {

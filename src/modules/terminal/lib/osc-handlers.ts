@@ -335,10 +335,10 @@ function readTypedCommand(
   try {
     const row = term.buffer.active.getLine(m.line);
     if (!row) return "";
-    // trimRight: drop the trailing blank cells so we get just the command.
-    const text = row.translateToString(true);
-    if (start!.col >= text.length) return "";
-    return text.slice(start!.col).trim();
+    // Column-addressed read (start.col is a buffer column, not a string index —
+    // wide CJK/emoji cells make the two diverge); trimRight drops the trailing
+    // blank cells so we get just the command.
+    return row.translateToString(true, start!.col).trim();
   } catch {
     return "";
   }

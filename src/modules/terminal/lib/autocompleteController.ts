@@ -3,6 +3,7 @@ import { usePreferencesStore } from "@/modules/settings/preferences";
 import { useHistoryStore } from "./historyStore";
 import { useRemoteHistoryStore } from "./remoteHistoryStore";
 import {
+  cursorAtInputEnd,
   deriveInputFromRow,
   ghostSuffix,
   matchHistory,
@@ -32,9 +33,12 @@ export type AutocompleteRender = {
  * plus a Ctrl+Space dropdown. The current input is derived straight from the
  * xterm buffer using the OSC 133 prompt-end marker (B) the command-block feature
  * already pins, so it stays correct in any editing state — arrows, mid-line
- * edits, accepted suggestions — not just plain forward typing. All matching is
- * local; a missing marker (shell without integration) simply yields no input,
- * so we never show a wrong suggestion.
+ * edits, accepted suggestions — not just plain forward typing. The ghost only
+ * renders (and accepts) while the cursor sits at the END of the input, fish
+ * style — mid-line it would paint over the rest of the line and steal the
+ * Right-arrow from cursor movement. All matching is local; a missing marker
+ * (shell without integration) simply yields no input, so we never show a wrong
+ * suggestion.
  *
  * The overlay polls {@link getRender} on an animation frame (mirroring the
  * block hover layer), so this controller stays a plain object — no emitter, and
@@ -86,48 +90,78 @@ export class AutocompleteController {
     return useHistoryStore.getState().entries;
   }
 
-  /** The current command input, read live from the buffer's prompt row. Empty
-   * on the alt screen, on a wrapped/multi-row line, or when the cursor sits
-   * at/before the command-start column.
+  /** The current command input, read live from the buffer's prompt row, plus
+   * whether the cursor sits at the END of that input (the only place a ghost
+   * may render or be accepted — mid-line a Right-arrow means "move right").
+   * Input is empty on the alt screen, on a wrapped/multi-row line, or when the
+   * cursor sits at/before the command-start column.
    *
    * Two ways to locate where the command starts on the cursor row:
    *  - the OSC 133 prompt-end marker the local shell integration pins (precise);
    *  - in a remote SSH session, where a stock shell emits no OSC 133, a prompt
    *    heuristic ({@link promptInputStart}). Without this the remote case has no
    *    marker → empty input → the autocomplete could never suggest anything. */
-  private currentInput(): string {
+  private readInput(): { input: string; atEnd: boolean } {
+    const none = { input: "", atEnd: false };
     const buf = this.term.buffer.active;
-    if (buf.type === "alternate") return "";
+    if (buf.type === "alternate") return none;
     const cursorRow = buf.baseY + buf.cursorY;
 
     const start = this.getCommandStart();
     if (start) {
       // Multi-row / wrapped input — bail. Safe: only costs a suggestion.
-      if (cursorRow !== start.line) return "";
-      // Untrimmed (trimRight=false): translateToString(true) drops trailing
-      // whitespace, which would swallow a just-typed trailing space (e.g. "git ")
-      // and make the ghost double-space the next word. The slice is bounded by
-      // cursorX, so RPROMPT / right-aligned text past the cursor is still excluded.
-      const rowText = buf.getLine(start.line)?.translateToString(false) ?? "";
-      return deriveInputFromRow(rowText, start.col, buf.cursorX);
+      if (cursorRow !== start.line) return none;
+      const line = buf.getLine(start.line);
+      if (!line) return none;
+      // Column-addressed reads (translateToString with start/end columns):
+      // wide CJK/emoji cells occupy two columns but one string char, so slicing
+      // the whole-row string by column numbers would shear the input. Untrimmed
+      // (trimRight=false) so a just-typed trailing space (e.g. "git ") survives
+      // and the ghost doesn't double-space the next word; bounding at cursorX
+      // keeps RPROMPT / right-aligned text past the cursor excluded.
+      const input =
+        start.col >= 0 && buf.cursorX > start.col
+          ? line.translateToString(false, start.col, buf.cursorX)
+          : "";
+      return {
+        input,
+        atEnd: cursorAtInputEnd(line.translateToString(false, buf.cursorX)),
+      };
     }
 
     // No marker. Only fall back to the prompt heuristic inside an ssh session,
     // so local behavior (which always has a marker) is left exactly as-is.
-    if (!this.host()) return "";
-    const rowText = buf.getLine(cursorRow)?.translateToString(false) ?? "";
+    // (String-indexed on purpose: promptInputStart scans the row text itself;
+    // best-effort for stock remote prompts, which are overwhelmingly ASCII.)
+    if (!this.host()) return none;
+    const line = buf.getLine(cursorRow);
+    if (!line) return none;
+    const rowText = line.translateToString(false);
     const col = promptInputStart(rowText, buf.cursorX);
-    if (col < 0) return "";
-    return deriveInputFromRow(rowText, col, buf.cursorX);
+    if (col < 0) return none;
+    return {
+      input: deriveInputFromRow(rowText, col, buf.cursorX),
+      atEnd: cursorAtInputEnd(line.translateToString(false, buf.cursorX)),
+    };
+  }
+
+  private currentInput(): string {
+    return this.readInput().input;
   }
 
   private onData(d: string): void {
-    // A bare Enter submits the line: promote it so it's instantly suggestable.
-    // currentInput() reads the echoed row, so a no-echo `read -s` password keeps
-    // the cursor at the start col → empty → never captured (no-secret-capture).
-    if (d === "\r") {
+    // A bare Enter (or Ctrl-J) submits the line: promote it so it's instantly
+    // suggestable. currentInput() reads the echoed row, so a no-echo `read -s`
+    // password keeps the cursor at the start col → empty → never captured
+    // (no-secret-capture). A leading space is the shells' own "don't record
+    // this" convention (HIST_IGNORE_SPACE / fish default) — honor it here too.
+    if (d === "\r" || d === "\n") {
+      // This Enter reached the PTY (a dropdown-consumed Enter never lands
+      // here), so the line is submitted: close the dropdown or its key
+      // handling would leak into whatever runs next (arrows in vim, etc).
+      this.dropdownOpen = false;
       const input = this.currentInput();
-      if (input.trim()) {
+      if (input.trim() && !input.startsWith(" ")) {
         const host = this.host();
         if (host) useRemoteHistoryStore.getState().addRecent(host, input);
         else useHistoryStore.getState().addRecent(input);
@@ -147,7 +181,7 @@ export class AutocompleteController {
    * line is empty and the dropdown is closed. */
   getRender(): AutocompleteRender | null {
     if (!this.enabled()) return null;
-    const input = this.currentInput();
+    const { input, atEnd } = this.readInput();
     if (input.length === 0 && !this.dropdownOpen) return null;
 
     const screen = this.term.element?.querySelector(
@@ -162,12 +196,17 @@ export class AutocompleteController {
 
     const buf = this.term.buffer.active;
     if (buf.type === "alternate") return null;
+    // Only paint while the viewport is pinned to the bottom (the live prompt).
+    // cursorY is relative to the bottom page, so a scrolled-back viewport would
+    // place the ghost over scrollback rows instead of the (off-screen) cursor.
+    if (buf.viewportY !== buf.baseY) return null;
     const cx = buf.cursorX;
     const cy = buf.cursorY;
     if (cy < 0 || cy >= rows) return null;
 
     const entries = this.entries();
-    const ghost = input ? ghostSuffix(entries, input) : "";
+    // No ghost mid-line: it would paint over the text right of the cursor.
+    const ghost = input && atEnd ? ghostSuffix(entries, input) : "";
     const items = this.dropdownOpen
       ? matchHistory(entries, input, DROPDOWN_MAX)
       : [];
@@ -189,12 +228,14 @@ export class AutocompleteController {
     };
   }
 
-  /** Accept the inline ghost suggestion (Right-arrow at end-of-line). The next
+  /** Accept the inline ghost suggestion — only when the cursor sits at the end
+   * of the input, mirroring where the ghost renders; mid-line the Right-arrow
+   * must keep moving the cursor, not splice the suffix into the line. The next
    * frame re-derives the input from the buffer once the shell echoes the write,
    * so there's no local state to keep in sync. */
   private acceptGhost(): boolean {
-    const input = this.currentInput();
-    if (!input) return false;
+    const { input, atEnd } = this.readInput();
+    if (!input || !atEnd) return false;
     const ghost = ghostSuffix(this.entries(), input);
     if (!ghost) return false;
     this.write(ghost);
@@ -213,6 +254,13 @@ export class AutocompleteController {
     return true;
   }
 
+  /** Accept a dropdown row by index — the overlay's click path. */
+  acceptDropdownIndex(index: number): boolean {
+    if (!this.dropdownOpen || index < 0) return false;
+    this.selectedIndex = index;
+    return this.acceptSelected();
+  }
+
   /**
    * Called from the renderer pool's key handler on keydown. Returns true when
    * the key was consumed (the pool then preventDefaults and drops it). Returns
@@ -220,6 +268,15 @@ export class AutocompleteController {
    */
   handleKey(event: KeyboardEvent): boolean {
     if (!this.enabled()) return false;
+
+    // Never touch keys on the alt screen (vim/htop/less): there is no prompt
+    // to complete there, and consuming Ctrl+Space would eat readline/emacs
+    // set-mark. Also drop any dropdown that survived into the TUI, so its key
+    // branch below can't swallow arrows/Escape or paste an entry via Enter.
+    if (this.term.buffer.active.type === "alternate") {
+      this.dropdownOpen = false;
+      return false;
+    }
 
     // Ctrl+Space toggles the dropdown.
     if (

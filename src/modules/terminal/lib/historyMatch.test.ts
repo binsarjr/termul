@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cursorAtInputEnd,
   deriveInputFromRow,
   ghostSuffix,
   matchHistory,
@@ -32,6 +33,12 @@ describe("matchHistory", () => {
 
   it("returns most-recent entries for empty input (dropdown seed)", () => {
     expect(matchHistory(HIST, "", 2)).toEqual(["git status", "git stash pop"]);
+  });
+
+  it("skips multiline entries (accepting one would run its first line)", () => {
+    const entries = ["for i in 1 2\ndo echo $i\ndone", "for x in", "ls"];
+    expect(matchHistory(entries, "for", 10)).toEqual(["for x in"]);
+    expect(matchHistory(entries, "", 10)).toEqual(["for x in", "ls"]);
   });
 });
 
@@ -78,6 +85,36 @@ describe("deriveInputFromRow", () => {
 
   it("is empty when the start col is negative (invalid marker)", () => {
     expect(deriveInputFromRow("git status", -1, 5)).toBe("");
+  });
+});
+
+describe("cursorAtInputEnd", () => {
+  // Takes the untrimmed row text from the cursor column to the row's end;
+  // real xterm pads trailing blank cells out to the full terminal width.
+  const pad = (text: string, cols = 72) => text.padEnd(cols, " ");
+
+  it("true when only blanks follow the cursor", () => {
+    expect(cursorAtInputEnd(pad(""))).toBe(true);
+  });
+
+  it("true when nothing follows the cursor (unpadded row)", () => {
+    expect(cursorAtInputEnd("")).toBe(true);
+  });
+
+  it("false with text right at the cursor (mid-line edit)", () => {
+    expect(cursorAtInputEnd(pad("atus"))).toBe(false);
+  });
+
+  it("false when the cursor sits on a space inside the command", () => {
+    expect(cursorAtInputEnd(pad(" status"))).toBe(false);
+  });
+
+  it("tolerates a right-aligned RPROMPT hugging the row's right edge", () => {
+    expect(cursorAtInputEnd(" ".repeat(65) + "[main] ")).toBe(true);
+  });
+
+  it("false for a double-space gap inside the command (tail not at the edge)", () => {
+    expect(cursorAtInputEnd(pad("  status"))).toBe(false);
   });
 });
 

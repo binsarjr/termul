@@ -16,15 +16,19 @@ export function matchHistory(
   limit: number,
 ): string[] {
   const out: string[] = [];
+  // Multiline entries (zsh backslash-continuation, fish escaped \n) are never
+  // offered: accepting one would write a literal newline, which executes the
+  // first line in the shell before the user ever confirmed the rest.
   if (input === "") {
     for (const c of entries) {
+      if (c.includes("\n")) continue;
       out.push(c);
       if (out.length >= limit) break;
     }
     return out;
   }
   for (const c of entries) {
-    if (c.length > input.length && c.startsWith(input)) {
+    if (c.length > input.length && c.startsWith(input) && !c.includes("\n")) {
       out.push(c);
       if (out.length >= limit) break;
     }
@@ -55,6 +59,25 @@ export function deriveInputFromRow(
 ): string {
   if (startCol < 0 || cursorX <= startCol) return "";
   return rowText.slice(startCol, cursorX);
+}
+
+/**
+ * True when the cursor sits at the end of the typed input on the row — the only
+ * place an inline ghost may render or be accepted (fish-style). Mid-line (text
+ * at/right after the cursor) must suppress the ghost: a plain Right-arrow there
+ * means "move right", and accepting would splice the suffix into the middle of
+ * the line. Text past the cursor that hugs the row's right edge after a gap is
+ * tolerated — that's a right-aligned RPROMPT, not typed input (typed text that
+ * far right would have wrapped to the next row, which bails out earlier).
+ * Takes the untrimmed row text from the cursor column to the row end
+ * (`line.translateToString(false, cursorX)`), whose trailing blanks pad out to
+ * the full terminal width.
+ */
+export function cursorAtInputEnd(afterCursor: string): boolean {
+  const gap = afterCursor.search(/\S/);
+  if (gap < 0) return true;
+  const tailEnd = afterCursor.trimEnd().length;
+  return gap >= 1 && afterCursor.length - tailEnd <= 2;
 }
 
 /** Prompt sigils that conventionally sit at the END of a shell prompt, just
