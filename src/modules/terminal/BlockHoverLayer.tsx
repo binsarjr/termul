@@ -40,10 +40,9 @@ type Props = {
   onFilter: () => void;
   /** Fired when the ⋮ menu opens/closes so the host can pin the active block. */
   onMenuOpenChange: (open: boolean) => void;
-  /** App zoom (`--app-zoom`). The terminal is zoom-exempt but this overlay lives
-   * in the zoomed subtree, so every measured screen-px value is divided by this
-   * before being written as an inline px length, keeping the band/accent aligned
-   * with the (unscaled) terminal text at any zoom. */
+  /** App zoom (`--app-zoom`). Geometry needs no zoom math — the root is
+   * zoom-exempt, same effective scale as the terminal — but the toolbar's
+   * CONTENT visually scales with the UI zoom via a transform. */
   zoom: number;
 };
 
@@ -66,10 +65,6 @@ export function BlockHoverLayer({
   zoom,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
-  // The rAF loop reads zoom through a ref so a zoom change doesn't tear down and
-  // restart the loop; this assignment runs every render and is idempotent.
-  const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
   const highlightRef = useRef<HTMLDivElement>(null);
   const accentRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -96,13 +91,12 @@ export function BlockHoverLayer({
       const accent = accentRef.current;
       const tb = toolbarRef.current;
       if (!hl || !accent || !tb) return;
-      // `frame`/`rootRect` are real (post-zoom) screen px, but this overlay lives
-      // in the `zoom: --app-zoom` subtree while the terminal is zoom-exempt, so a
-      // CSS px we assign here renders at px*zoom. Divide every length by the zoom
-      // factor so the band lines up with the (unscaled) terminal text. At zoom 1
-      // this is a no-op.
-      const z = zoomRef.current || 1;
-      const px = (v: number) => `${v / z}px`;
+      // `frame`/`rootRect` are real screen px, and the zoom-exempt root puts
+      // this overlay in the same effective scale as the terminal grid — both
+      // rects live in one coordinate space, so raw deltas position exactly.
+      // (No `--app-zoom` division: engines report client rects inconsistently
+      // inside `zoom`ed subtrees, which mispositioned everything at zoom ≠ 1.)
+      const px = (v: number) => `${v}px`;
       const top = frame.top - rootRect.top;
       // The terminal has a left gutter (padding on .xterm), so .xterm-screen's
       // left edge sits a few px in from the wrapper. The band fills from the
@@ -205,7 +199,7 @@ export function BlockHoverLayer({
   return (
     <div
       ref={rootRef}
-      className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
+      className="zoom-exempt pointer-events-none absolute inset-0 z-20 overflow-hidden"
     >
       <div
         ref={highlightRef}
@@ -224,7 +218,16 @@ export function BlockHoverLayer({
       <div
         ref={toolbarRef}
         className="absolute z-30 flex items-center gap-0.5 rounded-md border border-border/60 bg-background/85 px-1 py-0.5 text-muted-foreground shadow-sm backdrop-blur-sm"
-        style={{ display: "none", pointerEvents: "auto" }}
+        style={{
+          display: "none",
+          pointerEvents: "auto",
+          // The zoom-exempt root opts out of the UI's CSS zoom, so the toolbar
+          // scales with the app zoom via a transform instead. Transforms don't
+          // touch layout, so the rAF-written top/right stay real px, and the
+          // top-right origin keeps it pinned to the block's corner.
+          transform: zoom !== 1 ? `scale(${zoom})` : undefined,
+          transformOrigin: "top right",
+        }}
         // Keep terminal focus when clicking the toolbar.
         onMouseDown={(e) => e.preventDefault()}
       >
