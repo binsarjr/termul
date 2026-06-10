@@ -82,3 +82,18 @@
 - Condvar discipline: predicate writes MUST happen under the same mutex the
   waiter holds, or `wait_timeout` is papering over a lost-wakeup race (PTY
   flusher had exactly this; fixed = untimed `cv.wait` + zero idle wakeups).
+
+## tauri window API butuh capability eksplisit (2026-06-10)
+
+- Bug nyata: dialog confirm-close tampil tapi window tak pernah tertutup. Akar:
+  `getCurrentWindow().destroy()` butuh `core:window:allow-destroy` di
+  src-tauri/capabilities/default.json — tanpa itu invoke REJECT DIAM-DIAM
+  (error hanya di webview console) dan window menolak tertutup.
+- Lebih jebak lagi: SEKADAR me-register `onCloseRequested` membuat wrapper
+  @tauri-apps/api memanggil `this.destroy()` sendiri setelah handler selesai
+  (kecuali preventDefault). Artinya listener close-requested APA PUN mewajibkan
+  allow-destroy, bahkan jika kode kita tidak pernah memanggil destroy().
+- Rule: setiap pemakaian API window/plugin Tauri baru dari JS → cek
+  capabilities/default.json dulu (permission `core:window:allow-*` /
+  `plugin:allow-*`). Kegagalan permission tidak melempar ke UI — selalu tambah
+  `.catch(console.error)` pada invoke window-level supaya regresi kelihatan.

@@ -77,6 +77,9 @@ import {
 import { SettingsStack } from "@/modules/settings/SettingsStack";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { onKeysChanged, setThemeId as persistThemeId } from "@/modules/settings/store";
+import { flushSessionSave } from "@/modules/tabs/lib/sessionStore";
+import { flushAllSnapshots } from "@/modules/terminal/lib/sessionSnapshots";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ShortcutsDialog,
   SHORTCUTS,
@@ -500,6 +503,7 @@ export default function App() {
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const userShortcuts = usePreferencesStore((s) => s.shortcuts);
+  const restoreSessionPref = usePreferencesStore((s) => s.restoreSession);
   const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
   const dimInactivePanes = usePreferencesStore((s) => s.dimInactivePanes);
   const miniOpen = useChatStore((s) => s.mini.open);
@@ -804,6 +808,47 @@ export default function App() {
 
   const cancelClose = useCallback(() => {
     setPendingCloseTab(null);
+  }, []);
+
+  // Window close: optionally confirm (a stray click on the close button
+  // shouldn't kill every shell), then flush the session (tab structure +
+  // pending scrollback snapshots) before the window goes away.
+  const [confirmQuitOpen, setConfirmQuitOpen] = useState(false);
+
+  const flushSessionAndDestroy = useCallback(async () => {
+    try {
+      await Promise.all([flushAllSnapshots(), flushSessionSave()]);
+    } catch (e) {
+      console.error("[termul] session flush on close failed:", e);
+    }
+    // Needs core:window:allow-destroy in capabilities — without it this
+    // rejects and the window silently refuses to close.
+    await getCurrentWindow()
+      .destroy()
+      .catch((e) => console.error("[termul] window destroy failed:", e));
+  }, []);
+
+  useEffect(() => {
+    // Registering this listener makes the Tauri API own the close: it awaits
+    // the handler and destroys the window unless preventDefault() was called.
+    // The catch is load-bearing — an uncaught throw would leave the window
+    // unclosable. macOS Cmd+Q bypasses close-requested entirely; the
+    // continuous debounced session saves bound that loss.
+    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
+      if (usePreferencesStore.getState().confirmBeforeQuit) {
+        event.preventDefault();
+        setConfirmQuitOpen(true);
+        return;
+      }
+      try {
+        await Promise.all([flushAllSnapshots(), flushSessionSave()]);
+      } catch (e) {
+        console.error("[termul] session flush on close failed:", e);
+      }
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   }, []);
 
   const cycleTab = useCallback(
@@ -2015,6 +2060,28 @@ export default function App() {
                 </AlertDialogCancel>
                 <AlertDialogAction onClick={confirmDeleteClose}>
                   Close Anyway
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog open={confirmQuitOpen} onOpenChange={setConfirmQuitOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Close Termul?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Running processes will end.
+                  {restoreSessionPref
+                    ? " Your tabs and layout will reopen on the next launch."
+                    : ""}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setConfirmQuitOpen(false)}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={() => void flushSessionAndDestroy()}>
+                  Close
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

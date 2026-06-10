@@ -12,8 +12,10 @@ import {
   type SplitDir,
 } from "@/modules/terminal/lib/panes";
 import { disposeSession } from "@/modules/terminal/lib/useTerminalSession";
+import { getExplicitLaunchDir } from "@/lib/launchDir";
 import type { SettingsSection } from "@/modules/settings/openSettings";
 import { usePreferencesStore } from "@/modules/settings/preferences";
+import { buildBootState, getRestoredSession, saveSession } from "./sessionStore";
 import {
   assignTabToGroup as assignTabToGroupPure,
   detachTabFromGroup,
@@ -187,22 +189,15 @@ export function moveItem<T>(arr: T[], from: number, to: number): T[] {
 }
 
 export function useTabs(initial?: Partial<TerminalTab>) {
-  const [tabs, setTabs] = useState<Tab[]>(() => {
-    const tabId = 1;
-    const leafId = 2;
-    return [
-      {
-        id: tabId,
-        kind: "terminal",
-        title: initial?.title ?? "shell",
-        cwd: initial?.cwd,
-        paneTree: { kind: "leaf", id: leafId, cwd: initial?.cwd },
-        activeLeafId: leafId,
-      },
-    ];
-  });
-  const [activeId, setActiveId] = useState(1);
-  const nextIdRef = useRef(3);
+  // Boot state is the restored previous session when one exists (hydrated
+  // pre-render by initSessionRestore in main.tsx), else the historical
+  // default single tab. Computed once — restore never races user actions.
+  const [boot] = useState(() =>
+    buildBootState(initial, getRestoredSession(), getExplicitLaunchDir()),
+  );
+  const [tabs, setTabs] = useState<Tab[]>(boot.tabs);
+  const [activeId, setActiveId] = useState(boot.activeId);
+  const nextIdRef = useRef(boot.nextId);
   const tabsRef = useRef(tabs);
 
   useEffect(() => {
@@ -220,8 +215,8 @@ export function useTabs(initial?: Partial<TerminalTab>) {
   // Tab groups: lightweight metadata + a tabId->groupId map kept beside `tabs`
   // (the Tab union is untouched). Refs mirror them so actions that reorder on
   // assignment can read current values synchronously, like `tabsRef`.
-  const [groups, setGroups] = useState<TabGroup[]>([]);
-  const [tabGroupOf, setTabGroupOf] = useState<TabGroupMap>({});
+  const [groups, setGroups] = useState<TabGroup[]>(boot.groups);
+  const [tabGroupOf, setTabGroupOf] = useState<TabGroupMap>(boot.tabGroupOf);
   const groupsRef = useRef(groups);
   const tabGroupOfRef = useRef(tabGroupOf);
   useEffect(() => {
@@ -230,6 +225,17 @@ export function useTabs(initial?: Partial<TerminalTab>) {
   useEffect(() => {
     tabGroupOfRef.current = tabGroupOf;
   }, [tabGroupOf]);
+
+  // Persist the session structure so a relaunch reopens these tabs. Gated on
+  // prefs hydration so a user with restore OFF never gets a file written
+  // during the pre-hydration window (the Zustand store holds defaults until
+  // loadPreferences resolves).
+  const restoreSession = usePreferencesStore((s) => s.restoreSession);
+  const prefsHydrated = usePreferencesStore((s) => s.hydrated);
+  useEffect(() => {
+    if (!prefsHydrated || !restoreSession) return;
+    saveSession({ tabs, activeId, groups, tabGroupOf });
+  }, [tabs, activeId, groups, tabGroupOf, prefsHydrated, restoreSession]);
 
   const newTab = useCallback((cwd?: string) => {
     const tabId = nextIdRef.current++;
