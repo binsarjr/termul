@@ -213,12 +213,36 @@ describe("remote heuristic blocks — REAL xterm integration", () => {
     console.log("[V1 laggy] ring:", JSON.stringify(ring, null, 2));
     console.log("[V1 laggy] pushClosed calls:", s.pushedClosed.length);
 
-    // Report-only: what (if anything) was captured.
-    // Expected from code reading: rowText has no typed input at Enter =>
-    // commandFromPromptRow null => no pending => zero remote blocks.
+    // The Enter-time read sees a bare prompt (echo hasn't caught up), so a
+    // PROVISIONAL pending opens; the close-time re-read of the prompt row
+    // recovers the real command once the echo has landed there.
     expect(probe.derivedCommand).toBeNull();
-    expect(probe.markersCreatedDuringEnter).toBe(0);
-    expect(ring.filter((b) => b.source === "remote").length).toBe(0);
+    expect(probe.markersCreatedDuringEnter).toBe(2);
+    const remote = ring.filter((b) => b.source === "remote");
+    expect(remote).toHaveLength(1);
+    expect(remote[0]).toMatchObject({ command: "ls", exitCode: null });
+    s.tracker.dispose();
+    s.prompt.dispose();
+  });
+
+  it("V1b bare Enter on a laggy link: provisional opens, then cancels", async () => {
+    const s = setup();
+    await enterSsh(s);
+    await s.write("Last login: ...\r\npi@host:~ $ ");
+
+    // Bare Enter looks identical to a laggy echo at dispatch time.
+    const probe = s.pressEnter();
+    console.log("[V1b bare] enter probe:", JSON.stringify(probe));
+    expect(probe.markersCreatedDuringEnter).toBe(2);
+
+    // The remote just redraws an empty prompt — the pinned row never gains
+    // text, so the settle cancels instead of fabricating a block.
+    await s.write("\r\npi@host:~ $ ");
+    await sleep(SETTLE_WAIT_MS);
+
+    const ring = s.summarizeRing();
+    console.log("[V1b bare] ring:", JSON.stringify(ring, null, 2));
+    expect(ring.filter((b) => b.source === "remote")).toHaveLength(0);
     s.tracker.dispose();
     s.prompt.dispose();
   });

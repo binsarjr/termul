@@ -1,5 +1,6 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useEffect } from "react";
+import { IS_WINDOWS } from "@/lib/platform";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { writeToSession } from "./useTerminalSession";
 
@@ -25,11 +26,83 @@ export function formatDropPaths(paths: string[]): string {
     .join(" ");
 }
 
-function paneAtPoint(
-  clientX: number,
-  clientY: number,
-): { leafId: number; host: HTMLElement } | null {
-  const el = document.elementFromPoint(clientX, clientY);
+type Point = { x: number; y: number };
+
+/**
+ * Tauri types drag positions as PhysicalPosition, but only Windows actually
+ * delivers physical pixels (wry's webview2 runs ScreenToClient on raw screen
+ * coords). macOS (wkwebview draggingLocation) and Linux (webkitgtk widget
+ * coords) deliver logical points unscaled, so dividing those by
+ * devicePixelRatio halves every Retina coordinate and lands all drops in the
+ * top-left pane (tauri#10744).
+ */
+export function dragClientPoint(
+  position: Point,
+  windowsHost: boolean,
+  devicePixelRatio: number,
+): Point {
+  if (!windowsHost) return { x: position.x, y: position.y };
+  const dpr = devicePixelRatio || 1;
+  return { x: position.x / dpr, y: position.y / dpr };
+}
+
+type DragDropPayload =
+  | { type: "enter"; paths: string[]; position: Point }
+  | { type: "over"; position: Point }
+  | { type: "drop"; paths: string[]; position: Point }
+  | { type: "leave" };
+
+type DropAction<T> =
+  | { kind: "highlight"; target: T | null }
+  | { kind: "drop"; target: T; text: string };
+
+/**
+ * Pure drag-drop routing: tracks the hovered target across enter/over events
+ * and resolves drops to it when the drop position hit-tests to nothing, so a
+ * drop can only ever land on the pane the highlight showed. Duplicate drops
+ * of the same paths within DEDUPE_MS are swallowed regardless of resolved
+ * target, since duplicate emits may not hit-test identically.
+ */
+export function createDropRouter<T>(deps: {
+  hitTest: (point: Point) => T | null;
+  toClient: (position: Point) => Point;
+  now: () => number;
+}) {
+  let hover: T | null = null;
+  let lastText = "";
+  let lastDropAt = 0;
+
+  return {
+    handle(payload: DragDropPayload): DropAction<T> {
+      if (payload.type === "leave") {
+        hover = null;
+        return { kind: "highlight", target: null };
+      }
+      const point = deps.toClient(payload.position);
+      if (payload.type !== "drop") {
+        hover = deps.hitTest(point);
+        return { kind: "highlight", target: hover };
+      }
+      const target = deps.hitTest(point) ?? hover;
+      hover = null;
+      if (!target) return { kind: "highlight", target: null };
+      const text = formatDropPaths(payload.paths);
+      if (!text) return { kind: "highlight", target: null };
+      const now = deps.now();
+      if (text === lastText && now - lastDropAt < DEDUPE_MS) {
+        return { kind: "highlight", target: null };
+      }
+      lastText = text;
+      lastDropAt = now;
+      return { kind: "drop", target, text };
+    },
+  };
+}
+
+type PaneTarget = { leafId: number; host: HTMLElement };
+
+function paneAtPoint(point: Point): PaneTarget | null {
+  const el = document.elementFromPoint(point.x, point.y);
   const host = el?.closest<HTMLElement>(PANE_SELECTOR) ?? null;
   if (!host) return null;
   const leafId = Number(host.dataset.paneLeaf);
@@ -48,8 +121,6 @@ export function useTerminalFileDrop(): void {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     let highlighted: HTMLElement | null = null;
-    let lastKey = "";
-    let lastDropAt = 0;
 
     const setHighlight = (host: HTMLElement | null) => {
       if (highlighted === host) return;
@@ -58,37 +129,22 @@ export function useTerminalFileDrop(): void {
       host?.classList.add(...DROP_HIGHLIGHT);
     };
 
-    const toClient = (position: { x: number; y: number }) => {
-      const dpr = window.devicePixelRatio || 1;
-      return { x: position.x / dpr, y: position.y / dpr };
-    };
+    const router = createDropRouter<PaneTarget>({
+      hitTest: paneAtPoint,
+      toClient: (position) =>
+        dragClientPoint(position, IS_WINDOWS, window.devicePixelRatio),
+      now: Date.now,
+    });
 
     void getCurrentWebviewWindow()
       .onDragDropEvent((event) => {
-        const payload = event.payload;
-        if (payload.type === "over") {
-          const { x, y } = toClient(payload.position);
-          setHighlight(paneAtPoint(x, y)?.host ?? null);
+        const action = router.handle(event.payload);
+        if (action.kind === "highlight") {
+          setHighlight(action.target?.host ?? null);
           return;
         }
-        if (payload.type === "leave") {
-          setHighlight(null);
-          return;
-        }
-        if (payload.type !== "drop") return;
         setHighlight(null);
-        if (payload.paths.length === 0) return;
-        const { x, y } = toClient(payload.position);
-        const target = paneAtPoint(x, y);
-        if (!target) return;
-        const text = formatDropPaths(payload.paths);
-        if (!text) return;
-        const key = `${target.leafId}:${text}`;
-        const now = Date.now();
-        if (key === lastKey && now - lastDropAt < DEDUPE_MS) return;
-        lastKey = key;
-        lastDropAt = now;
-        writeToSession(target.leafId, `${text} `);
+        writeToSession(action.target.leafId, `${action.text} `);
       })
       .then((un) => {
         if (disposed) un();

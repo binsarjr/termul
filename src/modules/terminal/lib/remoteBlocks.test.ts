@@ -137,16 +137,76 @@ describe("createRemoteBlockTracker", () => {
     expect(t.ring.all()).toHaveLength(0);
   });
 
-  it("opens nothing on Enter over an empty prompt", () => {
+  it("cancels at settle when Enter was bare (provisional opened, row stays empty)", () => {
     const t = setup();
     t.setRow(0, "pi@host:~ $ ");
     t.setCursor(0, 12);
+    // A clean prompt row at Enter is indistinguishable from a laggy echo, so a
+    // provisional pending opens here — the late re-read at close decides.
     t.pressEnter();
+    expect(t.markers).toHaveLength(2);
+
+    t.setRow(1, "pi@host:~ $ ");
+    t.setCursor(1, 12);
     t.moveCursor();
     vi.advanceTimersByTime(SETTLE);
 
     expect(t.ring.all()).toHaveLength(0);
-    expect(t.markers).toHaveLength(0);
+    for (const m of t.markers) expect(m.dispose).toHaveBeenCalled();
+  });
+
+  it("captures the command via late re-read when the echo lags the Enter", () => {
+    const t = setup();
+    t.setRow(0, "pi@host:~ $ ");
+    t.setCursor(0, 12);
+    t.pressEnter(); // laggy link: nothing echoed yet, provisional pending
+
+    // Echo + output + fresh prompt all land afterwards.
+    t.setRow(0, "pi@host:~ $ ls -la");
+    t.setRow(1, "file1  file2");
+    t.setRow(2, "pi@host:~ $ ");
+    t.setCursor(2, 12);
+    t.moveCursor();
+    vi.advanceTimersByTime(SETTLE);
+
+    const all = t.ring.all();
+    expect(all).toHaveLength(1);
+    expect(all[0].command).toBe("ls -la");
+    expect(all[0].source).toBe("remote");
+    expect(all[0].promptMarker?.line).toBe(0);
+  });
+
+  it("prefers the late re-read over a partial Enter-time read", () => {
+    const t = setup();
+    t.setRow(0, "pi@host:~ $ l"); // only the first keystroke echoed so far
+    t.setCursor(0, 13);
+    t.pressEnter();
+
+    t.setRow(0, "pi@host:~ $ ls -la"); // echo caught up on the same row
+    t.setRow(2, "pi@host:~ $ ");
+    t.setCursor(2, 12);
+    t.moveCursor();
+    vi.advanceTimersByTime(SETTLE);
+
+    expect(t.ring.all()).toHaveLength(1);
+    expect(t.ring.last()?.command).toBe("ls -la");
+  });
+
+  it("falls back to the Enter-time read when the prompt row no longer parses", () => {
+    const t = setup();
+    t.setRow(0, "pi@host:~ $ pwd");
+    t.setCursor(0, 15);
+    t.pressEnter();
+
+    // The prompt row content got replaced (clear/redraw) — no sigil to re-read.
+    t.setRow(0, "garbled output without a sigil");
+    t.setRow(2, "pi@host:~ $ ");
+    t.setCursor(2, 12);
+    t.moveCursor();
+    vi.advanceTimersByTime(SETTLE);
+
+    expect(t.ring.all()).toHaveLength(1);
+    expect(t.ring.last()?.command).toBe("pwd");
   });
 
   it("opens nothing on Enter over a non-prompt row (password input)", () => {

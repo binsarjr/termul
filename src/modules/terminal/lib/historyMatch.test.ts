@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   commandFromPromptRow,
+  commandFromPromptRowText,
   cursorAtInputEnd,
   deriveInputFromRow,
   ghostSuffix,
@@ -242,6 +243,42 @@ describe("commandFromPromptRow", () => {
   it("trims leading spaces of the typed input", () => {
     const row = pad("host $   ls");
     expect(commandFromPromptRow(row, 11)).toBe("ls");
+  });
+});
+
+describe("commandFromPromptRowText", () => {
+  const pad = (text: string, cols = 72) => text.padEnd(cols, " ");
+
+  it("reads the command back from a settled prompt row (no cursor needed)", () => {
+    expect(commandFromPromptRowText(pad("pi@raspberrypi:~ $ ls -la"))).toBe(
+      "ls -la",
+    );
+  });
+
+  it("null when the row has no recognizable prompt boundary", () => {
+    expect(commandFromPromptRowText(pad("Password:"))).toBeNull();
+  });
+
+  it("null when nothing was typed (bare prompt row)", () => {
+    expect(commandFromPromptRowText(pad("host $ "))).toBeNull();
+  });
+
+  it("strips an edge-hugging RPROMPT after a wide gap", () => {
+    const row = "host $ ls" + " ".repeat(57) + "14:32 ⏎";
+    expect(row.length - row.trimEnd().length).toBeLessThanOrEqual(2);
+    expect(commandFromPromptRowText(row)).toBe("ls");
+  });
+
+  it("keeps a wide-gapped tail that does NOT hug the right edge", () => {
+    // Trailing padding means the tail isn't an RPROMPT — keep the whole text.
+    const row = pad("host $ echo a   b", 72);
+    expect(commandFromPromptRowText(row)).toBe("echo a   b");
+  });
+
+  it("keeps small gaps inside the command intact", () => {
+    expect(commandFromPromptRowText(pad("host $ git  status"))).toBe(
+      "git  status",
+    );
   });
 });
 

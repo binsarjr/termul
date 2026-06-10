@@ -16,6 +16,7 @@ import {
   type CommandBlock,
   type CommandBlockRing,
   createShellIntegrationState,
+  type PromptTracker,
   registerCwdHandler,
   registerPromptTracker,
 } from "./osc-handlers";
@@ -95,6 +96,10 @@ type Session = {
   // slot. Set when a slot binds (registerOsc), cleared on release. Lets the
   // block accessors reach the live ring; null when no slot is bound.
   blocks: CommandBlockRing | null;
+  // The bound slot's prompt tracker, for resetting its command-depth state on
+  // shell exit/respawn (the old shell's open command died with it). Lives and
+  // dies with `blocks`.
+  promptTracker: PromptTracker | null;
   // Hover/selection + geometry controller for the bound slot's block ring.
   // Lives and dies with `blocks` (created on bind, disposed on release).
   blockCtl: BlockController | null;
@@ -275,6 +280,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     dormantRing: makeDormantRing(),
     hasSlot: false,
     blocks: null,
+    promptTracker: null,
     blockCtl: null,
     autocompleteCtl: null,
     altScreenAtRelease: false,
@@ -444,6 +450,18 @@ function replayFromSpill(
     });
 }
 
+/** Reset per-shell lifecycle state when the shell process goes away (exit or
+ * respawn): the ssh pill and the OSC 133 command-depth both describe the DEAD
+ * shell's world and must not leak onto its successor. */
+function clearShellLifecycleState(s: Session): void {
+  if (s.sshHost) {
+    s.sshHost = null;
+    s.remoteOsc7Seen = false;
+    s.callbacks.onSshHost?.(null);
+  }
+  s.promptTracker?.resetNesting();
+}
+
 async function openPtyForSession(
   leafId: number,
   s: Session,
@@ -460,6 +478,11 @@ async function openPtyForSession(
         s.shellExited = true;
         s.pty = null;
         s.dormant = false;
+        // The local shell died — any ssh session and open command nesting
+        // died with it. Stale state would keep the pill up, and a depth stuck
+        // at 1 would make every command of a respawned shell read as nested
+        // (onCommand silenced, heuristic blocks misarmed).
+        clearShellLifecycleState(s);
         const slot = getSlotForLeaf(leafId);
         if (slot) slot.term.options.disableStdin = true;
         if (s.callbacks.onExit) s.callbacks.onExit(code);
@@ -541,6 +564,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // getBlocks can read it. The prompt tracker disposes the ring on its own
       // disposer (returned below), so we only need to drop our reference.
       s.blocks = prompt.blocks;
+      s.promptTracker = prompt;
       const blockCtl = new BlockController(term, prompt.blocks, () =>
         blockOverlayKicks.get(leafId)?.(),
       );
@@ -612,7 +636,10 @@ function bindLeafToSlot(leafId: number, s: Session): void {
           if (cwdTimer !== null) clearTimeout(cwdTimer);
           cursorMove.dispose();
         },
-        prompt.dispose,
+        () => {
+          if (s.promptTracker === prompt) s.promptTracker = null;
+          prompt.dispose();
+        },
         cwd,
       ];
     },
@@ -710,6 +737,9 @@ export async function respawnSession(
   cancelSnapshotDebounce(leafId);
   s.pty?.close();
   s.pty = null;
+  // close() doesn't run the exit callback, so clear the dead shell's
+  // ssh/depth state here too (a respawn mid-ssh must not keep the pill).
+  clearShellLifecycleState(s);
   s.dormant = false;
   s.snapshot = null;
   s.dormantRing = makeDormantRing();

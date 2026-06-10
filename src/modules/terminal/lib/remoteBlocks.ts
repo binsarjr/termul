@@ -1,5 +1,10 @@
 import type { IMarker, Terminal } from "@xterm/xterm";
-import { commandFromPromptRow, isCleanPromptRow } from "./historyMatch";
+import {
+  commandFromPromptRow,
+  commandFromPromptRowText,
+  isCleanPromptRow,
+  promptInputStart,
+} from "./historyMatch";
 import { registerMarkerSafe, type CommandBlockRing } from "./osc-handlers";
 
 /**
@@ -25,7 +30,10 @@ import { registerMarkerSafe, type CommandBlockRing } from "./osc-handlers";
 const REMOTE_SETTLE_MS = 150;
 
 type PendingBlock = {
-  command: string;
+  /** Enter-time read of the typed command. Null when the remote echo hadn't
+   * caught up with the keystrokes yet (laggy link) — the real command is
+   * re-read from the prompt row when the block closes. */
+  command: string | null;
   promptMarker: IMarker | null;
   startMarker: IMarker | null;
 };
@@ -66,12 +74,35 @@ export function createRemoteBlockTracker(
     }
   };
 
+  /** The command as it reads on the pinned prompt row NOW — at close time the
+   * remote echo has caught up, repairing an empty/partial Enter-time read. */
+  const lateReadCommand = (promptMarker: IMarker | null): string | null => {
+    if (!promptMarker || promptMarker.isDisposed || promptMarker.line < 0) {
+      return null;
+    }
+    try {
+      const line = term.buffer.active.getLine(promptMarker.line);
+      if (!line) return null;
+      return commandFromPromptRowText(line.translateToString(false));
+    } catch {
+      return null;
+    }
+  };
+
   const close = (endMarker: IMarker | null) => {
     if (!pending) return;
+    // Prefer the late read over the Enter-time one; when both come up empty
+    // the Enter was bare (or the row scrolled out) — no block, drop markers.
+    const command = lateReadCommand(pending.promptMarker) ?? pending.command;
+    if (!command) {
+      endMarker?.dispose();
+      cancelPending();
+      return;
+    }
     // pushClosed force-flushes the ring's open block (the local `ssh` command)
     // first, so the session-spanning ssh block can't shadow this one.
     ring.pushClosed({
-      command: pending.command,
+      command,
       promptMarker: pending.promptMarker,
       startMarker: pending.startMarker,
       endMarker,
@@ -108,8 +139,13 @@ export function createRemoteBlockTracker(
     }
     const row = readCursorRow();
     if (!row) return;
+    // Gate on a prompt boundary, not on visible input: over ssh the typed
+    // command's echo lags the Enter by the round-trip, so the row can still
+    // read as a bare prompt here. Open the pending anyway and re-read the
+    // command at close time (close() cancels it if the row never gains text —
+    // the bare-Enter case).
+    if (promptInputStart(row.text, row.cursorX) < 0) return;
     const command = commandFromPromptRow(row.text, row.cursorX);
-    if (command === null) return;
     // Type-ahead (Enter again before the settle fired): the previous command's
     // block ends where this prompt sits — same exclusive-end semantics as a D.
     if (pending) close(registerMarkerSafe(term));
