@@ -1,7 +1,7 @@
 import { PopoverContent } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl, useIconsLoaded } from "@/modules/explorer/lib/iconResolver";
 import { useEffect, useRef } from "react";
 
 type Props = {
@@ -25,6 +25,7 @@ export function FilePickerContent({
 }: Props) {
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
+  useIconsLoaded();
 
   useEffect(() => {
     const el = itemRefs.current[activeIndex];

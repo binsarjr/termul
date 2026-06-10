@@ -8,7 +8,7 @@ import {
 import { useWhisperRecording } from "../hooks/useWhisperRecording";
 import { expandSnippetTokens, type Snippet } from "../lib/snippets";
 import { tryRunSlashCommand, type SlashCommandMeta } from "./slashCommands";
-import { getOrCreateChat, useChatStore } from "../store/chatStore";
+import { useChatStore } from "../store/chatStore";
 import { useSnippetsStore } from "../store/snippetsStore";
 import { fsBridge } from "@/modules/workspace";
 
@@ -297,10 +297,14 @@ export function AiComposerProvider({ children }: ProviderProps) {
     }
 
     if (!sessionId) return;
-    const chat = getOrCreateChat(sessionId);
-    void chat.sendMessage({ role: "user", parts } as Parameters<
-      typeof chat.sendMessage
-    >[0]);
+    // The chat runtime (AI SDK + transport + tools) is a heavy lazy chunk;
+    // load it on first send instead of pulling it into startup.
+    void import("../store/chatRuntime").then(({ getOrCreateChat }) => {
+      const chat = getOrCreateChat(sessionId);
+      void chat.sendMessage({ role: "user", parts } as Parameters<
+        typeof chat.sendMessage
+      >[0]);
+    });
     const store = useChatStore.getState();
     store.patchAgentMeta({ hitStepCap: false, compactionNotice: null });
     if (!store.mini.open) store.openMini();
@@ -314,7 +318,9 @@ export function AiComposerProvider({ children }: ProviderProps) {
 
   const stop = () => {
     if (!sessionId) return;
-    void getOrCreateChat(sessionId).stop();
+    void import("../store/chatRuntime").then(({ getOrCreateChat }) =>
+      getOrCreateChat(sessionId).stop(),
+    );
   };
 
   const canSend =

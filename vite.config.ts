@@ -1,13 +1,37 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 const host = process.env.TAURI_DEV_HOST;
 
+// Desktop webviews always pick woff2, so KaTeX's ttf/woff fallbacks are dead
+// weight — drop the files and strip their url() entries from emitted CSS.
+function dropLegacyKatexFonts(): Plugin {
+  return {
+    name: "drop-legacy-katex-fonts",
+    generateBundle(_options, bundle) {
+      for (const [name, asset] of Object.entries(bundle)) {
+        if (/KaTeX_.*\.(ttf|woff)$/.test(name)) {
+          delete bundle[name];
+        } else if (
+          asset.type === "asset" &&
+          name.endsWith(".css") &&
+          typeof asset.source === "string"
+        ) {
+          asset.source = asset.source.replace(
+            /,url\([^)]*KaTeX_[^)]*\.(?:ttf|woff)\)\s*format\(["']?(?:truetype|woff)["']?\)/g,
+            "",
+          );
+        }
+      }
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), dropLegacyKatexFonts()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -30,6 +54,10 @@ export default defineConfig(async ({ mode }) => ({
       },
       output: {
         manualChunks(id: string) {
+          // The preload helper is shared by every dynamic import; left to
+          // Rollup it gets colored into a lazy chunk (streamdown), which
+          // pins that chunk into the eager preload graph.
+          if (id.includes("vite/preload-helper")) return "utils";
           if (!id.includes("node_modules")) return;
 
           // Each AI provider SDK in its own chunk so unused providers
@@ -53,8 +81,20 @@ export default defineConfig(async ({ mode }) => ({
             return "codemirror";
           if (id.includes("/streamdown/") || id.includes("@streamdown/"))
             return "streamdown";
+          // Keep tiny shared style utils out of the streamdown chunk —
+          // colored in there, they'd give eager code a static edge into it.
+          if (
+            id.includes("/clsx/") ||
+            id.includes("/tailwind-merge/") ||
+            id.includes("/class-variance-authority/")
+          )
+            return "utils";
           if (id.includes("/pdfjs-dist/")) return "pdfjs";
-          if (id.includes("/mermaid/") || id.includes("/dagre-d3-es/"))
+          if (
+            id.includes("/mermaid/") ||
+            id.includes("@mermaid-js/") ||
+            id.includes("/dagre-d3-es/")
+          )
             return "mermaid";
           if (id.includes("/katex/")) return "katex";
           if (id.includes("/motion/") || id.includes("framer-motion"))

@@ -1,2 +1,1 @@
-export { PdfStack } from "./PdfStack";
-export { PdfViewerPane } from "./PdfViewerPane";
+export { PdfStack } from "./PdfStackLazy";

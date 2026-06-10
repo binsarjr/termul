@@ -1,7 +1,3 @@
-import "@fontsource/jetbrains-mono/latin-400.css";
-import "@fontsource/jetbrains-mono/latin-700.css";
-import "@fontsource/jetbrains-mono/cyrillic-400.css";
-import "@fontsource/jetbrains-mono/cyrillic-700.css";
 import "@xterm/xterm/css/xterm.css";
 import "./styles/globals.css";
 
@@ -16,11 +12,10 @@ if (USE_CUSTOM_WINDOW_CONTROLS) {
   document.documentElement.dataset.chrome = "borderless";
 }
 
-// Reap PTY sessions orphaned by a prior webview load before any tab spawns.
-await invoke("pty_close_all").catch(() => {});
-
-// Seed before first paint so default tab mounts at target cwd (no flicker).
-await initLaunchDir();
+// Reap PTY sessions orphaned by a prior webview load before any tab spawns,
+// and seed the launch dir before first paint so the default tab mounts at
+// the target cwd (no flicker).
+await Promise.all([invoke("pty_close_all").catch(() => {}), initLaunchDir()]);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <App />,

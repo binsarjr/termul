@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { IS_MAC } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl, useIconsLoaded } from "@/modules/explorer/lib/iconResolver";
 import {
   AiContentGenerator02Icon,
   Alert02Icon,
@@ -897,6 +897,7 @@ const EntryRow = memo(function EntryRow({
 }: RowRendererProps & {
   row: Extract<RowDescriptor, { kind: "entry" }>;
 }) {
+  useIconsLoaded();
   const entry = row.entry;
   const isSelected = selectedPath === entry.path;
   const fileName = basename(entry.path);
