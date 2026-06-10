@@ -56,14 +56,20 @@ Fix:
   xterm-asli di remoteBlocks.integration.test.ts (8 tes integrasi total).
   Final: vitest 349/349, tsc clean. User konfirmasi works.
 
-Follow-up tercatat (belum dikerjakan):
-- Race `write_if_changed` shell_init.rs:257 — nama temp shared
-  `.__termul_tmp__`; 4 PTY spawn serentak (session restore) bisa saling
-  rename → WARN "zsh shell integration disabled" → pane itu tanpa OSC 133.
-  Fix gampang: suffix unik (pid+counter). Terlihat sekali di log dev2.
-- Laggy echo: Enter sebelum echo remote ter-parse → perintah itu tidak jadi
-  block (V1 integration test mendokumentasikan). Hardening opsional.
-- respawnSession/onExit tidak clear s.sshHost (temuan auditor, pre-existing).
+Follow-up (SEMUA SELESAI, post-v0.3.5 — naik di rilis berikutnya):
+- [x] Race `write_if_changed` shell_init.rs — temp suffix kini unik
+  (`.__termul_tmp__<pid>_<seq>` via AtomicU64) di kedua copy (unix+windows);
+  4 PTY spawn serentak tidak lagi saling curi file temp. cargo check clean.
+- [x] Laggy echo: Enter sebelum echo ter-parse kini membuka pending
+  PROVISIONAL (command null), lalu command di-re-read dari baris prompt
+  saat block ditutup (`commandFromPromptRowText`, strip RPROMPT yang nempel
+  tepi kanan). Bare Enter → cancel di settle, marker di-dispose. V1
+  integration test dibalik: sekarang assert "ls" TERTANGKAP; V1b baru
+  meng-cover bare Enter. Late read diprioritaskan di atas partial read.
+- [x] Stale s.sshHost: `clearShellLifecycleState` di onExit + respawnSession
+  (close() tidak menjalankan exit callback) — clear sshHost/remoteOsc7Seen,
+  notify onSshHost(null), dan `promptTracker.resetNesting()` (depth/sawNested/
+  dedup rows) supaya shell baru mulai dari state bersih.
 
 ## Review (SSH per-command blocks)
 

@@ -4,6 +4,14 @@ use portable_pty::CommandBuilder;
 
 use crate::modules::workspace::{self, WorkspaceEnv};
 
+/// Monotonic suffix for `write_if_changed` temp files. Session restore spawns
+/// several PTYs at once and each one prepares the same integration rc; with a
+/// SHARED temp name, one thread's rename raced another's into ENOENT and
+/// silently disabled shell integration for that pane. The pid guards against a
+/// second app instance sharing the cache dir.
+static INTEGRATION_TMP_SEQ: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 #[cfg(windows)]
 const BASHRC_SCRIPT: &str = include_str!("scripts/bashrc.bash");
 #[cfg(windows)]
@@ -252,9 +260,14 @@ mod unix {
                 return Ok(());
             }
         }
-        // Atomic replace: a parallel shell startup must never source a half-written file.
+        // Atomic replace: a parallel shell startup must never source a
+        // half-written file. The temp name must be unique per call — parallel
+        // PTY spawns writing the same target would otherwise rename each
+        // other's temp away (ENOENT) and lose integration for that pane.
+        let seq = super::INTEGRATION_TMP_SEQ
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut tmp: OsString = path.as_os_str().to_owned();
-        tmp.push(".__termul_tmp__");
+        tmp.push(format!(".__termul_tmp__{}_{}", std::process::id(), seq));
         let tmp = PathBuf::from(tmp);
         fs::write(&tmp, content).map_err(|e| format!("write {}: {e}", tmp.display()))?;
         fs::rename(&tmp, path).map_err(|e| {
@@ -625,8 +638,13 @@ mod windows {
                 return Ok(());
             }
         }
+        // Unique temp name per call — parallel PTY spawns writing the same
+        // target would otherwise rename each other's temp away (ENOENT) and
+        // lose integration for that pane.
+        let seq = super::INTEGRATION_TMP_SEQ
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut tmp: OsString = path.as_os_str().to_owned();
-        tmp.push(".__termul_tmp__");
+        tmp.push(format!(".__termul_tmp__{}_{}", std::process::id(), seq));
         let tmp = PathBuf::from(tmp);
         fs::write(&tmp, content).map_err(|e| format!("write {}: {e}", tmp.display()))?;
         fs::rename(&tmp, path).map_err(|e| {

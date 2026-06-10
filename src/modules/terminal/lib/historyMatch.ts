@@ -145,6 +145,30 @@ export function commandFromPromptRow(
   return trimmed === "" ? null : trimmed;
 }
 
+/**
+ * Cursor-free variant of {@link commandFromPromptRow} for reading the command
+ * back AFTER the fact: over ssh the typed command's echo lags the local Enter
+ * by the network round-trip, so the Enter-time read can be empty or partial.
+ * The heuristic block tracker re-reads the pinned prompt row when the block
+ * CLOSES — by then the echo has long caught up. Takes the untrimmed row text.
+ * One wrinkle: zsh keeps its RPROMPT on the line after Enter, so when
+ * something hugs the row's right edge, everything from the first ≥3-space run
+ * on is treated as decoration and dropped (3+ consecutive spaces inside a
+ * typed command are vanishingly rare; the gap before an RPROMPT is wide).
+ */
+export function commandFromPromptRowText(rowText: string): string | null {
+  const col = promptInputStart(rowText, rowText.length);
+  if (col < 0) return null;
+  const tail = rowText.slice(col);
+  let text = tail.trimEnd();
+  if (text.length > 0 && tail.length - text.length <= 2) {
+    const gap = text.search(/\s{3,}/);
+    if (gap > 0) text = text.slice(0, gap);
+  }
+  const trimmed = text.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 /** The cwd shown in a stock remote shell's prompt, for the file explorer to
  * follow when an SSH session has no OSC 7 of its own. Pulls the trailing
  * `~`/`~/…`/`/…` path token that sits just before the prompt sigil on a clean

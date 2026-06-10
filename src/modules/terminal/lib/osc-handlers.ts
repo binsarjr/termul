@@ -183,6 +183,10 @@ export type PromptTracker = {
    * tracker must stand down or it would double-capture every command. Resets
    * when the local command ends (depth back to 0). */
   sawNestedCommand: () => boolean;
+  /** Zero the command-depth state. For shell respawn: the old shell's open
+   * command died with it (a kill mid-ssh leaves depth stuck at 1, so the new
+   * shell's every C would read as nested and onCommand would never fire). */
+  resetNesting: () => void;
   blocks: CommandBlockRing;
   dispose: () => void;
 };
@@ -368,6 +372,12 @@ export function registerPromptTracker(
       return { line: m.line, col: commandStart!.col };
     },
     sawNestedCommand: () => sawNested,
+    resetNesting: () => {
+      commandDepth = 0;
+      sawNested = false;
+      lastCLine = null;
+      lastDLine = null;
+    },
     blocks,
     dispose: () => {
       d.dispose();
