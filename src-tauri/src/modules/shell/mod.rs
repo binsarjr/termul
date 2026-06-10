@@ -67,12 +67,9 @@ pub async fn shell_run_command(
 
     // The blocking spawn + wait runs on a worker thread so the Tauri async
     // runtime stays unblocked.
-    let (tx, rx) = mpsc::channel::<Result<CommandOutput, String>>();
-    thread::spawn(move || {
-        let _ = tx.send(run_blocking(trimmed, cwd_path, workspace, dur));
-    });
-
-    rx.recv().map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || run_blocking(trimmed, cwd_path, workspace, dur))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 pub(crate) fn run_blocking_inner(
@@ -217,11 +214,9 @@ pub async fn shell_session_run(
             .unwrap_or(DEFAULT_TIMEOUT_SECS)
             .clamp(1, MAX_TIMEOUT_SECS),
     );
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let _ = tx.send(session.run(command, cwd, workspace, dur));
-    });
-    rx.recv().map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || session.run(command, cwd, workspace, dur))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

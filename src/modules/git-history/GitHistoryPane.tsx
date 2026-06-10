@@ -13,7 +13,7 @@ import {
   type GitCommitFileChange,
   type GitLogEntry,
 } from "@/modules/ai/lib/native";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl, useIconsLoaded } from "@/modules/explorer/lib/iconResolver";
 import {
   Copy01Icon,
   File02Icon,
@@ -983,6 +983,7 @@ const FileRow = memo(function FileRow({
   file: GitCommitFileChange;
   onOpen: () => void;
 }) {
+  useIconsLoaded();
   const fileName = basename(file.path);
   const dir = dirname(file.path);
   const iconUrl = fileIconUrl(fileName);

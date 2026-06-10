@@ -15,6 +15,10 @@ export type PtySession = {
    * enabling, `seed` (a serialized snapshot) primes the file with current
    * scrollback so pre-enable history isn't lost on the first wake. */
   setSpill: (enabled: boolean, seed?: string) => Promise<void>;
+  /** While dormant (hibernated), Rust parks output in a bounded in-process
+   * tail ring instead of shipping every chunk over IPC; waking splices the
+   * buffered tail back into the data channel ahead of newer output. */
+  setDormant: (dormant: boolean) => Promise<void>;
   /** Read back the spilled transcript tail (raw bytes) to replay on wake. */
   readSpill: () => Promise<ArrayBuffer>;
 };
@@ -61,6 +65,7 @@ export async function openPty(
     resize: (c, r) => invoke("pty_resize", { id, cols: c, rows: r }),
     setSpill: (enabled, seed) =>
       invoke("pty_set_spill", { id, enabled, seed: seed ?? null }),
+    setDormant: (dormant) => invoke("pty_set_dormant", { id, dormant }),
     readSpill: () => invoke<ArrayBuffer>("pty_read_spill", { id }),
     close: async () => {
       if (closed) return;

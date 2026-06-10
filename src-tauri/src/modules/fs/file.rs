@@ -47,28 +47,34 @@ pub struct FileStat {
 }
 
 #[tauri::command]
-pub fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let p = resolve_path(&path, &workspace);
-    let meta = std::fs::metadata(&p).map_err(|e| {
-        log::debug!("fs_read_file stat({}) failed: {e}", p.display());
-        e.to_string()
-    })?;
+pub async fn fs_read_file(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<ReadResult, String> {
+    super::blocking(move || {
+        let workspace = WorkspaceEnv::from_option(workspace);
+        let p = resolve_path(&path, &workspace);
+        let meta = std::fs::metadata(&p).map_err(|e| {
+            log::debug!("fs_read_file stat({}) failed: {e}", p.display());
+            e.to_string()
+        })?;
 
-    let size = meta.len();
-    if size > MAX_READ_BYTES {
-        return Ok(ReadResult::TooLarge {
-            size,
-            limit: MAX_READ_BYTES,
-        });
-    }
+        let size = meta.len();
+        if size > MAX_READ_BYTES {
+            return Ok(ReadResult::TooLarge {
+                size,
+                limit: MAX_READ_BYTES,
+            });
+        }
 
-    let bytes = std::fs::read(&p).map_err(|e| {
-        log::debug!("fs_read_file read({}) failed: {e}", p.display());
-        e.to_string()
-    })?;
+        let bytes = std::fs::read(&p).map_err(|e| {
+            log::debug!("fs_read_file read({}) failed: {e}", p.display());
+            e.to_string()
+        })?;
 
-    Ok(classify_bytes(bytes, size))
+        Ok(classify_bytes(bytes, size))
+    })
+    .await
 }
 
 /// Classify file bytes as Text or Binary, shared by local and remote (SSH)
@@ -91,25 +97,28 @@ pub fn classify_bytes(bytes: Vec<u8>, size: u64) -> ReadResult {
 /// response as an `ArrayBuffer`. On `toolarge:<size>:<limit>` the UI offers to
 /// open the file in the system viewer instead.
 #[tauri::command]
-pub fn fs_read_bytes(
+pub async fn fs_read_bytes(
     path: String,
     workspace: Option<WorkspaceEnv>,
 ) -> Result<tauri::ipc::Response, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let p = resolve_path(&path, &workspace);
-    let meta = std::fs::metadata(&p).map_err(|e| {
-        log::debug!("fs_read_bytes stat({}) failed: {e}", p.display());
-        e.to_string()
-    })?;
-    let size = meta.len();
-    if size > MAX_READ_BYTES_BINARY {
-        return Err(format!("toolarge:{size}:{MAX_READ_BYTES_BINARY}"));
-    }
-    let bytes = std::fs::read(&p).map_err(|e| {
-        log::debug!("fs_read_bytes read({}) failed: {e}", p.display());
-        e.to_string()
-    })?;
-    Ok(tauri::ipc::Response::new(bytes))
+    super::blocking(move || {
+        let workspace = WorkspaceEnv::from_option(workspace);
+        let p = resolve_path(&path, &workspace);
+        let meta = std::fs::metadata(&p).map_err(|e| {
+            log::debug!("fs_read_bytes stat({}) failed: {e}", p.display());
+            e.to_string()
+        })?;
+        let size = meta.len();
+        if size > MAX_READ_BYTES_BINARY {
+            return Err(format!("toolarge:{size}:{MAX_READ_BYTES_BINARY}"));
+        }
+        let bytes = std::fs::read(&p).map_err(|e| {
+            log::debug!("fs_read_bytes read({}) failed: {e}", p.display());
+            e.to_string()
+        })?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
 }
 
 #[derive(Serialize, Clone)]
@@ -204,7 +213,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let f = dir.path().join("a.txt");
         std::fs::write(&f, b"hello world").unwrap();
-        match fs_read_file(f.to_string_lossy().into_owned(), None).unwrap() {
+        match tauri::async_runtime::block_on(fs_read_file(f.to_string_lossy().into_owned(), None))
+            .unwrap()
+        {
             ReadResult::Text { content, size } => {
                 assert_eq!(content, "hello world");
                 assert_eq!(size, 11);
@@ -219,7 +230,8 @@ mod tests {
         let f = dir.path().join("a.bin");
         std::fs::write(&f, b"PNG\0\x89image").unwrap();
         assert!(matches!(
-            fs_read_file(f.to_string_lossy().into_owned(), None).unwrap(),
+            tauri::async_runtime::block_on(fs_read_file(f.to_string_lossy().into_owned(), None))
+                .unwrap(),
             ReadResult::Binary { .. }
         ));
     }
@@ -231,7 +243,8 @@ mod tests {
         // Invalid UTF-8 with no null byte: must still classify as binary.
         std::fs::write(&f, [0xff, 0xfe, 0xfd, 0xfc]).unwrap();
         assert!(matches!(
-            fs_read_file(f.to_string_lossy().into_owned(), None).unwrap(),
+            tauri::async_runtime::block_on(fs_read_file(f.to_string_lossy().into_owned(), None))
+                .unwrap(),
             ReadResult::Binary { .. }
         ));
     }

@@ -27,7 +27,7 @@ import { ExplorerSearch, type ExplorerSearchHandle } from "./ExplorerSearch";
 import { EntryRow, PendingRow, StatusRow } from "./TreeRow";
 import { InlineInput } from "./InlineInput";
 import { copyToClipboard, revealInFinder } from "./lib/contextActions";
-import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
+import { fileIconUrl, folderIconUrl, useIconsLoaded } from "./lib/iconResolver";
 import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
 import { useExplorerGitStatus } from "./lib/useExplorerGitStatus";
 import { useFileTree } from "./lib/useFileTree";
@@ -175,6 +175,7 @@ export function FileExplorer({
 }: Props & { ref?: React.Ref<FileExplorerHandle> }) {
     const tree = useFileTree(rootPath, { onPathRenamed, onPathDeleted });
     const git = useExplorerGitStatus(rootPath);
+    useIconsLoaded();
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isSearchActive, setIsSearchActive] = useState(false);

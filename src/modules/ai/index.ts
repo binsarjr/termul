@@ -19,9 +19,6 @@ export {
   type CustomEndpointKeys,
 } from "./lib/keyring";
 export {
-  getOrCreateChat,
-  sendMessage,
-  stop,
   useChatStore,
   type AgentMeta,
   type AgentRunStatus,

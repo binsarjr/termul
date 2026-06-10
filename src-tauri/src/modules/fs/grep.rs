@@ -44,7 +44,21 @@ fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, String> {
 }
 
 #[tauri::command]
-pub fn fs_grep(
+pub async fn fs_grep(
+    pattern: String,
+    root: String,
+    glob: Option<Vec<String>>,
+    case_insensitive: Option<bool>,
+    max_results: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<GrepResponse, String> {
+    super::blocking(move || {
+        fs_grep_blocking(pattern, root, glob, case_insensitive, max_results, workspace)
+    })
+    .await
+}
+
+fn fs_grep_blocking(
     pattern: String,
     root: String,
     glob: Option<Vec<String>>,
@@ -180,7 +194,16 @@ pub struct GlobResponse {
 }
 
 #[tauri::command]
-pub fn fs_glob(
+pub async fn fs_glob(
+    pattern: String,
+    root: String,
+    max_results: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<GlobResponse, String> {
+    super::blocking(move || fs_glob_blocking(pattern, root, max_results, workspace)).await
+}
+
+fn fs_glob_blocking(
     pattern: String,
     root: String,
     max_results: Option<usize>,

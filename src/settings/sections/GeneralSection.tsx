@@ -50,6 +50,7 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
 import { SettingRow } from "../components/SettingRow";
+import { useSliderDraft } from "../lib/useSliderDraft";
 
 const APPEARANCE: {
   id: ThemePref;
@@ -104,6 +105,8 @@ export function GeneralSection() {
   const dimInactivePanes = usePreferencesStore((s) => s.dimInactivePanes);
   const zoomLevel = usePreferencesStore((s) => s.zoomLevel);
   const agentNotifications = usePreferencesStore((s) => s.agentNotifications);
+
+  const [zoomShown, setZoomDraft] = useSliderDraft(zoomLevel);
 
   useEffect(() => {
     let alive = true;
@@ -161,15 +164,16 @@ export function GeneralSection() {
               UI zoom level
             </span>
             <span className="tabular-nums text-[11px] text-muted-foreground">
-              {Math.round(zoomLevel * 100)}%
+              {Math.round(zoomShown * 100)}%
             </span>
           </div>
           <Slider
-            value={[zoomLevel]}
+            value={[zoomShown]}
             min={ZOOM_MIN}
             max={ZOOM_MAX}
             step={ZOOM_STEP}
-            onValueChange={(v) => void setZoomLevel(v[0] ?? 1)}
+            onValueChange={(v) => setZoomDraft(v[0] ?? 1)}
+            onValueCommit={(v) => void setZoomLevel(v[0] ?? 1)}
           />
         </div>
       </div>

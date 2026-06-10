@@ -55,6 +55,9 @@ export type Slot = {
   observer: ResizeObserver | null;
   fitTimer: ReturnType<typeof setTimeout> | null;
   ptyTimer: ReturnType<typeof setTimeout> | null;
+  // Releases the parked slot's WebGL context after WEBGL_IDLE_DISPOSE_MS;
+  // cancelled the moment the slot is bound or rewired again.
+  webglIdleTimer: ReturnType<typeof setTimeout> | null;
   unhideRaf: number | null;
   lastCols: number;
   lastRows: number;
@@ -147,6 +150,7 @@ function createSlot(): Slot {
     observer: null,
     fitTimer: null,
     ptyTimer: null,
+    webglIdleTimer: null,
     unhideRaf: null,
     lastCols: term.cols,
     lastRows: term.rows,
@@ -309,6 +313,7 @@ export function acquireSlot(params: AcquireParams): Slot {
 }
 
 function bindSlot(slot: Slot, p: AcquireParams): void {
+  cancelWebglIdleDispose(slot);
   const stale =
     !slot.webglAddon || performance.now() - slot.lastUsedAt > SLOT_STALE_MS;
   slot.currentLeafId = p.leafId;
@@ -421,6 +426,7 @@ function cancelPendingUnhide(slot: Slot): void {
 }
 
 function rewireSlot(slot: Slot, p: AcquireParams): void {
+  cancelWebglIdleDispose(slot);
   slot.lastUsedAt = performance.now();
   if (slot.host.parentNode !== p.container) {
     p.container.appendChild(slot.host);
@@ -531,6 +537,20 @@ function detachSlotFromLeaf(slot: Slot): void {
   slot.fitTimer = null;
   slot.ptyTimer = null;
 
+  // The leaf was serialized before detach and every rebind replays from that
+  // snapshot, so a parked slot's screen + scrollback buffer is pure waste —
+  // free it now. The WebGL context goes on a grace timer instead: detach also
+  // runs synchronously in acquireSlot's slot-steal path, and an immediate
+  // dispose would force a context re-create + char-atlas regen on every tab
+  // switch.
+  slot.term.clear();
+  slot.term.reset();
+  cancelWebglIdleDispose(slot);
+  slot.webglIdleTimer = setTimeout(() => {
+    slot.webglIdleTimer = null;
+    if (slot.currentLeafId === null) disposeSlotWebgl(slot);
+  }, WEBGL_IDLE_DISPOSE_MS);
+
   cancelPendingUnhide(slot);
   slot.host.style.visibility = "";
 
@@ -546,6 +566,18 @@ const WEBGL_RECOVERY_DELAY_MS = 250;
 // Below this a re-shown slot is fresh enough to trust; above it, repaint on
 // unhide to defeat silent GPU/context staleness.
 const SLOT_STALE_MS = 10_000;
+// How long a detached slot may sit parked before its WebGL context (char
+// atlas, framebuffers) is released. Long enough that ordinary tab flipping
+// never pays a context re-create; bindSlot re-attaches lazily via
+// scheduleUnhide when a disposed slot is bound again.
+const WEBGL_IDLE_DISPOSE_MS = 45_000;
+
+function cancelWebglIdleDispose(slot: Slot): void {
+  if (slot.webglIdleTimer !== null) {
+    clearTimeout(slot.webglIdleTimer);
+    slot.webglIdleTimer = null;
+  }
+}
 
 function attachWebgl(slot: Slot): void {
   if (slot.webglAddon || !slot.term.element) return;

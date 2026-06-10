@@ -76,18 +76,28 @@ export type BlockFrame = {
 export class BlockController {
   private selected: CommandBlock | null = null;
   private hovered: CommandBlock | null = null;
-  private readonly offChange: () => void;
+  private readonly disposers: (() => void)[];
   private disposed = false;
 
   constructor(
     private readonly term: Terminal,
     private readonly ring: CommandBlockRing,
+    /** Wakes the overlay's parked positioning loop; the loop re-parks itself
+     * once getActiveFrame() goes null, so notifying is always safe. */
+    private readonly notify: () => void = () => {},
   ) {
-    // Drop a hovered/selected block once it is evicted from the ring.
-    this.offChange = ring.onChange(() => {
-      this.validSelected();
-      this.validHovered();
-    });
+    this.disposers = [
+      // Drop a hovered/selected block once it is evicted from the ring.
+      ring.onChange(() => {
+        this.validSelected();
+        this.validHovered();
+        this.notify();
+      }),
+      // A tracked block that scrolled fully out of view parks the overlay;
+      // scrolling or resizing can bring it back on screen, so wake to re-check.
+      term.onScroll(() => this.notify()).dispose,
+      term.onResize(() => this.notify()).dispose,
+    ];
   }
 
   /** The block the overlay attaches to: the hovered one, else the
@@ -116,10 +126,12 @@ export class BlockController {
         ? block
         : null;
     this.hovered = next;
+    this.notify();
   }
 
   clearSelection(): void {
     this.selected = null;
+    this.notify();
   }
 
   /**
@@ -134,6 +146,7 @@ export class BlockController {
     // selected block becomes the active target even if the pointer is parked
     // over a different block (otherwise Cmd+C would copy the hovered one).
     this.hovered = null;
+    this.notify();
     const blocks = this.interactive();
     if (blocks.length === 0) return null;
 
@@ -154,6 +167,7 @@ export class BlockController {
 
     this.selected = blocks[idx];
     this.scrollToSelected();
+    this.notify();
     return this.selected;
   }
 
@@ -164,6 +178,7 @@ export class BlockController {
       block && isInteractiveBlock(block) && this.interactive().includes(block)
         ? block
         : null;
+    this.notify();
   }
 
   /** The interactive block whose row range covers the buffer line under
@@ -227,7 +242,7 @@ export class BlockController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.offChange();
+    for (const d of this.disposers) d();
     this.selected = null;
     this.hovered = null;
   }

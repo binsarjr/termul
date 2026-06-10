@@ -9,6 +9,9 @@ type Props = {
   /** Live render for the bound slot's controller (re-resolved each frame so a
    * rebind after hibernation is transparent), in client coords. */
   getRender: () => AutocompleteRender | null;
+  /** Wakes the parked settle loop when input/geometry may have changed;
+   * returns an unsubscribe. */
+  subscribe: (cb: () => void) => () => void;
   /** Accept a dropdown row by index — the mouse-click path. */
   onPick?: (index: number) => void;
 };
@@ -27,9 +30,11 @@ type LayerState = {
 
 /**
  * Inline shell-history autocomplete UI: ghost text continuing the command at the
- * cursor, plus a Ctrl+Space dropdown of matches. Positioned every animation
- * frame from the controller's `getRender()`; a single state object drives both
- * pieces, set only when something actually changes so idle panes don't
+ * cursor, plus a Ctrl+Space dropdown of matches. Positioned each animation
+ * frame from the controller's `getRender()` while something is showing; with
+ * nothing to paint the loop parks entirely and the controller wakes it through
+ * `subscribe`, so an idle pane costs no frames. A single state object drives
+ * both pieces, set only when something actually changes so idle panes don't
  * re-render.
  *
  * The root is `zoom-exempt`, putting the overlay in the SAME effective scale as
@@ -38,7 +43,12 @@ type LayerState = {
  * apply unscaled — no `--app-zoom` math, which engines report inconsistently
  * for `zoom`ed subtrees (WebKit vs Chromium getBoundingClientRect behavior).
  */
-export function TerminalAutocompleteLayer({ active, getRender, onPick }: Props) {
+export function TerminalAutocompleteLayer({
+  active,
+  getRender,
+  subscribe,
+  onPick,
+}: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const fontFamily = usePreferencesStore(
@@ -62,7 +72,7 @@ export function TerminalAutocompleteLayer({ active, getRender, onPick }: Props) 
     let raf = 0;
     let lastSig = "";
     const tick = () => {
-      raf = requestAnimationFrame(tick);
+      raf = 0;
       const r = getRender();
       const root = rootRef.current;
       if (!r || !root) {
@@ -70,8 +80,9 @@ export function TerminalAutocompleteLayer({ active, getRender, onPick }: Props) 
           lastSig = "";
           setState(null);
         }
-        return;
+        return; // parked — the controller kicks when something changes
       }
+      raf = requestAnimationFrame(tick);
       const rootRect = root.getBoundingClientRect();
       const left = r.cursorLeft - rootRect.left;
       const top = r.cursorTop - rootRect.top;
@@ -90,9 +101,16 @@ export function TerminalAutocompleteLayer({ active, getRender, onPick }: Props) 
         placeAbove,
       });
     };
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    const unsubscribe = subscribe(kick);
     tick();
-    return () => cancelAnimationFrame(raf);
-  }, [active, getRender]);
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(raf);
+    };
+  }, [active, getRender, subscribe]);
 
   return (
     <div

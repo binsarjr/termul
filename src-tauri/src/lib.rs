@@ -9,9 +9,23 @@ use tauri_plugin_window_state::StateFlags;
 #[derive(Default)]
 struct LaunchDir(Mutex<Option<String>>);
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchInfo {
+    launch_dir: Option<String>,
+    workspace_dir: Option<String>,
+}
+
+/// CLI launch dir (drained) + workspace cwd in a single startup round-trip.
 #[tauri::command]
-fn get_launch_dir(state: State<'_, LaunchDir>) -> Option<String> {
-    state.0.lock().expect("LaunchDir mutex poisoned").take()
+fn get_launch_info(
+    state: State<'_, LaunchDir>,
+    registry: State<'_, workspace::WorkspaceRegistry>,
+) -> LaunchInfo {
+    LaunchInfo {
+        launch_dir: state.0.lock().expect("LaunchDir mutex poisoned").take(),
+        workspace_dir: workspace::current_workspace_dir(&registry).ok(),
+    }
 }
 
 fn parse_launch_dir() -> Option<String> {
@@ -78,6 +92,7 @@ pub fn run() {
             pty::pty_close,
             pty::pty_close_all,
             pty::pty_set_spill,
+            pty::pty_set_dormant,
             pty::pty_read_spill,
             fs::tree::list_subdirs,
             fs::tree::fs_read_dir,
@@ -144,7 +159,7 @@ pub fn run() {
             workspace::wsl_home,
             workspace::workspace_authorize,
             workspace::workspace_current_dir,
-            get_launch_dir,
+            get_launch_info,
             agent::agent_enable_claude_hooks,
             agent::agent_claude_hooks_status,
             secrets::secrets_get,
@@ -152,7 +167,6 @@ pub fn run() {
             secrets::secrets_delete,
             secrets::secrets_get_all,
             net::lm_ping,
-            net::ai_http_request,
             net::ai_http_stream,
         ])
         .setup(|app| {

@@ -31,6 +31,9 @@ type Props = {
   active: boolean;
   /** Geometry + status of the block to highlight, in client coords, or null. */
   getFrame: () => BlockFrame | null;
+  /** Wakes the parked positioning loop when hover/selection/scroll may have
+   * given it a frame to track again; returns an unsubscribe. */
+  subscribe: (cb: () => void) => () => void;
   /** Copy actions return whether anything was actually copied, so the toolbar
    * only flashes a success tick when there was content. */
   onCopyCommand: () => boolean;
@@ -49,13 +52,16 @@ type Props = {
 /**
  * Warp-style per-block hover affordance: a full-width tint over the block the
  * pointer (or keyboard selection) is on, plus a floating toolbar pinned to its
- * top-right. Both are positioned every animation frame from `getFrame()` — a
- * single overlay element repositioned imperatively rather than 50 xterm
- * decorations, which would vanish the moment a block's start row scrolled off.
+ * top-right. Both are positioned each animation frame from `getFrame()` while
+ * a block is tracked — a single overlay element repositioned imperatively
+ * rather than 50 xterm decorations, which would vanish the moment a block's
+ * start row scrolled off. With no tracked geometry the loop parks entirely and
+ * the controller wakes it through `subscribe`, so an idle pane costs no frames.
  */
 export function BlockHoverLayer({
   active,
   getFrame,
+  subscribe,
   onCopyCommand,
   onCopyOutput,
   onCopyBoth,
@@ -155,25 +161,36 @@ export function BlockHoverLayer({
     }
     let raf = 0;
     const tick = () => {
-      raf = requestAnimationFrame(tick);
+      raf = 0;
       const frame = getFrame();
       // While the ⋮ menu is open, keep the toolbar pinned (so the pointer can
       // travel into the portaled menu) — but still hide once the block scrolls
       // fully out of view, e.g. under streaming output, so it doesn't float.
+      // The loop stays scheduled for the menu's (transient) lifetime so the
+      // toolbar resumes following the moment it closes.
       if (menuOpenRef.current) {
+        raf = requestAnimationFrame(tick);
         if (!frame) hide();
         return;
       }
       const root = rootRef.current;
       if (!frame || !root) {
         hide();
-        return;
+        return; // parked — the controller kicks when there's a frame again
       }
+      raf = requestAnimationFrame(tick);
       position(frame, root.getBoundingClientRect());
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [active, getFrame]);
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    const unsubscribe = subscribe(kick);
+    kick();
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(raf);
+    };
+  }, [active, getFrame, subscribe]);
 
   useEffect(
     () => () => {

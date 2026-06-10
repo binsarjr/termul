@@ -23,7 +23,7 @@ import {
   useState,
 } from "react";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import { fileIconUrl } from "./lib/iconResolver";
+import { fileIconUrl, useIconsLoaded } from "./lib/iconResolver";
 import { copyToClipboard, revealInFinder } from "./lib/contextActions";
 import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
 import { cn } from "@/lib/utils";
@@ -69,6 +69,7 @@ export function ExplorerSearch({
   ref,
 }: Props & { ref?: React.Ref<ExplorerSearchHandle> }) {
   const showHidden = usePreferencesStore((s) => s.showHidden);
+  useIconsLoaded();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchHit[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);

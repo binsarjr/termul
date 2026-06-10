@@ -8,7 +8,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl, useIconsLoaded } from "@/modules/explorer/lib/iconResolver";
 import { labelFor, TabIcon, type Tab } from "@/modules/tabs";
 import { useDeferredValue, useMemo, useState } from "react";
 
@@ -103,6 +103,7 @@ export function CommandPalette({
   onOpenFile,
 }: Props) {
   const [query, setQuery] = useState("");
+  useIconsLoaded();
   // Defer the query the filters read so rapid typing stays responsive: the
   // input updates immediately while the (potentially large) list re-filters in
   // a non-blocking transition. This is the debounce the search needed.

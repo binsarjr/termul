@@ -1,9 +1,11 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-/** Streaming events emitted by the Rust `ai_http_stream` command. */
+/** Control events emitted by the Rust `ai_http_stream` command. Response
+ * bytes arrive as raw ArrayBuffers on a separate channel; a zero-length
+ * message there marks "all data delivered" so end/error can't outrun the
+ * last chunk. */
 type AiStreamEvent =
   | { kind: "headers"; status: number; headers: Record<string, string> }
-  | { kind: "chunk"; bytes: number[] }
   | { kind: "end" }
   | { kind: "error"; message: string };
 
@@ -26,25 +28,33 @@ function headerInitToRecord(
   return out;
 }
 
-async function bodyToBytes(
+/** The AI SDK posts JSON text, so the body crosses IPC as a plain string.
+ * Binary inputs are decoded when they're valid UTF-8; anything else is
+ * rejected rather than silently corrupted. */
+async function bodyToText(
   body: BodyInit | null | undefined,
-): Promise<number[] | undefined> {
+): Promise<string | undefined> {
   if (body == null) return undefined;
-  if (typeof body === "string") {
-    return Array.from(new TextEncoder().encode(body));
-  }
-  if (body instanceof ArrayBuffer) return Array.from(new Uint8Array(body));
-  if (ArrayBuffer.isView(body)) {
+  if (typeof body === "string") return body;
+  let bytes: Uint8Array | undefined;
+  if (body instanceof ArrayBuffer) bytes = new Uint8Array(body);
+  else if (ArrayBuffer.isView(body)) {
     const view = body as ArrayBufferView;
-    return Array.from(
-      new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+    bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  } else if (body instanceof Blob) {
+    bytes = new Uint8Array(await body.arrayBuffer());
+  }
+  if (!bytes) {
+    // FormData / URLSearchParams / ReadableStream — uncommon for AI SDK calls.
+    return new Response(body as BodyInit).text();
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new TypeError(
+      "proxyFetch: binary (non-UTF-8) request bodies are not supported",
     );
   }
-  if (body instanceof Blob)
-    return Array.from(new Uint8Array(await body.arrayBuffer()));
-  // FormData / URLSearchParams / ReadableStream — uncommon for AI SDK calls.
-  const text = await new Response(body as BodyInit).text();
-  return Array.from(new TextEncoder().encode(text));
 }
 
 export function createProxyFetch(
@@ -62,7 +72,7 @@ async function proxyFetchImpl(
   const url = input instanceof URL ? input.toString() : String(input);
   const method = (init?.method ?? "GET").toUpperCase();
   const headers = headerInitToRecord(init?.headers);
-  const body = await bodyToBytes(init?.body);
+  const body = await bodyToText(init?.body);
 
   const signal = init?.signal;
   if (signal?.aborted) {
@@ -74,6 +84,10 @@ async function proxyFetchImpl(
     let streamController: ReadableStreamDefaultController<Uint8Array> | null =
       null;
     let cancelled = false;
+    // Close/error may only fire once the zero-length sentinel confirms every
+    // data chunk arrived — the two channels have no cross-ordering guarantee.
+    let dataDone = false;
+    let finish: (() => void) | null = null;
 
     const onAbort = () => {
       cancelled = true;
@@ -89,8 +103,19 @@ async function proxyFetchImpl(
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    const channel = new Channel<AiStreamEvent>();
-    channel.onmessage = (event) => {
+    const onData = new Channel<ArrayBuffer>();
+    onData.onmessage = (buf) => {
+      if (cancelled) return;
+      if (buf.byteLength === 0) {
+        dataDone = true;
+        finish?.();
+        return;
+      }
+      streamController?.enqueue(new Uint8Array(buf));
+    };
+
+    const onEvent = new Channel<AiStreamEvent>();
+    onEvent.onmessage = (event) => {
       if (cancelled) return;
       switch (event.kind) {
         case "headers": {
@@ -111,20 +136,18 @@ async function proxyFetchImpl(
           );
           break;
         }
-        case "chunk": {
-          streamController?.enqueue(Uint8Array.from(event.bytes));
-          break;
-        }
         case "end": {
-          streamController?.close();
+          finish = () => streamController?.close();
+          if (dataDone) finish();
           break;
         }
         case "error": {
           if (!resolved) {
             reject(new Error(event.message));
-          } else {
-            streamController?.error(new Error(event.message));
+            break;
           }
+          finish = () => streamController?.error(new Error(event.message));
+          if (dataDone) finish();
           break;
         }
       }
@@ -136,7 +159,8 @@ async function proxyFetchImpl(
       headers,
       body,
       allowPrivateNetwork,
-      onEvent: channel,
+      onEvent,
+      onData,
     }).catch((e) => {
       if (resolved) return; // headers already arrived; chunk-side error wins
       reject(e instanceof Error ? e : new Error(String(e)));

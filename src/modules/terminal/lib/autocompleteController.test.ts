@@ -66,6 +66,11 @@ function makeFakeTerm() {
       dataHandlers.push(cb);
       return { dispose: () => {} };
     },
+    // The controller subscribes to these to wake the overlay's parked loop;
+    // no-ops here — the tests drive state by mutating the buffer directly.
+    onCursorMove: () => ({ dispose: () => {} }),
+    onRender: () => ({ dispose: () => {} }),
+    onScroll: () => ({ dispose: () => {} }),
   } as unknown as Terminal;
 
   return {

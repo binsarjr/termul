@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import type { LanguageModelUsage } from "ai";
 import type { ComponentProps } from "react";
 import { createContext, use, useMemo } from "react";
-import { getUsage } from "tokenlens";
 
 const PERCENT_MAX = 100;
 const ICON_RADIUS = 10;
@@ -25,10 +24,6 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
 });
 const compactFormatter = new Intl.NumberFormat("en-US", {
   notation: "compact",
-});
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  currency: "USD",
-  style: "currency",
 });
 
 type ModelId = string;
@@ -197,33 +192,14 @@ export const ContextContentFooter = ({
   children,
   className,
   ...props
-}: ContextContentFooterProps) => {
-  const { modelId, usage } = useContextValue();
-  const costUSD = modelId
-    ? getUsage({
-        modelId,
-        usage: {
-          input: usage?.inputTokens ?? 0,
-          output: usage?.outputTokens ?? 0,
-        },
-      }).costUSD?.totalUSD
-    : undefined;
-  const totalCost = currencyFormatter.format(costUSD ?? 0);
-
-  return (
-    <div
-      className={cn(
-        "flex w-full items-center justify-between gap-3 bg-secondary p-3 text-xs",
-        className
-      )}
-      {...props}
-    >
-      {children ?? (
-        <>
-          <span className="text-muted-foreground">Total cost</span>
-          <span>{totalCost}</span>
-        </>
-      )}
-    </div>
-  );
-};
+}: ContextContentFooterProps) => (
+  <div
+    className={cn(
+      "flex w-full items-center justify-between gap-3 bg-secondary p-3 text-xs",
+      className
+    )}
+    {...props}
+  >
+    {children}
+  </div>
+);

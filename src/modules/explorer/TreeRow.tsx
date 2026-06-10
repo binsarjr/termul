@@ -15,7 +15,7 @@ import {
   relativePath,
   revealInFinder,
 } from "./lib/contextActions";
-import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
+import { fileIconUrl, folderIconUrl, useIconsLoaded } from "./lib/iconResolver";
 import { COMPACT_CONTENT, COMPACT_ITEM } from "./lib/menuItemClass";
 import type { useFileTree } from "./lib/useFileTree";
 import { isMarkdownPath } from "@/modules/markdown/lib/isMarkdownPath";
@@ -65,6 +65,7 @@ function EntryRowImpl(props: EntryRowProps) {
   } = props;
 
   const [isConfirming, setIsConfirming] = useState(false);
+  useIconsLoaded();
   const iconUrl = isDir ? folderIconUrl(name, isExpanded) : fileIconUrl(name);
   const gitCode = isDir ? dirCode : statusCode;
   const createTarget = isDir ? path : path.slice(0, path.lastIndexOf("/")) || rootPath;
@@ -249,6 +250,7 @@ export type PendingRowProps = {
 };
 
 export function PendingRow({ depth, kind, onCommit, onCancel }: PendingRowProps) {
+  useIconsLoaded();
   return (
     <div
       className="flex h-6 w-full min-w-0 items-center gap-2 px-1.5 text-[13px]"

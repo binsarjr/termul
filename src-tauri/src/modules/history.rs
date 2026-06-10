@@ -198,22 +198,25 @@ pub(crate) fn build_shell_history(
 }
 
 #[tauri::command]
-pub fn read_shell_history(limit: Option<usize>) -> Result<ShellHistory, String> {
-    let Some((shell, path)) = shell_init::history_file() else {
-        return Ok(ShellHistory {
-            shell: "unknown".to_string(),
-            path: None,
-            entries: Vec::new(),
-        });
-    };
-    // Missing/unreadable file → empty list, not an error (fresh machine, etc).
-    let raw = read_history_text(&shell, &path);
-    Ok(build_shell_history(
-        shell,
-        Some(path.to_string_lossy().into_owned()),
-        &raw,
-        limit,
-    ))
+pub async fn read_shell_history(limit: Option<usize>) -> Result<ShellHistory, String> {
+    crate::modules::fs::blocking(move || {
+        let Some((shell, path)) = shell_init::history_file() else {
+            return Ok(ShellHistory {
+                shell: "unknown".to_string(),
+                path: None,
+                entries: Vec::new(),
+            });
+        };
+        // Missing/unreadable file → empty list, not an error (fresh machine, etc).
+        let raw = read_history_text(&shell, &path);
+        Ok(build_shell_history(
+            shell,
+            Some(path.to_string_lossy().into_owned()),
+            &raw,
+            limit,
+        ))
+    })
+    .await
 }
 
 /// Drop every history record whose command equals `command`. Operates on raw

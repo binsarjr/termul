@@ -1,6 +1,7 @@
 mod common;
 
 use common::FsFixture;
+use tauri::async_runtime::block_on;
 use termul_lib::modules::fs::grep::{fs_glob, fs_grep};
 use termul_lib::modules::fs::search::{fs_list_files, fs_search};
 use termul_lib::modules::fs::tree::{fs_read_dir, list_subdirs, EntryKind};
@@ -11,14 +12,14 @@ fn grep_finds_matches_and_returns_relative_paths() {
     fx.write("src/main.rs", "fn main() {\n    println!(\"hello world\");\n}\n");
     fx.write("src/lib.rs", "pub fn greet() {}\n");
 
-    let res = fs_grep(
+    let res = block_on(fs_grep(
         "hello".into(),
         fx.root_str(),
         None,
         None,
         None,
         None,
-    )
+    ))
     .expect("grep");
 
     assert_eq!(res.hits.len(), 1);
@@ -35,12 +36,26 @@ fn grep_case_insensitive_finds_mixed_case() {
     let fx = FsFixture::new();
     fx.write("a.txt", "Hello World\n");
 
-    let strict = fs_grep("hello".into(), fx.root_str(), None, Some(false), None, None)
-        .expect("grep");
+    let strict = block_on(fs_grep(
+        "hello".into(),
+        fx.root_str(),
+        None,
+        Some(false),
+        None,
+        None,
+    ))
+    .expect("grep");
     assert!(strict.hits.is_empty());
 
-    let loose = fs_grep("hello".into(), fx.root_str(), None, Some(true), None, None)
-        .expect("grep");
+    let loose = block_on(fs_grep(
+        "hello".into(),
+        fx.root_str(),
+        None,
+        Some(true),
+        None,
+        None,
+    ))
+    .expect("grep");
     assert_eq!(loose.hits.len(), 1);
 }
 
@@ -50,14 +65,14 @@ fn grep_glob_filter_restricts_files() {
     fx.write("a.rs", "target\n");
     fx.write("b.ts", "target\n");
 
-    let res = fs_grep(
+    let res = block_on(fs_grep(
         "target".into(),
         fx.root_str(),
         Some(vec!["*.rs".into()]),
         None,
         None,
         None,
-    )
+    ))
     .expect("grep");
 
     assert_eq!(res.hits.len(), 1);
@@ -71,8 +86,15 @@ fn grep_max_results_truncates() {
         fx.write(&format!("f{i}.txt"), "needle\n");
     }
 
-    let res = fs_grep("needle".into(), fx.root_str(), None, None, Some(3), None)
-        .expect("grep");
+    let res = block_on(fs_grep(
+        "needle".into(),
+        fx.root_str(),
+        None,
+        None,
+        Some(3),
+        None,
+    ))
+    .expect("grep");
 
     assert!(res.hits.len() <= 3);
     assert!(res.truncated);
@@ -81,20 +103,20 @@ fn grep_max_results_truncates() {
 #[test]
 fn grep_empty_pattern_errors() {
     let fx = FsFixture::new();
-    let err = fs_grep("".into(), fx.root_str(), None, None, None, None);
+    let err = block_on(fs_grep("".into(), fx.root_str(), None, None, None, None));
     assert!(err.is_err());
 }
 
 #[test]
 fn grep_non_dir_root_errors() {
-    let err = fs_grep(
+    let err = block_on(fs_grep(
         "x".into(),
         "/this/does/not/exist".into(),
         None,
         None,
         None,
         None,
-    );
+    ));
     assert!(err.is_err());
 }
 
@@ -105,8 +127,15 @@ fn grep_respects_ignore_file() {
     fx.write("ignored.txt", "secret\n");
     fx.write("visible.txt", "secret\n");
 
-    let res = fs_grep("secret".into(), fx.root_str(), None, None, None, None)
-        .expect("grep");
+    let res = block_on(fs_grep(
+        "secret".into(),
+        fx.root_str(),
+        None,
+        None,
+        None,
+        None,
+    ))
+    .expect("grep");
 
     let rels: Vec<&str> = res.hits.iter().map(|h| h.rel.as_str()).collect();
     assert!(rels.contains(&"visible.txt"));
@@ -120,7 +149,7 @@ fn glob_finds_files_by_pattern() {
     fx.write("src/b.rs", "");
     fx.write("README.md", "");
 
-    let res = fs_glob("**/*.rs".into(), fx.root_str(), None, None).expect("glob");
+    let res = block_on(fs_glob("**/*.rs".into(), fx.root_str(), None, None)).expect("glob");
 
     let mut rels: Vec<&str> = res.hits.iter().map(|h| h.rel.as_str()).collect();
     rels.sort();
@@ -134,7 +163,7 @@ fn glob_truncates_on_limit() {
         fx.write(&format!("file{i}.txt"), "");
     }
 
-    let res = fs_glob("*.txt".into(), fx.root_str(), Some(5), None).expect("glob");
+    let res = block_on(fs_glob("*.txt".into(), fx.root_str(), Some(5), None)).expect("glob");
     assert!(res.hits.len() <= 5);
     assert!(res.truncated);
 }
@@ -142,7 +171,7 @@ fn glob_truncates_on_limit() {
 #[test]
 fn glob_empty_pattern_errors() {
     let fx = FsFixture::new();
-    assert!(fs_glob("".into(), fx.root_str(), None, None).is_err());
+    assert!(block_on(fs_glob("".into(), fx.root_str(), None, None)).is_err());
 }
 
 #[test]
@@ -152,7 +181,7 @@ fn search_substring_matches_filename() {
     fx.write("src/lib.rs", "");
     fx.write("docs/main.md", "");
 
-    let res = fs_search(fx.root_str(), "main".into(), None, None, None).expect("search");
+    let res = block_on(fs_search(fx.root_str(), "main".into(), None, None, None)).expect("search");
     let rels: Vec<&str> = res.hits.iter().map(|h| h.rel.as_str()).collect();
     assert!(rels.contains(&"src/main.rs"));
     assert!(rels.contains(&"docs/main.md"));
@@ -163,7 +192,8 @@ fn search_substring_matches_filename() {
 fn search_is_case_insensitive() {
     let fx = FsFixture::new();
     fx.write("README.md", "");
-    let res = fs_search(fx.root_str(), "readme".into(), None, None, None).expect("search");
+    let res =
+        block_on(fs_search(fx.root_str(), "readme".into(), None, None, None)).expect("search");
     assert_eq!(res.hits.len(), 1);
 }
 
@@ -171,7 +201,7 @@ fn search_is_case_insensitive() {
 fn search_empty_query_returns_empty() {
     let fx = FsFixture::new();
     fx.write("a.txt", "");
-    let res = fs_search(fx.root_str(), "   ".into(), None, None, None).expect("search");
+    let res = block_on(fs_search(fx.root_str(), "   ".into(), None, None, None)).expect("search");
     assert!(res.hits.is_empty());
     assert!(!res.truncated);
 }
@@ -182,7 +212,8 @@ fn search_prunes_node_modules() {
     fx.write("node_modules/lodash/index.js", "");
     fx.write("src/index.js", "");
 
-    let res = fs_search(fx.root_str(), "index".into(), None, None, None).expect("search");
+    let res =
+        block_on(fs_search(fx.root_str(), "index".into(), None, None, None)).expect("search");
     let rels: Vec<&str> = res.hits.iter().map(|h| h.rel.as_str()).collect();
     assert!(rels.iter().any(|r| r.starts_with("src/")));
     assert!(!rels.iter().any(|r| r.starts_with("node_modules")));
@@ -194,7 +225,7 @@ fn search_ranks_filename_hits_before_path_hits() {
     fx.write("zeta/inner.txt", "");
     fx.write("beta/zeta.txt", "");
 
-    let res = fs_search(fx.root_str(), "zeta".into(), None, None, None).expect("search");
+    let res = block_on(fs_search(fx.root_str(), "zeta".into(), None, None, None)).expect("search");
     let zeta_file = res
         .hits
         .iter()
@@ -218,7 +249,7 @@ fn list_files_returns_sorted_relative_paths() {
     fx.write("a.txt", "");
     fx.write("nested/b.txt", "");
 
-    let res = fs_list_files(fx.root_str(), None, None, None, None).expect("list");
+    let res = block_on(fs_list_files(fx.root_str(), None, None, None, None)).expect("list");
     assert_eq!(res.files, vec!["a.txt", "nested/b.txt", "z.txt"]);
 }
 
@@ -228,14 +259,14 @@ fn list_files_max_depth_clamps() {
     fx.write("d1/d2/d3/deep.txt", "");
     fx.write("shallow.txt", "");
 
-    let res = fs_list_files(fx.root_str(), None, Some(1), None, None).expect("list");
+    let res = block_on(fs_list_files(fx.root_str(), None, Some(1), None, None)).expect("list");
     assert!(res.files.contains(&"shallow.txt".to_string()));
     assert!(!res.files.iter().any(|f| f.contains("deep.txt")));
 }
 
 #[test]
 fn list_files_non_dir_errors() {
-    assert!(fs_list_files("/no/such/dir".into(), None, None, None, None).is_err());
+    assert!(block_on(fs_list_files("/no/such/dir".into(), None, None, None, None)).is_err());
 }
 
 #[test]

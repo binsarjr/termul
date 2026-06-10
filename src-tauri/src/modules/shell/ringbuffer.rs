@@ -40,9 +40,7 @@ impl BoundedRingBuffer {
         }
         let overflow = (self.buf.len() + data.len()).saturating_sub(self.cap);
         if overflow > 0 {
-            for _ in 0..overflow {
-                self.buf.pop_front();
-            }
+            self.buf.drain(..overflow);
             self.dropped = self.dropped.saturating_add(overflow as u64);
         }
         self.buf.extend(data);

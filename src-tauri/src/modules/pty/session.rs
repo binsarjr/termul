@@ -1,5 +1,5 @@
+use std::collections::VecDeque;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -17,9 +17,10 @@ use crate::modules::workspace::WorkspaceEnv;
 const AGENT_EVENT: &str = "termul:agent-signal";
 
 // Flusher coalesces a short window after first-byte arrival so we send chunks,
-// not single bytes. MAX_IDLE is only a safety net for missed signals.
+// not single bytes. Between bursts it blocks on the condvar with no timeout:
+// every notify path sets its predicate under the `pending` mutex (see Pending),
+// so an idle session costs zero wakeups.
 const FLUSH_COALESCE: Duration = Duration::from_millis(4);
-const FLUSH_MAX_IDLE: Duration = Duration::from_millis(50);
 const READ_BUF: usize = 16 * 1024;
 // Cap on buffered-but-not-yet-flushed bytes. On overflow we discard the
 // entire pending buffer and emit an SGR-reset + notice in its place.
@@ -30,6 +31,97 @@ const MAX_PENDING: usize = 4 * 1024 * 1024;
 // we're forced to discard backlog.
 const OVERFLOW_NOTICE: &[u8] =
     b"\x1bc\x1b[2m[termul: dropped output due to backpressure]\x1b[0m\r\n";
+// While a tab is hibernated (dormant) the flusher parks output in a bounded
+// in-process tail ring instead of waking the webview over IPC. Cap and notice
+// mirror the frontend DormantRing so wake behaviour is unchanged.
+const DORMANT_BYTE_CAP: usize = 256 * 1024;
+const DORMANT_OVERFLOW_NOTICE: &[u8] =
+    b"\x1bc\x1b[2m[termul: dropped output during hibernation]\x1b[0m\r\n";
+
+/// Tail ring for a dormant tab: whole coalesced chunks, oldest dropped first
+/// (dropping a partial prefix would slice an escape sequence in half). When
+/// anything was dropped, `take` prepends a hard-reset notice — same contract
+/// as the frontend DormantRing.
+#[derive(Default)]
+struct DormantTail {
+    chunks: VecDeque<Vec<u8>>,
+    total: usize,
+    overflowed: bool,
+}
+
+impl DormantTail {
+    fn push(&mut self, mut chunk: Vec<u8>) {
+        if chunk.is_empty() {
+            return;
+        }
+        if chunk.len() >= DORMANT_BYTE_CAP {
+            chunk.drain(..chunk.len() - DORMANT_BYTE_CAP);
+            self.chunks.clear();
+            self.total = 0;
+            self.overflowed = true;
+        }
+        self.total += chunk.len();
+        self.chunks.push_back(chunk);
+        while self.total > DORMANT_BYTE_CAP && self.chunks.len() > 1 {
+            let dropped = self.chunks.pop_front().expect("len > 1");
+            self.total -= dropped.len();
+            self.overflowed = true;
+        }
+    }
+
+    fn take(&mut self) -> Vec<u8> {
+        let notice = if self.overflowed {
+            DORMANT_OVERFLOW_NOTICE.len()
+        } else {
+            0
+        };
+        let mut out = Vec::with_capacity(self.total + notice);
+        if self.overflowed {
+            out.extend_from_slice(DORMANT_OVERFLOW_NOTICE);
+        }
+        for c in self.chunks.drain(..) {
+            out.extend_from_slice(&c);
+        }
+        self.total = 0;
+        self.overflowed = false;
+        out
+    }
+}
+
+/// Everything the flusher's condvar predicate covers, under one mutex: bytes
+/// awaiting flush, the shutdown flag, and the dormant state with its tail
+/// ring. Keeping them under a single lock is what makes the untimed `cv.wait`
+/// safe — every notify path mutates its predicate while holding this mutex.
+#[derive(Default)]
+pub(super) struct Pending {
+    buf: Vec<u8>,
+    done: bool,
+    dormant: bool,
+    ring: DormantTail,
+}
+
+impl Pending {
+    /// Flip the dormant state. On wake the buffered tail is spliced back in
+    /// front of any not-yet-flushed bytes, so it reaches the frontend over the
+    /// regular data channel, in order, ahead of newer output. Returns true
+    /// when `buf` gained bytes and the caller must notify the flusher.
+    fn set_dormant(&mut self, dormant: bool) -> bool {
+        if self.dormant == dormant {
+            return false;
+        }
+        self.dormant = dormant;
+        if dormant {
+            return false;
+        }
+        let mut merged = self.ring.take();
+        if merged.is_empty() {
+            return false;
+        }
+        merged.append(&mut self.buf);
+        self.buf = merged;
+        true
+    }
+}
 
 pub struct Session {
     // Field drop order is intentional. Rust drops fields top-to-bottom:
@@ -52,6 +144,22 @@ pub struct Session {
     // flusher/waiter threads; on the last drop its RAII cleanup removes the
     // segment files. Drop order is irrelevant here — it touches no PTY handle.
     pub spill: Arc<Mutex<SpillSink>>,
+    // Shared with the reader/flusher/waiter threads: not-yet-flushed bytes
+    // plus the dormant state. Drop order irrelevant — no PTY handle.
+    pending: Arc<(Mutex<Pending>, Condvar)>,
+}
+
+impl Session {
+    /// While dormant the flusher buffers output in the in-process tail ring
+    /// instead of emitting it over the channel; waking splices the buffered
+    /// tail back into the stream.
+    pub(super) fn set_dormant(&self, dormant: bool) {
+        let (lock, cv) = &*self.pending;
+        let notify = lock.lock().unwrap().set_dormant(dormant);
+        if notify {
+            cv.notify_one();
+        }
+    }
 }
 
 impl Drop for Session {
@@ -152,6 +260,14 @@ pub fn spawn(
     let spill: Arc<Mutex<SpillSink>> =
         Arc::new(Mutex::new(SpillSink::new(id, super::spill_dir(&app))));
 
+    let pending: Arc<(Mutex<Pending>, Condvar)> = Arc::new((
+        Mutex::new(Pending {
+            buf: Vec::with_capacity(READ_BUF),
+            ..Pending::default()
+        }),
+        Condvar::new(),
+    ));
+
     let session = Arc::new(Session {
         #[cfg(windows)]
         _job: job,
@@ -159,13 +275,9 @@ pub fn spawn(
         writer: writer.clone(),
         master: Mutex::new(pair.master),
         spill: spill.clone(),
+        pending: pending.clone(),
     });
 
-    let pending: Arc<(Mutex<Vec<u8>>, Condvar)> = Arc::new((
-        Mutex::new(Vec::with_capacity(READ_BUF)),
-        Condvar::new(),
-    ));
-    let done = Arc::new(AtomicBool::new(false));
     let spawn_at = Instant::now();
 
     let pending_r = pending.clone();
@@ -202,12 +314,12 @@ pub fn spawn(
                         }
                         let (lock, cv) = &*pending_r;
                         let mut g = lock.lock().unwrap();
-                        if g.len() + filtered.len() > MAX_PENDING {
-                            dropped_bytes += g.len() as u64;
-                            g.clear();
-                            g.extend_from_slice(OVERFLOW_NOTICE);
+                        if g.buf.len() + filtered.len() > MAX_PENDING {
+                            dropped_bytes += g.buf.len() as u64;
+                            g.buf.clear();
+                            g.buf.extend_from_slice(OVERFLOW_NOTICE);
                         }
-                        g.extend_from_slice(&filtered);
+                        g.buf.extend_from_slice(&filtered);
                         cv.notify_one();
                     }
                     Err(e) => {
@@ -219,7 +331,6 @@ pub fn spawn(
             agent_detect.finish(|t| {
                 let _ = app_reader.emit(AGENT_EVENT, t.into_signal(id));
             });
-            pending_r.1.notify_one();
             if dropped_bytes > 0 {
                 log::warn!("pty backpressure: dropped {dropped_bytes} bytes (cap {MAX_PENDING})");
             }
@@ -228,7 +339,6 @@ pub fn spawn(
 
     let on_data_flush = on_data.clone();
     let pending_f = pending.clone();
-    let done_f = done.clone();
     let spill_f = spill.clone();
     thread::Builder::new()
         .name("termul-pty-flusher".into())
@@ -237,17 +347,29 @@ pub fn spawn(
             loop {
                 {
                     let mut g = lock.lock().unwrap();
-                    while g.is_empty() {
-                        if done_f.load(Ordering::Acquire) {
+                    while g.buf.is_empty() {
+                        if g.done {
                             return;
                         }
-                        let (next, _) = cv.wait_timeout(g, FLUSH_MAX_IDLE).unwrap();
-                        g = next;
+                        g = cv.wait(g).unwrap();
                     }
                 }
                 // Coalesce a short window so a burst flushes as one chunk.
                 thread::sleep(FLUSH_COALESCE);
-                let chunk = std::mem::take(&mut *lock.lock().unwrap());
+                let chunk = {
+                    let mut g = lock.lock().unwrap();
+                    let chunk = std::mem::take(&mut g.buf);
+                    // Dormant: park the chunk in the tail ring instead of
+                    // waking the webview. Routed under the same lock as the
+                    // take so a concurrent wake's splice can never reorder
+                    // (spilling waits too — spliced bytes re-enter `buf` and
+                    // hit the sink exactly once, on the send path below).
+                    if g.dormant {
+                        g.ring.push(chunk);
+                        continue;
+                    }
+                    chunk
+                };
                 if chunk.is_empty() {
                     continue;
                 }
@@ -267,7 +389,6 @@ pub fn spawn(
 
     let on_data_exit = on_data;
     let pending_e = pending;
-    let done_e = done;
     let spill_e = spill;
     thread::Builder::new()
         .name("termul-pty-waiter".into())
@@ -293,7 +414,25 @@ pub fn spawn(
                 log::error!("pty reader thread panicked: {e:?}");
             }
             let (lock, cv) = &*pending_e;
-            let tail = std::mem::take(&mut *lock.lock().unwrap());
+            let tail = {
+                let mut g = lock.lock().unwrap();
+                let buf = std::mem::take(&mut g.buf);
+                // A session that exits while dormant still owes its parked
+                // tail; it predates whatever is left in `buf`.
+                let mut tail = g.ring.take();
+                if tail.is_empty() {
+                    tail = buf;
+                } else {
+                    tail.extend_from_slice(&buf);
+                }
+                // Set while holding the pending mutex: the flusher re-checks
+                // `done` under the same lock before every untimed wait, so
+                // this can never slip between its check and the wait (the
+                // lost-wakeup that previously required a 50ms poll).
+                g.done = true;
+                tail
+            };
+            cv.notify_all();
             if !tail.is_empty() {
                 if let Ok(mut s) = spill_e.lock() {
                     s.write(&tail);
@@ -302,8 +441,6 @@ pub fn spawn(
                     log::debug!("pty final-data send failed (channel closed): {e}");
                 }
             }
-            done_e.store(true, Ordering::Release);
-            cv.notify_all();
             if let Err(e) = on_exit.send(code) {
                 log::debug!("pty exit send failed (channel closed): {e}");
             }
@@ -344,6 +481,7 @@ mod tests {
             writer,
             master: Mutex::new(pair.master),
             spill: Arc::new(Mutex::new(SpillSink::new(0, None))),
+            pending: Arc::new((Mutex::new(Pending::default()), Condvar::new())),
         });
 
         assert!(
@@ -392,8 +530,65 @@ mod tests {
             writer,
             master: Mutex::new(pair.master),
             spill: Arc::new(Mutex::new(SpillSink::new(0, None))),
+            pending: Arc::new((Mutex::new(Pending::default()), Condvar::new())),
         });
 
         drop_session(session);
+    }
+}
+
+#[cfg(test)]
+mod dormant_tests {
+    use super::*;
+
+    #[test]
+    fn wake_splices_ring_ahead_of_pending_bytes() {
+        let mut p = Pending::default();
+        assert!(!p.set_dormant(true), "going dormant needs no notify");
+        p.ring.push(b"old".to_vec());
+        p.buf.extend_from_slice(b"new");
+        assert!(p.set_dormant(false), "wake with buffered tail must notify");
+        assert_eq!(p.buf, b"oldnew");
+        assert!(p.ring.take().is_empty(), "ring drained by the splice");
+    }
+
+    #[test]
+    fn wake_without_buffered_output_needs_no_notify() {
+        let mut p = Pending::default();
+        assert!(!p.set_dormant(true));
+        assert!(!p.set_dormant(false));
+        assert!(!p.set_dormant(false), "no-op transition");
+    }
+
+    #[test]
+    fn dormant_tail_drops_oldest_and_prepends_notice() {
+        let mut t = DormantTail::default();
+        t.push(vec![b'a'; DORMANT_BYTE_CAP]);
+        t.push(b"tail".to_vec());
+        let out = t.take();
+        assert!(out.starts_with(DORMANT_OVERFLOW_NOTICE));
+        assert!(out.ends_with(b"tail"));
+        assert_eq!(out.len(), DORMANT_OVERFLOW_NOTICE.len() + 4);
+    }
+
+    #[test]
+    fn dormant_tail_keeps_order_below_cap() {
+        let mut t = DormantTail::default();
+        t.push(b"one ".to_vec());
+        t.push(b"two".to_vec());
+        assert_eq!(t.take(), b"one two");
+        assert!(t.take().is_empty(), "take drains");
+    }
+
+    #[test]
+    fn oversized_chunk_keeps_only_its_tail() {
+        let mut t = DormantTail::default();
+        let mut chunk = vec![b'x'; DORMANT_BYTE_CAP];
+        chunk.extend_from_slice(b"end");
+        t.push(chunk);
+        let out = t.take();
+        assert!(out.starts_with(DORMANT_OVERFLOW_NOTICE));
+        assert!(out.ends_with(b"end"));
+        assert_eq!(out.len(), DORMANT_OVERFLOW_NOTICE.len() + DORMANT_BYTE_CAP);
     }
 }

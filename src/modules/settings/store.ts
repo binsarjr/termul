@@ -213,8 +213,9 @@ const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
 const PREFS_CHANGED_EVENT = "termul://prefs-changed";
 
 async function writePref<T>(key: string, value: T): Promise<void> {
+  // No explicit save() — the store is constructed with autoSave, which
+  // batches disk writes instead of flushing on every keystroke/drag tick.
   await store.set(key, value);
-  await store.save();
   await emit(PREFS_CHANGED_EVENT, { key, value });
 }
 

@@ -25,7 +25,7 @@ import {
   SidebarLeftIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import {
   SearchInline,
   type SearchInlineHandle,
@@ -68,7 +68,7 @@ type Props = {
 
 const COMPACT_WIDTH = 720;
 
-export function Header({
+export const Header = memo(function Header({
   tabs,
   activeId,
   onSelect,
@@ -247,4 +247,4 @@ export function Header({
       )}
     </div>
   );
-}
+});
