@@ -503,6 +503,19 @@ export function snapshotLeaf(leafId: number): string | null {
   return slot ? serializeSlot(slot).snapshot : null;
 }
 
+/** Like {@link snapshotLeaf} but with dims + alt-screen flag — what the
+ * session-restore capture needs to persist a replayable buffer. */
+export function serializeLeaf(leafId: number): SerializeOutput | null {
+  const slot = slots.find((s) => s.currentLeafId === leafId);
+  return slot ? serializeSlot(slot) : null;
+}
+
+// Bound on a single serialized buffer (in-memory snapshot, spill seed, and
+// the persisted session-restore file). Never byte-truncate the result — a cut
+// mid-escape corrupts replay — re-serialize with less scrollback instead.
+const MAX_SNAPSHOT_CHARS = 2 * 1024 * 1024;
+const SNAPSHOT_FALLBACK_SCROLLBACK = [1_000, 200, 0];
+
 function serializeSlot(slot: Slot): SerializeOutput {
   let snapshot: string | null = null;
   try {
@@ -511,6 +524,11 @@ function serializeSlot(slot: Slot): SerializeOutput {
       usePreferencesStore.getState().terminalScrollback,
     );
     snapshot = slot.serializeAddon.serialize({ scrollback: cap });
+    for (const fallback of SNAPSHOT_FALLBACK_SCROLLBACK) {
+      if (snapshot.length <= MAX_SNAPSHOT_CHARS || fallback >= cap) break;
+      snapshot = slot.serializeAddon.serialize({ scrollback: fallback });
+    }
+    if (snapshot.length > MAX_SNAPSHOT_CHARS) snapshot = null;
   } catch (e) {
     console.warn("[termul] serialize failed:", e);
   }

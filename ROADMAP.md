@@ -103,7 +103,7 @@ The themes below frame every scope decision.
 - [ ] AI agent meta-orchestration (Termul agent spawning and managing external coding agents like Claude Code / OpenCode)
 - [ ] More slash commands and skills
 - [ ] Approval flow improvements (YOLO / auto-approve, project-scoped policies, per-tool trust)
-- [ ] Persistent terminal sessions and layout restore
+- [x] Persistent terminal sessions and layout restore — tabs, split panes, groups, per-pane cwd, and scrollback reopen on launch (Settings → General → "Restore tabs on launch")
 - [ ] Preview surface expansion (better image / Markdown handling)
 - [ ] Test coverage expansion (PTY edge cases, security functions, AI tool guards)
 

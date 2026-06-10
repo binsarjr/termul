@@ -26,8 +26,10 @@ import {
   setDimInactivePanes,
   setMaxPanesPerTab,
   setAutostart,
+  setConfirmBeforeQuit,
   setEditorAutoSave,
   setEditorAutoSaveDelay,
+  setRestoreSession,
   setRestoreWindowState,
   setShowHidden,
   setTerminalFontFamily,
@@ -39,6 +41,7 @@ import {
   setVimMode,
   setZoomLevel,
 } from "@/modules/settings/store";
+import { clearSession } from "@/modules/tabs/lib/sessionStore";
 import { useTheme } from "@/modules/theme";
 import {
   ComputerIcon,
@@ -85,6 +88,8 @@ export function GeneralSection() {
 
   const autostart = usePreferencesStore((s) => s.autostart);
   const restoreWindowState = usePreferencesStore((s) => s.restoreWindowState);
+  const restoreSession = usePreferencesStore((s) => s.restoreSession);
+  const confirmBeforeQuit = usePreferencesStore((s) => s.confirmBeforeQuit);
   const vimMode = usePreferencesStore((s) => s.vimMode);
   const editorAutoSave = usePreferencesStore((s) => s.editorAutoSave);
   const editorAutoSaveDelay = usePreferencesStore((s) => s.editorAutoSaveDelay);
@@ -405,6 +410,27 @@ export function GeneralSection() {
             <Switch
               checked={restoreWindowState}
               onCheckedChange={(v) => void setRestoreWindowState(v)}
+            />
+          </SettingRow>
+          <SettingRow
+            title="Restore tabs on launch"
+            description="Reopen the previous session's tabs, split panes, and scrollback. Turning this off deletes the saved session."
+          >
+            <Switch
+              checked={restoreSession}
+              onCheckedChange={(v) => {
+                void setRestoreSession(v);
+                if (!v) void clearSession();
+              }}
+            />
+          </SettingRow>
+          <SettingRow
+            title="Confirm before closing"
+            description="Ask before the window closes, so a stray click can't end every running shell."
+          >
+            <Switch
+              checked={confirmBeforeQuit}
+              onCheckedChange={(v) => void setConfirmBeforeQuit(v)}
             />
           </SettingRow>
         </div>

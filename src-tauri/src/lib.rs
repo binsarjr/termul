@@ -1,6 +1,6 @@
 pub mod modules;
 
-use modules::{agent, fs, git, history, net, pty, secrets, shell, ssh, workspace};
+use modules::{agent, fs, git, history, net, pty, secrets, shell, snapshots, ssh, workspace};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_window_state::StateFlags;
@@ -94,6 +94,9 @@ pub fn run() {
             pty::pty_set_spill,
             pty::pty_set_dormant,
             pty::pty_read_spill,
+            snapshots::session_snapshot_save,
+            snapshots::session_snapshot_load,
+            snapshots::session_snapshots_prune,
             fs::tree::list_subdirs,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,

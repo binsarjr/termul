@@ -19,6 +19,7 @@ import {
   registerCwdHandler,
   registerPromptTracker,
 } from "./osc-handlers";
+import { createRemoteBlockTracker } from "./remoteBlocks";
 import { openPty, type PtySession } from "./pty-bridge";
 import {
   acquireSlot,
@@ -33,10 +34,17 @@ import {
   focusSlot,
   getSlotForLeaf,
   releaseSlot,
+  serializeLeaf,
   setSlotFocused,
   snapshotLeaf,
   type Slot,
 } from "./rendererPool";
+import {
+  armSnapshotDebounce,
+  cancelSnapshotDebounce,
+  loadRestoredSnapshot,
+  persistSnapshot,
+} from "./sessionSnapshots";
 
 // How long the cursor must sit still before the prompt-cwd heuristic reads the
 // row — long enough for a remote command's output to finish printing and the
@@ -280,6 +288,16 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
   session.ready = (async () => {
     await ensureMonoFontsLoaded();
     await document.fonts.ready;
+    // Session restore: seed the persisted scrollback before the first bind /
+    // PTY spawn (both wait on `ready`), so the existing snapshot-replay path
+    // plays it back exactly like a hibernated tab waking up. Resolves null
+    // synchronously for leaves that aren't part of a restored session.
+    const restored = await loadRestoredSnapshot(leafId);
+    if (restored && !session.disposed && session.snapshot === null) {
+      session.snapshot = restored.snapshot;
+      if (restored.cols > 0) session.cols = restored.cols;
+      if (restored.rows > 0) session.rows = restored.rows;
+    }
   })();
 
   return session;
@@ -333,6 +351,9 @@ function deliverPtyBytes(leafId: number, bytes: Uint8Array): void {
   // replay — writing them now would duplicate output.
   if (s.replaying) return;
   slot.term.write(bytes);
+  // Session restore: capture the buffer once output goes quiet. Hibernated
+  // leaves are covered by the release-time persist instead.
+  armSnapshotDebounce(leafId, () => serializeLeaf(leafId));
 }
 
 /** Re-enable spill on a freshly (re)opened PTY when the tab already had it on
@@ -510,6 +531,11 @@ function bindLeafToSlot(leafId: number, s: Session): void {
           s.remoteOsc7Seen = false;
           s.callbacks.onSshHost?.(null);
         },
+        // A rebind mid-ssh replays the dormant tail — remote commands without
+        // the original local `C;ssh …` — so a 0-seeded tracker would misread
+        // them as local pairs and clear the pill. The spill path replays the
+        // FULL transcript (outer C included), so it must recount from 0.
+        initialDepth: fromSpill ? 0 : s.sshHost ? 1 : 0,
       });
       // Expose the slot's command-block ring to the session so getLastBlock /
       // getBlocks can read it. The prompt tracker disposes the ring on its own
@@ -564,7 +590,16 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         cwdTimer = setTimeout(readPromptCwd, CWD_SETTLE_MS);
       });
 
+      // Heuristic per-command blocks for an ssh session against a stock remote
+      // shell (no OSC 133 of its own). Stands down the moment the remote shows
+      // nested OSC 133 — that path owns block capture then. NOT gated on
+      // remoteOsc7Seen: OSC 7 says nothing about command boundaries.
+      const remoteBlocks = createRemoteBlockTracker(term, prompt.blocks, {
+        isActive: () => !!s.sshHost && !prompt.sawNestedCommand(),
+      });
+
       return [
+        remoteBlocks.dispose,
         () => {
           blockCtl.dispose();
           if (s.blockCtl === blockCtl) s.blockCtl = null;
@@ -609,6 +644,11 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
     if (out.cols > 0) s.cols = out.cols;
     if (out.rows > 0) s.rows = out.rows;
     s.altScreenAtRelease = out.altScreen;
+    // Session restore: hibernation is the main persist trigger — the buffer
+    // was just serialized anyway, and a hibernated session never re-saves
+    // (no idle work). Any armed capture is superseded by this fresher one.
+    cancelSnapshotDebounce(leafId);
+    persistSnapshot(leafId, out);
   }
   // releaseSlot ran the prompt-tracker disposer, which disposed the block
   // controller + the ring's markers. Drop our references so the accessors
@@ -667,6 +707,7 @@ export async function respawnSession(
 ): Promise<void> {
   const s = sessions.get(leafId);
   if (!s || s.disposed) return;
+  cancelSnapshotDebounce(leafId);
   s.pty?.close();
   s.pty = null;
   s.dormant = false;
@@ -708,6 +749,9 @@ export function disposeSession(leafId: number): void {
   if (!s) return;
   s.disposed = true;
   unbindLeafFromSlot(leafId, s);
+  // The unbind above persisted a final buffer; deleting the file for a
+  // closed pane is prune's job (driven by the session-structure save).
+  cancelSnapshotDebounce(leafId);
   s.snapshot = null;
   s.pty?.close();
   s.pty = null;
@@ -872,7 +916,12 @@ export function useTerminalSession({
       if (!block) return null;
       const slot = getSlotForLeaf(leafId);
       const output = slot ? readBlockOutput(slot, block) : "";
-      return { command: block.command, output, exitCode: block.exitCode };
+      return {
+        command: block.command,
+        output,
+        exitCode: block.exitCode,
+        source: block.source ?? "local",
+      };
     },
     [leafId],
   );
@@ -1032,6 +1081,7 @@ export type CommandBlockView = {
   command: string;
   output: string;
   exitCode: number | null;
+  source: "local" | "remote";
 };
 
 /**

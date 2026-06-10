@@ -75,6 +75,7 @@ export function BlockHoverLayer({
   const accentRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLSpanElement>(null);
+  const remoteRef = useRef<HTMLSpanElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
 
   // Mirror the menu's open state into a ref the rAF loop can read. While open,
@@ -143,6 +144,10 @@ export function BlockHoverLayer({
             : failed
               ? "#ef4444"
               : "#10b981";
+      }
+      const remote = remoteRef.current;
+      if (remote) {
+        remote.style.display = frame.source === "remote" ? "" : "none";
       }
       const label = labelRef.current;
       if (label) {
@@ -249,6 +254,14 @@ export function BlockHoverLayer({
         onMouseDown={(e) => e.preventDefault()}
       >
         <span ref={dotRef} className="mx-0.5 size-2 shrink-0 rounded-full" />
+        <span
+          ref={remoteRef}
+          title="Ran inside the SSH session"
+          className="px-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground"
+          style={{ display: "none" }}
+        >
+          remote
+        </span>
         <span
           ref={labelRef}
           className="px-0.5 font-mono text-[11px] tabular-nums text-foreground/80"

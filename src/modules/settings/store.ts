@@ -48,6 +48,10 @@ export type Preferences = {
   customInstructions: string;
   autostart: boolean;
   restoreWindowState: boolean;
+  /** Reopen the previous session's tabs (layout, cwds, scrollback) on launch. */
+  restoreSession: boolean;
+  /** Ask before closing the window so a stray click can't kill the session. */
+  confirmBeforeQuit: boolean;
   autocompleteEnabled: boolean;
   autocompleteProvider: AutocompleteProviderId;
   autocompleteModelId: string;
@@ -101,6 +105,8 @@ const KEY_EDITOR_THEME = "editorTheme";
 const KEY_CUSTOM_INSTRUCTIONS = "customInstructions";
 const KEY_AUTOSTART = "autostart";
 const KEY_RESTORE_WINDOW = "restoreWindowState";
+const KEY_RESTORE_SESSION = "restoreSession";
+const KEY_CONFIRM_BEFORE_QUIT = "confirmBeforeQuit";
 const KEY_AUTOCOMPLETE_ENABLED = "autocompleteEnabled";
 const KEY_AUTOCOMPLETE_PROVIDER = "autocompleteProvider";
 const KEY_AUTOCOMPLETE_MODEL = "autocompleteModelId";
@@ -169,6 +175,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   customInstructions: "",
   autostart: false,
   restoreWindowState: true,
+  restoreSession: true,
+  confirmBeforeQuit: true,
   autocompleteEnabled: false,
   autocompleteProvider: "cerebras",
   autocompleteModelId: DEFAULT_AUTOCOMPLETE_MODEL.cerebras ?? "",
@@ -254,6 +262,11 @@ export async function loadPreferences(): Promise<Preferences> {
     restoreWindowState:
       get<boolean>(KEY_RESTORE_WINDOW) ??
       DEFAULT_PREFERENCES.restoreWindowState,
+    restoreSession:
+      get<boolean>(KEY_RESTORE_SESSION) ?? DEFAULT_PREFERENCES.restoreSession,
+    confirmBeforeQuit:
+      get<boolean>(KEY_CONFIRM_BEFORE_QUIT) ??
+      DEFAULT_PREFERENCES.confirmBeforeQuit,
     autocompleteEnabled:
       get<boolean>(KEY_AUTOCOMPLETE_ENABLED) ??
       DEFAULT_PREFERENCES.autocompleteEnabled,
@@ -415,6 +428,22 @@ export async function setAutostart(value: boolean): Promise<void> {
 
 export async function setRestoreWindowState(value: boolean): Promise<void> {
   await writePref(KEY_RESTORE_WINDOW, value);
+}
+
+export async function setRestoreSession(value: boolean): Promise<void> {
+  await writePref(KEY_RESTORE_SESSION, value);
+}
+
+export async function setConfirmBeforeQuit(value: boolean): Promise<void> {
+  await writePref(KEY_CONFIRM_BEFORE_QUIT, value);
+}
+
+/** Pre-render read of the restore-session pref. The Zustand preferences store
+ * only hydrates after mount, but the boot path must decide whether to restore
+ * before the first render. */
+export async function readRestoreSessionPref(): Promise<boolean> {
+  const value = await store.get<boolean>(KEY_RESTORE_SESSION);
+  return value ?? DEFAULT_PREFERENCES.restoreSession;
 }
 
 export async function setAutocompleteEnabled(value: boolean): Promise<void> {
@@ -607,6 +636,8 @@ export async function onPreferencesChange(
     [KEY_CUSTOM_INSTRUCTIONS]: "customInstructions",
     [KEY_AUTOSTART]: "autostart",
     [KEY_RESTORE_WINDOW]: "restoreWindowState",
+    [KEY_RESTORE_SESSION]: "restoreSession",
+    [KEY_CONFIRM_BEFORE_QUIT]: "confirmBeforeQuit",
     [KEY_AUTOCOMPLETE_ENABLED]: "autocompleteEnabled",
     [KEY_AUTOCOMPLETE_PROVIDER]: "autocompleteProvider",
     [KEY_AUTOCOMPLETE_MODEL]: "autocompleteModelId",
