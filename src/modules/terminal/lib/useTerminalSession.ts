@@ -19,6 +19,7 @@ import {
   registerCwdHandler,
   registerPromptTracker,
 } from "./osc-handlers";
+import { createRemoteBlockTracker } from "./remoteBlocks";
 import { openPty, type PtySession } from "./pty-bridge";
 import {
   acquireSlot,
@@ -530,6 +531,11 @@ function bindLeafToSlot(leafId: number, s: Session): void {
           s.remoteOsc7Seen = false;
           s.callbacks.onSshHost?.(null);
         },
+        // A rebind mid-ssh replays the dormant tail — remote commands without
+        // the original local `C;ssh …` — so a 0-seeded tracker would misread
+        // them as local pairs and clear the pill. The spill path replays the
+        // FULL transcript (outer C included), so it must recount from 0.
+        initialDepth: fromSpill ? 0 : s.sshHost ? 1 : 0,
       });
       // Expose the slot's command-block ring to the session so getLastBlock /
       // getBlocks can read it. The prompt tracker disposes the ring on its own
@@ -584,7 +590,16 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         cwdTimer = setTimeout(readPromptCwd, CWD_SETTLE_MS);
       });
 
+      // Heuristic per-command blocks for an ssh session against a stock remote
+      // shell (no OSC 133 of its own). Stands down the moment the remote shows
+      // nested OSC 133 — that path owns block capture then. NOT gated on
+      // remoteOsc7Seen: OSC 7 says nothing about command boundaries.
+      const remoteBlocks = createRemoteBlockTracker(term, prompt.blocks, {
+        isActive: () => !!s.sshHost && !prompt.sawNestedCommand(),
+      });
+
       return [
+        remoteBlocks.dispose,
         () => {
           blockCtl.dispose();
           if (s.blockCtl === blockCtl) s.blockCtl = null;
@@ -901,7 +916,12 @@ export function useTerminalSession({
       if (!block) return null;
       const slot = getSlotForLeaf(leafId);
       const output = slot ? readBlockOutput(slot, block) : "";
-      return { command: block.command, output, exitCode: block.exitCode };
+      return {
+        command: block.command,
+        output,
+        exitCode: block.exitCode,
+        source: block.source ?? "local",
+      };
     },
     [leafId],
   );
@@ -1061,6 +1081,7 @@ export type CommandBlockView = {
   command: string;
   output: string;
   exitCode: number | null;
+  source: "local" | "remote";
 };
 
 /**

@@ -1,3 +1,93 @@
+# SSH per-command blocks — 2026-06-10
+
+Plan: ~/.claude/plans/transient-sleeping-kazoo.md. Scope user: Pendekatan 1+2
+(poles nested OSC 133 + heuristic prompt-boundary utk remote stock).
+
+## Phase A — Pure helpers (historyMatch.ts)
+- [x] A.1 isCleanPromptRow(rowText, cursorX) + commandFromPromptRow(rowText, cursorX)
+- [x] A.2 historyMatch.test.ts: 14 kasus baru (prompt bersih/ketikan/Password:/RPROMPT/sigil-EOL/pinned false-positive)
+
+## Phase B — Engine (osc-handlers.ts)
+- [x] B.1 CommandBlock.source + beginCommand(source); call site pakai `detected` (fix bare-C) + depth>1 → remote
+- [x] B.2 CommandBlockRing.pushClosed() publik (force-push open dulu)
+- [x] B.3 initialDepth opt + sawNestedCommand() expose + export registerMarkerSafe(term, offset)
+- [x] B.4 osc-handlers.test.ts: ekstensi makeBlockTerm (setRow/getLine, registerMarker offset-aware) + 8 tes baru
+
+## Phase C — Heuristic tracker (remoteBlocks.ts BARU)
+- [x] C.1 createRemoteBlockTracker: Enter→pending (marker cursor & cursor+1 pra-echo), settle 150ms→pushClosed, type-ahead close, alt-screen defer, cancel/dispose ketat (pool reuse)
+- [x] C.2 remoteBlocks.test.ts — 13 tes (fake term + fake timers)
+
+## Phase D — Wiring + UI
+- [x] D.1 useTerminalSession: initialDepth `fromSpill ? 0 : s.sshHost ? 1 : 0`, tracker gated `!!s.sshHost && !prompt.sawNestedCommand()`, source di readBlock/CommandBlockView
+- [x] D.2 blockController: BlockFrame.source + getActiveFrame
+- [x] D.3 BlockHoverLayer: badge "remote" di toolbar (ref-imperatif, toggle di position())
+- [x] D.4 blockController.test.ts: source ter-plumb (frame toEqual di-update), block heuristik interaktif
+
+## Phase E — Verifikasi
+- [x] E.1 tsc clean, vitest 338/338, pnpm build OK, modulepreload tetap 5 chunk
+- [x] E.2a Runtime boot pnpm tauri dev bersih (4 PTY restore, 0 error/panic di log)
+- [x] E.2b Manual user: awalnya GAGAL (nol block di ssh) → debug → fix → user konfirmasi works
+
+## Debug "nol block di ssh" (laporan user)
+
+Workflow 3 investigator + adjudicator; repro pipeline penuh dgn xterm ASLI
+(remoteBlocks.integration.test.ts, tanpa DOM) lolos → logika benar, masalah
+environmental. Akar masalah TERBUKTI di mesin user: `~/.zshrc` men-source
+iTerm2 shell integration → aktif juga di Termul (gate-nya cuma tolak
+tmux/screen/linux/dumb) → tiap perintah emit DUA OSC 133 C (C; iTerm2 +
+C;<cmd> termul) → saat `ssh`, depth 1→2 → `sawNestedCommand` latch true
+sepanjang sesi → heuristic tracker mundur permanen → nol block (pill tetap
+hidup karena onCommand fire di depth 1).
+
+Fix:
+- **osc-handlers.ts**: collapse C/D duplikat integrasi bertumpuk — C/D di
+  baris buffer SAMA tanpa A/D (utk C) / A/C (utk D) di antaranya = perintah
+  yang sama; tidak dihitung, tidak latch sawNested, tidak buka/tutup block.
+  C nested asli selalu di baris lebih bawah (remote minimal echo newline) dan
+  A remote me-reset dedup. Bonus: ring lebih bersih (1 block per perintah
+  lokal, bukan 2 + 1 degraded).
+- **zshrc.zsh + bashrc.bash**: marker B di-APPEND ke PS1 (sebelumnya prepend
+  = kolom 0) — bug laten yang mematikan deteksi pill ssh di bash lokal
+  (bare-C PS0 + typedCommand kebaca prompt+command) dan derivasi input
+  autocomplete. fish sudah benar.
+- PROMPT_SIGILS TIDAK dilebarkan ke ➜ (omz): sigil-nya di AWAL prompt, match
+  boundary akan menelan segmen cwd/git ke label perintah. Tetap limitation.
+- Tes: stacked-integration di osc-handlers.test.ts (3 kasus) + 2 skenario
+  xterm-asli di remoteBlocks.integration.test.ts (8 tes integrasi total).
+  Final: vitest 349/349, tsc clean. User konfirmasi works.
+
+Follow-up tercatat (belum dikerjakan):
+- Race `write_if_changed` shell_init.rs:257 — nama temp shared
+  `.__termul_tmp__`; 4 PTY spawn serentak (session restore) bisa saling
+  rename → WARN "zsh shell integration disabled" → pane itu tanpa OSC 133.
+  Fix gampang: suffix unik (pid+counter). Terlihat sekali di log dev2.
+- Laggy echo: Enter sebelum echo remote ter-parse → perintah itu tidak jadi
+  block (V1 integration test mendokumentasikan). Hardening opsional.
+- respawnSession/onExit tidak clear s.sshHost (temuan auditor, pre-existing).
+
+## Review (SSH per-command blocks)
+
+- **Fix bash bare-C**: `beginCommand` kini menerima `detected` (payload ATAU
+  buffer-read) — block lokal di bash (PS0 emit `C` polos) jadi interaktif.
+  Keamanan tetap: buffer-read hanya saat commandStart di-pin B dengan A hidup.
+- **Penanda remote**: `CommandBlock.source` ("remote" saat depth C > 1 atau
+  block heuristik) → `BlockFrame.source` → badge "remote" di hover toolbar.
+- **Fix wake/depth**: `initialDepth` seed `s.sshHost ? 1 : 0` saat rebind
+  (jalur spill tetap 0 karena replay transkrip penuh) — replay dormant tail
+  mid-ssh tidak lagi menghapus pill ssh.
+- **Heuristic remote blocks** (`remoteBlocks.ts`): utk remote stock tanpa
+  OSC 133. Enter di baris prompt (sigil+spasi) buka pending (marker pra-echo);
+  cursor settle 150ms di baris prompt bersih tutup block (`pushClosed`
+  force-flush block ssh luar agar tidak shadow). Stand down otomatis saat
+  remote ternyata punya OSC 133 (`sawNestedCommand`). exitCode selalu null
+  (dot abu). Batasan terdokumentasi di plan: wrapped/multi-line tidak
+  tertangkap, output mirip prompt bisa nutup kepagian, exit `ssh` tak jadi
+  block, prompt tanpa sigil ($#%❯) tidak terdeteksi.
+- Verif: 338 tes (52 baru), tsc/build clean, boot dev bersih. Sisa: tes manual
+  ssh oleh user (E.2b).
+
+---
+
 # Session restore (reopen all tabs + scrollback) — 2026-06-10
 
 Plan lengkap: ~/.claude/plans/transient-sleeping-kazoo.md. Scope: Tingkat 2

@@ -117,6 +117,7 @@ function makeBlockTerm() {
   let line = 0;
   let cursorX = 0;
   let altScreen = false;
+  const rows = new Map<number, string>();
   const markers: { line: number; isDisposed: boolean; dispose: () => void }[] =
     [];
   const term = {
@@ -126,8 +127,12 @@ function makeBlockTerm() {
         return { dispose: () => handlers.delete(code) };
       },
     },
-    registerMarker: vi.fn(() => {
-      const m = { line, isDisposed: false, dispose: vi.fn() } as unknown as IMarker;
+    registerMarker: vi.fn((offset = 0) => {
+      const m = {
+        line: line + offset,
+        isDisposed: false,
+        dispose: vi.fn(),
+      } as unknown as IMarker;
       markers.push(
         m as unknown as { line: number; isDisposed: boolean; dispose: () => void },
       );
@@ -135,7 +140,22 @@ function makeBlockTerm() {
     }),
     buffer: {
       get active() {
-        return { type: altScreen ? "alternate" : "normal", cursorX };
+        return {
+          type: altScreen ? "alternate" : "normal",
+          cursorX,
+          baseY: 0,
+          cursorY: line,
+          getLine(l: number) {
+            const text = rows.get(l);
+            if (text === undefined) return undefined;
+            return {
+              translateToString: (trimRight: boolean, start = 0, end?: number) => {
+                const s = text.slice(start, end);
+                return trimRight ? s.replace(/\s+$/, "") : s;
+              },
+            };
+          },
+        };
       },
     },
   } as unknown as Terminal;
@@ -151,6 +171,9 @@ function makeBlockTerm() {
     },
     setAltScreen: (v: boolean) => {
       altScreen = v;
+    },
+    setRow: (l: number, text: string) => {
+      rows.set(l, text);
     },
   };
 }
@@ -254,10 +277,11 @@ describe("OSC 133 command-block capture", () => {
   });
 
   it("pushes an unclosed block when a new C arrives before D", () => {
-    const { term, handlers } = makeBlockTerm();
+    const { term, handlers, advance } = makeBlockTerm();
     const tracker = registerPromptTracker(term);
 
     handlers.get(133)?.("C;first"); // never closed (interrupted)
+    advance(1); // the second command sits on a later row
     handlers.get(133)?.("C;second");
     handlers.get(133)?.("D;0");
 
@@ -407,12 +431,14 @@ describe("OSC 133 command lifecycle side-channel (onCommand / onCommandEnd)", ()
   it("fires onCommand only for the outer/local command, not nested remote C's", () => {
     // A nested remote shell (or injected `C;ssh ...` in command output) must not
     // flip the indicator — only the local command (depth 1) is parsed for ssh.
-    const { term, handlers } = makeBlockTerm();
+    const { term, handlers, advance } = makeBlockTerm();
     const onCommand = vi.fn();
     registerPromptTracker(term, createShellIntegrationState(), { onCommand });
 
     handlers.get(133)?.("C;ssh host"); // local ssh, depth 1 → fires
+    advance(2); // remote banner + prompt
     handlers.get(133)?.("C;ssh inner"); // nested remote ssh, depth 2 → ignored
+    advance(2);
     handlers.get(133)?.("C;ls"); // nested remote command, depth 3 → ignored
 
     expect(onCommand).toHaveBeenCalledTimes(1);
@@ -454,19 +480,24 @@ describe("OSC 133 command lifecycle side-channel (onCommand / onCommandEnd)", ()
     // Local `ssh host` into a remote whose shell ALSO emits OSC 133. The remote
     // shell wraps each remote command in its own C/D, nested inside the local
     // ssh command. Only the outer (local) ssh D should end the command.
-    const { term, handlers } = makeBlockTerm();
+    const { term, handlers, advance } = makeBlockTerm();
     const onCommandEnd = vi.fn();
     registerPromptTracker(term, createShellIntegrationState(), { onCommandEnd });
 
     handlers.get(133)?.("C;ssh host"); // local ssh begins, depth 1
+    advance(2); // remote banner + prompt
     handlers.get(133)?.("C;ls"); // first remote command, depth 2
+    advance(1);
     handlers.get(133)?.("D;0"); // remote command ends, depth 1
     expect(onCommandEnd).not.toHaveBeenCalled(); // pill must stay
 
+    advance(1);
     handlers.get(133)?.("C;whoami"); // second remote command, depth 2
+    advance(1);
     handlers.get(133)?.("D;0"); // ends, depth 1
     expect(onCommandEnd).not.toHaveBeenCalled();
 
+    advance(1); // "Connection closed" line
     handlers.get(133)?.("D;0"); // local ssh exits, depth 0
     expect(onCommandEnd).toHaveBeenCalledTimes(1);
   });
@@ -482,5 +513,232 @@ describe("OSC 133 command lifecycle side-channel (onCommand / onCommandEnd)", ()
     handlers.get(133)?.("D;0");
 
     expect(onCommandEnd).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("bare-C block command fallback (bash PS0 integration)", () => {
+  it("fills the block command from the buffer when the C payload is empty", () => {
+    const { term, handlers, setCursorX, setRow } = makeBlockTerm();
+    const tracker = registerPromptTracker(term, createShellIntegrationState());
+
+    handlers.get(133)?.("A"); // prompt row 0
+    setCursorX(2); // cursor just past "$ "
+    handlers.get(133)?.("B");
+    setRow(0, "$ ssh pi");
+    handlers.get(133)?.("C"); // bash emits a bare C — no payload
+    handlers.get(133)?.("D;0");
+
+    const block = tracker.blocks.last();
+    expect(block?.command).toBe("ssh pi");
+    expect(block?.source).toBe("local");
+  });
+
+  it("still leaves the command empty without a pinned start (spoofed/strayed C)", () => {
+    const { term, handlers, setRow } = makeBlockTerm();
+    const tracker = registerPromptTracker(term, createShellIntegrationState());
+
+    setRow(0, "some output line $ rm -rf /");
+    handlers.get(133)?.("C"); // no A/B before it — buffer must not be read
+    handlers.get(133)?.("D;0");
+
+    expect(tracker.blocks.last()?.command).toBe("");
+  });
+});
+
+describe("block source tagging (local vs nested-remote)", () => {
+  it("tags nested C's as remote and force-pushes the open local ssh block", () => {
+    const { term, handlers, advance } = makeBlockTerm();
+    const tracker = registerPromptTracker(term, createShellIntegrationState());
+
+    handlers.get(133)?.("C;ssh host"); // local, depth 1
+    advance(2); // remote banner + prompt
+    handlers.get(133)?.("C;ls"); // remote integration, depth 2
+    advance(1);
+    handlers.get(133)?.("D;0"); // closes ls, depth 1
+
+    const all = tracker.blocks.all();
+    expect(all).toHaveLength(2);
+    expect(all[0].command).toBe("ssh host");
+    expect(all[0].source).toBe("local");
+    expect(all[0].endMarker).toBeNull(); // force-pushed open, never closed
+    expect(all[1].command).toBe("ls");
+    expect(all[1].source).toBe("remote");
+    expect(all[1].exitCode).toBe(0);
+  });
+});
+
+describe("initialDepth seeding (mid-ssh rebind replay)", () => {
+  it("treats replayed remote C/D pairs as nested, firing callbacks only at true depth 0", () => {
+    const { term, handlers, advance } = makeBlockTerm();
+    const onCommand = vi.fn();
+    const onCommandEnd = vi.fn();
+    registerPromptTracker(term, createShellIntegrationState(), {
+      onCommand,
+      onCommandEnd,
+      initialDepth: 1, // session was inside ssh when the pane hibernated
+    });
+
+    handlers.get(133)?.("C;ls"); // replayed remote command → depth 2
+    expect(onCommand).not.toHaveBeenCalled();
+    advance(1);
+    handlers.get(133)?.("D;0"); // → depth 1, pill must stay
+    expect(onCommandEnd).not.toHaveBeenCalled();
+
+    advance(1); // "Connection closed" line
+    handlers.get(133)?.("D;0"); // the real ssh exit → depth 0
+    expect(onCommandEnd).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sawNestedCommand (heuristic stand-down signal)", () => {
+  it("flips on the first nested C and resets when the local command ends", () => {
+    const { term, handlers, advance } = makeBlockTerm();
+    const tracker = registerPromptTracker(term, createShellIntegrationState());
+
+    expect(tracker.sawNestedCommand()).toBe(false);
+    handlers.get(133)?.("C;ssh host"); // depth 1
+    expect(tracker.sawNestedCommand()).toBe(false);
+    advance(2); // remote banner + prompt
+    handlers.get(133)?.("C;ls"); // depth 2 — remote has its own OSC 133
+    expect(tracker.sawNestedCommand()).toBe(true);
+    advance(1);
+    handlers.get(133)?.("D;0"); // depth 1 — still inside ssh, stays true
+    expect(tracker.sawNestedCommand()).toBe(true);
+    advance(1);
+    handlers.get(133)?.("D;0"); // depth 0 — ssh exited
+    expect(tracker.sawNestedCommand()).toBe(false);
+  });
+});
+
+describe("stacked-integration duplicate C/D collapse (iTerm2 + termul in one rc)", () => {
+  // The user's own rc sourcing another OSC 133 integration makes every command
+  // emit TWO C's and TWO D's, back to back on the same buffer row. The second
+  // of each pair must be collapsed, or depth misreads 2 as "remote has its own
+  // integration" and the heuristic ssh blocks stand down for the whole session.
+  it("keeps depth 1 and sawNested false across an ssh session with doubled local C's", () => {
+    const { term, handlers, advance, setCursorX, setRow } = makeBlockTerm();
+    const onCommand = vi.fn();
+    const onCommandEnd = vi.fn();
+    const tracker = registerPromptTracker(term, createShellIntegrationState(), {
+      onCommand,
+      onCommandEnd,
+    });
+
+    handlers.get(133)?.("A");
+    setCursorX(2);
+    handlers.get(133)?.("B");
+    setRow(0, "$ ssh pi@host");
+    handlers.get(133)?.("C;"); // iTerm2's preexec — empty payload, row 0
+    handlers.get(133)?.("C;ssh pi@host"); // termul's preexec — SAME row 0
+
+    expect(onCommand).toHaveBeenCalledTimes(1);
+    expect(onCommand).toHaveBeenCalledWith("ssh pi@host"); // via buffer read
+    expect(tracker.sawNestedCommand()).toBe(false); // the latch must NOT flip
+    expect(tracker.blocks.all()).toHaveLength(0); // one OPEN block, none closed
+
+    advance(5); // remote banner, prompt, stock remote session (no OSC at all)
+    handlers.get(133)?.("D;0"); // iTerm2's D — ssh exited
+    handlers.get(133)?.("D;0"); // termul's D — SAME row, duplicate
+
+    expect(onCommandEnd).toHaveBeenCalledTimes(1);
+    const all = tracker.blocks.all();
+    expect(all).toHaveLength(1); // no degraded empty block from the second D
+    expect(all[0].command).toBe("ssh pi@host");
+    expect(all[0].exitCode).toBe(0);
+  });
+
+  it("still counts a genuine nested C on a later row as remote", () => {
+    const { term, handlers, advance } = makeBlockTerm();
+    const tracker = registerPromptTracker(term, createShellIntegrationState());
+
+    handlers.get(133)?.("C;"); // stacked pair for the local ssh
+    handlers.get(133)?.("C;ssh host");
+    expect(tracker.sawNestedCommand()).toBe(false);
+
+    advance(2); // remote WITH its own integration draws its prompt
+    handlers.get(133)?.("C;ls"); // genuinely nested — different row
+    expect(tracker.sawNestedCommand()).toBe(true);
+  });
+
+  it("alternating C/D on one row (no-output commands) still count separately", () => {
+    // C resets the D-dedup and D resets the C-dedup, so a no-output command
+    // whose C and the next command's events share rows is never collapsed.
+    const { term, handlers } = makeBlockTerm();
+    const onCommandEnd = vi.fn();
+    registerPromptTracker(term, createShellIntegrationState(), { onCommandEnd });
+
+    handlers.get(133)?.("C;true");
+    handlers.get(133)?.("D;0");
+    handlers.get(133)?.("C;false");
+    handlers.get(133)?.("D;1");
+
+    expect(onCommandEnd).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("CommandBlockRing.pushClosed (heuristic remote blocks)", () => {
+  const fakeMarker = () =>
+    ({ line: 0, isDisposed: false, dispose: vi.fn() }) as unknown as IMarker;
+
+  it("force-pushes the open block first, then the closed one", () => {
+    const ring = new CommandBlockRing(10);
+    ring.beginCommand("ssh host", null, null);
+    ring.pushClosed({
+      command: "ls",
+      promptMarker: fakeMarker(),
+      startMarker: fakeMarker(),
+      endMarker: fakeMarker(),
+      exitCode: null,
+      source: "remote",
+    });
+
+    const all = ring.all();
+    expect(all).toHaveLength(2);
+    expect(all[0].command).toBe("ssh host");
+    expect(all[0].endMarker).toBeNull();
+    expect(all[1].command).toBe("ls");
+    expect(all[1].source).toBe("remote");
+  });
+
+  it("a later D without an open block degrades to an empty entry, untouched", () => {
+    const ring = new CommandBlockRing(10);
+    ring.beginCommand("ssh host", null, null);
+    ring.pushClosed({
+      command: "ls",
+      promptMarker: null,
+      startMarker: null,
+      endMarker: null,
+      exitCode: null,
+      source: "remote",
+    });
+    ring.endCommand(0, null); // the local ssh's D — open slot already flushed
+
+    const all = ring.all();
+    expect(all).toHaveLength(3);
+    expect(all[2].command).toBe("");
+    expect(all[2].exitCode).toBe(0);
+  });
+
+  it("disposes adopted markers when a pushed-closed block is evicted", () => {
+    const ring = new CommandBlockRing(2);
+    const prompt = fakeMarker();
+    const start = fakeMarker();
+    const end = fakeMarker();
+    ring.pushClosed({
+      command: "ls",
+      promptMarker: prompt,
+      startMarker: start,
+      endMarker: end,
+      exitCode: null,
+      source: "remote",
+    });
+    ring.beginCommand("a", null, null);
+    ring.endCommand(0, null);
+    ring.beginCommand("b", null, null);
+    ring.endCommand(0, null); // capacity 2 → "ls" evicted
+
+    expect(prompt.dispose).toHaveBeenCalled();
+    expect(start.dispose).toHaveBeenCalled();
+    expect(end.dispose).toHaveBeenCalled();
   });
 });

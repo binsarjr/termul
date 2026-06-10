@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  commandFromPromptRow,
   cursorAtInputEnd,
   deriveInputFromRow,
   ghostSuffix,
+  isCleanPromptRow,
   matchHistory,
   promptCwd,
   promptInputStart,
@@ -165,6 +167,81 @@ describe("promptInputStart", () => {
     const row = "host $ echo x > file";
     const col = promptInputStart(row, row.length);
     expect(row.slice(col)).toBe("echo x > file");
+  });
+});
+
+describe("isCleanPromptRow", () => {
+  // Untrimmed rows: real xterm pads trailing blank cells to the full width.
+  const pad = (text: string, cols = 72) => text.padEnd(cols, " ");
+
+  it("true on a clean bash prompt with the cursor at the input col", () => {
+    const row = pad("pi@raspberrypi:~/Desktop $ ");
+    expect(isCleanPromptRow(row, 27)).toBe(true);
+  });
+
+  it("false once a command is typed before the cursor", () => {
+    const row = pad("pi@raspberrypi:~ $ ls");
+    expect(isCleanPromptRow(row, 21)).toBe(false);
+  });
+
+  it("false with real text right after the cursor (mid-line)", () => {
+    const row = pad("host $ ls");
+    expect(isCleanPromptRow(row, 7)).toBe(false);
+  });
+
+  it("false on a password-style row (no sigil, no path)", () => {
+    expect(isCleanPromptRow(pad("Password:"), 9)).toBe(false);
+  });
+
+  it("false on an empty row", () => {
+    expect(isCleanPromptRow(pad(""), 0)).toBe(false);
+  });
+
+  it("tolerates a right-aligned RPROMPT hugging the row's edge", () => {
+    const row = "~/proj ❯ " + " ".repeat(56) + "[main] ";
+    expect(isCleanPromptRow(row, 9)).toBe(true);
+  });
+
+  it("true via the promptCwd fallback when the sigil sits at EOL (no trailing space)", () => {
+    expect(isCleanPromptRow(pad("root@host:/etc#"), 15)).toBe(true);
+  });
+
+  // Pinned behavior, not an endorsement: output that ends in `sigil+space`
+  // with the cursor resting right after is indistinguishable from a prompt.
+  it("false-positive on prompt-lookalike output (documented limitation)", () => {
+    expect(isCleanPromptRow(pad("Total: 100$ "), 12)).toBe(true);
+  });
+});
+
+describe("commandFromPromptRow", () => {
+  const pad = (text: string, cols = 72) => text.padEnd(cols, " ");
+
+  it("returns the typed command on a clean prompt row", () => {
+    const row = pad("pi@raspberrypi:~ $ ls -la");
+    expect(commandFromPromptRow(row, 25)).toBe("ls -la");
+  });
+
+  it("null when the row has no recognizable prompt boundary", () => {
+    expect(commandFromPromptRow(pad("Password:"), 9)).toBeNull();
+  });
+
+  it("null for a bare Enter on an empty prompt", () => {
+    expect(commandFromPromptRow(pad("host $ "), 7)).toBeNull();
+  });
+
+  it("strips a right-aligned RPROMPT via the cursor-bounded slice", () => {
+    const row = "host $ ls" + " ".repeat(56) + "[main] ";
+    expect(commandFromPromptRow(row, 9)).toBe("ls");
+  });
+
+  it("takes the full row tail when the cursor sits mid-line (shell runs the whole line)", () => {
+    const row = pad("host $ ls -la");
+    expect(commandFromPromptRow(row, 9)).toBe("ls -la");
+  });
+
+  it("trims leading spaces of the typed input", () => {
+    const row = pad("host $   ls");
+    expect(commandFromPromptRow(row, 11)).toBe("ls");
   });
 });
 

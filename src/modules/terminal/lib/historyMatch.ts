@@ -83,7 +83,9 @@ export function cursorAtInputEnd(afterCursor: string): boolean {
 /** Prompt sigils that conventionally sit at the END of a shell prompt, just
  * before the command: bash `$`, root `#`, zsh `%`, starship/pure `❯`. `>` is
  * deliberately excluded so a `>`/`>>` redirect in the command isn't mistaken
- * for the prompt boundary. */
+ * for the prompt boundary. oh-my-zsh's `➜` is excluded too: it sits at the
+ * START of the prompt (`➜  ~ git:(main)`), so a boundary match on it would
+ * swallow the cwd/git segment into the captured command. */
 const PROMPT_SIGILS = "$#%❯";
 const PROMPT_BOUNDARY = new RegExp(`[${PROMPT_SIGILS}][ \\t]`, "g");
 
@@ -103,6 +105,44 @@ export function promptInputStart(rowText: string, cursorX: number): number {
     end = m.index + m[0].length;
   }
   return end;
+}
+
+/**
+ * True when the row under the cursor looks like a clean prompt awaiting input —
+ * the "remote prompt is back" signal that closes a heuristic command block.
+ * Primary check: a sigil+space boundary before the cursor with nothing typed
+ * between it and the cursor, and nothing but blanks/RPROMPT after the cursor.
+ * Fallback (prompt whose sigil sits at EOL with no trailing space, so
+ * promptInputStart finds no boundary): the text up to the cursor ends in a
+ * path-then-sigil per PROMPT_CWD. Takes the untrimmed row text so the
+ * after-cursor RPROMPT tolerance in cursorAtInputEnd keeps working.
+ */
+export function isCleanPromptRow(rowText: string, cursorX: number): boolean {
+  if (!cursorAtInputEnd(rowText.slice(cursorX))) return false;
+  const col = promptInputStart(rowText, cursorX);
+  if (col >= 0) return rowText.slice(col, cursorX).trim() === "";
+  return promptCwd(rowText.slice(0, Math.max(0, cursorX)).trimEnd()) !== null;
+}
+
+/**
+ * The command text being submitted when Enter is pressed on a stock remote
+ * prompt row, or null when the row carries no recognizable prompt boundary or
+ * no input (bare Enter). With the cursor at the input's end the slice is
+ * cursor-bounded so a right-aligned RPROMPT never leaks into the command; with
+ * real text right after the cursor (mid-line edit before Enter) the shell still
+ * executes the whole line, so the full row tail is taken instead.
+ */
+export function commandFromPromptRow(
+  rowText: string,
+  cursorX: number,
+): string | null {
+  const col = promptInputStart(rowText, cursorX);
+  if (col < 0) return null;
+  const command = cursorAtInputEnd(rowText.slice(cursorX))
+    ? rowText.slice(col, cursorX)
+    : rowText.slice(col).trimEnd();
+  const trimmed = command.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 /** The cwd shown in a stock remote shell's prompt, for the file explorer to

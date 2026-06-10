@@ -39,8 +39,12 @@ if [[ -z "$__TERMUL_HOOKS_LOADED" ]]; then
     printf '\e]133;D;%s\e\\' "$_termul_ret"
     printf '\e]7;file://%s%s\e\\' "${HOST}" "$(_termul_urlencode "$PWD")"
     # Re-inject prompt-end marker in case a framework rebuilt PS1 (p10k, starship).
+    # APPENDED, not prepended: B means "prompt ends here, input starts" — the
+    # host pins the command-start column at the cursor when B is parsed, so a
+    # B at the head of the prompt would pin column 0 and the buffer-read
+    # command fallback would swallow the prompt text.
     if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then
-      PS1=$'%{\e]133;B\e\\%}'"$PS1"
+      PS1="$PS1"$'%{\e]133;B\e\\%}'
     fi
     printf '\e]133;A\e\\'
   }

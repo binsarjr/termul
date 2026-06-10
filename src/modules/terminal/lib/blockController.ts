@@ -57,6 +57,7 @@ export type BlockFrame = {
   width: number;
   height: number;
   exitCode: number | null;
+  source: "local" | "remote";
   selection: { index: number; total: number } | null;
 };
 
@@ -233,6 +234,7 @@ export class BlockController {
       width: rect.width,
       height: (botRow - topRow) * cellHeight,
       exitCode: block.exitCode,
+      source: block.source ?? "local",
       // Show the n/total counter only when the toolbar is on the
       // keyboard-selected block, not when merely hovering another one.
       selection: block === this.validSelected() ? this.selectionInfo() : null,

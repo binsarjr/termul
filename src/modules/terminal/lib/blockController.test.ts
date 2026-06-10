@@ -174,6 +174,19 @@ describe("isInteractiveBlock", () => {
       }),
     ).toBe(true);
   });
+
+  it("accepts a heuristic remote block (null exit code, live markers)", () => {
+    expect(
+      isInteractiveBlock({
+        command: "ls -la",
+        promptMarker: fakeMarker(0),
+        startMarker: fakeMarker(1),
+        endMarker: fakeMarker(4),
+        exitCode: null,
+        source: "remote",
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("BlockController.selectRelative", () => {
@@ -313,8 +326,26 @@ describe("BlockController.getActiveFrame", () => {
       width: 800,
       height: (7 - 5) * 20,
       exitCode: 0,
+      source: "local",
       selection: null,
     });
+  });
+
+  it("carries the block's source through to the frame (remote badge)", () => {
+    const { term } = makeDomTerm(24, { ...RECT, top: 0 });
+    const ring = new CommandBlockRing();
+    ring.pushClosed({
+      command: "ls -la",
+      promptMarker: fakeMarker(2),
+      startMarker: fakeMarker(3),
+      endMarker: fakeMarker(5),
+      exitCode: null,
+      source: "remote",
+    });
+    const ctl = new BlockController(term, ring);
+    ctl.setHover(ring.all()[0]);
+
+    expect(ctl.getActiveFrame()?.source).toBe("remote");
   });
 
   it("includes the n/total counter only when keyboard-selected", () => {

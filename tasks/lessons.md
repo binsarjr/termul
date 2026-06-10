@@ -97,3 +97,21 @@
   capabilities/default.json dulu (permission `core:window:allow-*` /
   `plugin:allow-*`). Kegagalan permission tidak melempar ke UI — selalu tambah
   `.catch(console.error)` pada invoke window-level supaya regresi kelihatan.
+
+## Heuristik shell environment: verifikasi di environment user, bukan clean-room (2026-06-10)
+
+Fitur SSH per-command blocks lolos semua unit test + repro xterm asli tapi
+GAGAL total di mesin user. Akar masalah: `~/.zshrc` user men-source iTerm2
+shell integration → DUA OSC 133 C per perintah → depth tracker salah baca
+"remote punya integrasi" → heuristik mundur sepanjang sesi ssh.
+
+- Pola: logika yang bergantung pada "bentuk" emisi shell (OSC, prompt, echo)
+  WAJIB diuji terhadap rc files user yang nyata — integrasi pihak lain
+  (iTerm2/WezTerm/Kitty/starship) lazim menumpuk dan menggandakan emisi.
+- Aturan: sebelum mengandalkan invarian protokol shell (mis. "satu C per
+  perintah"), cek `~/.zshrc`/`~/.bashrc` di mesin target untuk integrasi lain;
+  asumsikan duplikasi mungkin terjadi dan buat tracker toleran (dedup by
+  buffer row, bukan asumsi kardinalitas).
+- Debug yang efektif: repro pipeline penuh dengan xterm ASLI di vitest node
+  (tanpa DOM, `new Terminal({allowProposedApi:true})` + `term.input()`) —
+  memisahkan "logika salah" vs "environmental" dalam satu eksperimen.

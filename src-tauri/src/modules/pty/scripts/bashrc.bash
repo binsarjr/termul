@@ -39,8 +39,12 @@ if [ -z "$__TERMUL_HOOKS_LOADED" ]; then
     local _termul_ret=$?
     printf '\e]133;D;%s\e\\' "$_termul_ret"
     printf '\e]7;file://%s%s\e\\' "${HOSTNAME:-$(uname -n 2>/dev/null)}" "$(_termul_urlencode "$PWD")"
+    # APPENDED, not prepended: B marks where the typed command starts. A B at
+    # the head of the prompt pins the command-start column at 0, making the
+    # host's buffer-read fallback for bash's bare C (PS0 carries no command
+    # text) return prompt+command — which breaks `ssh <host>` detection.
     if [ -z "$__TERMUL_PS1_INJECTED" ]; then
-      PS1='\[\e]133;B\e\\\]'"$PS1"
+      PS1="$PS1"'\[\e]133;B\e\\\]'
       __TERMUL_PS1_INJECTED=1
     fi
     printf '\e]133;A\e\\'

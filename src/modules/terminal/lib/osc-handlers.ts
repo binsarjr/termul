@@ -54,6 +54,9 @@ export type CommandBlock = {
   startMarker: IMarker | null;
   endMarker: IMarker | null;
   exitCode: number | null;
+  /** Where the command ran: absent/"local" = the local shell, "remote" = inside
+   * an ssh session (a nested OSC 133 C, or a heuristic prompt-boundary block). */
+  source?: "local" | "remote";
 };
 
 /**
@@ -83,6 +86,7 @@ export class CommandBlockRing {
     command: string,
     promptMarker: IMarker | null,
     startMarker: IMarker | null,
+    source: "local" | "remote" = "local",
   ): void {
     // A new C without an intervening D means the previous block never closed
     // (e.g. interrupted). Push it as-is so it isn't lost, then open the new one.
@@ -93,7 +97,23 @@ export class CommandBlockRing {
       startMarker,
       endMarker: null,
       exitCode: null,
+      source,
     };
+  }
+
+  /**
+   * Push an already-closed block assembled outside the C/D lifecycle (the
+   * heuristic remote tracker). The still-open block — the local `ssh` command
+   * the remote block runs inside — is force-pushed first: hit-testing iterates
+   * newest-first, so leaving it open until the local D would make the
+   * session-spanning ssh block shadow every block nested inside it.
+   */
+  pushClosed(block: CommandBlock): void {
+    if (this.open) {
+      this.push(this.open);
+      this.open = null;
+    }
+    this.push(block);
   }
 
   /**
@@ -158,6 +178,11 @@ export type PromptTracker = {
    * there's no live edit line — used by the inline history autocomplete to
    * derive the current input straight from the buffer. */
   getCommandStart: () => { line: number; col: number } | null;
+  /** True while the current local command contains nested OSC 133 C/D pairs —
+   * the remote shell has its own integration, so the heuristic remote-block
+   * tracker must stand down or it would double-capture every command. Resets
+   * when the local command ends (depth back to 0). */
+  sawNestedCommand: () => boolean;
   blocks: CommandBlockRing;
   dispose: () => void;
 };
@@ -184,6 +209,13 @@ export type PromptTracker = {
 export type PromptTrackerOpts = {
   onCommand?: (command: string) => void;
   onCommandEnd?: () => void;
+  /** Seed for the command-depth counter. A pane that rebinds mid-ssh (wake
+   * from hibernation) replays only the dormant tail — the remote commands —
+   * without the original local `C;ssh …`, so a fresh tracker counting from 0
+   * would misread them as local depth-1/0 pairs and clear the ssh indicator.
+   * Seed 1 when the session is known to be inside ssh. The spill path replays
+   * the FULL transcript (the outer C included), so it must keep seeding 0. */
+  initialDepth?: number;
 };
 
 export function registerPromptTracker(
@@ -204,13 +236,29 @@ export function registerPromptTracker(
   // A remote shell with its own OSC 133 integration emits inner C/D pairs that
   // nest inside the local command's span; only the D that returns depth to 0
   // ends the local command. See PromptTrackerOpts for why this matters to ssh.
-  let commandDepth = 0;
+  let commandDepth = opts?.initialDepth ?? 0;
+  let sawNested = false;
+  // Buffer rows of the last counted C and D, for stacked-integration dedup.
+  // The user's own rc files often source ANOTHER OSC 133 integration (iTerm2,
+  // WezTerm, Kitty…) on top of Termul's, so every command emits two C's and
+  // two D's. Counting both C's would read depth 2 as "the remote shell has its
+  // own integration" and latch sawNested for an entire ssh session — killing
+  // the heuristic remote blocks. The duplicates fire back to back from the
+  // same prompt hook, so they land on the SAME buffer row; a genuinely nested
+  // remote C/D always sits on a later row (the remote echoed at least a
+  // newline) and its integration emits its own A in between, which resets the
+  // dedup. Same row + same prompt cycle (no A/D for C, no A/C for D) ⇒ the
+  // same command ⇒ collapse the duplicate entirely.
+  let lastCLine: number | null = null;
+  let lastDLine: number | null = null;
   const blocks = new CommandBlockRing();
   const d = term.parser.registerOscHandler(133, (data) => {
     // OSC 133 A — start of new prompt (between commands).
     if (data.startsWith("A")) {
       if (state) state.inCommand = false;
       clearCommandStart();
+      lastCLine = null;
+      lastDLine = null;
       marker?.dispose();
       marker = term.registerMarker(0);
     } else if (data.startsWith("B")) {
@@ -232,10 +280,20 @@ export function registerPromptTracker(
     } else if (data.startsWith("C")) {
       // OSC 133 C — command pre-execution marker; still inside command.
       if (state) state.inCommand = true;
+      lastDLine = null;
+      // Stacked-integration duplicate (see lastCLine above): same command,
+      // collapse — don't count, don't latch sawNested, don't open a block.
+      const cLine = cursorLineSafe(term);
+      if (cLine >= 0 && cLine === lastCLine) {
+        clearCommandStart();
+        return true;
+      }
+      lastCLine = cLine;
       // Count the command (local or nested-remote) for end-of-command pairing.
       // Independent of the alt-screen block-capture guard below so depth stays
       // balanced whether a command runs on the normal or the alternate screen.
       commandDepth++;
+      if (commandDepth >= 2) sawNested = true;
       // Capture the typed command from the buffer BEFORE the start pin is
       // cleared. Many shell integrations emit a bare `C` with no command in the
       // payload, so this buffer read (the same source the autocomplete uses) is
@@ -260,14 +318,27 @@ export function registerPromptTracker(
         // highlight spans the command, not just the output. Release ownership
         // (marker = null) so the next A doesn't dispose it — the block owns it
         // for its lifetime now and frees it on eviction / ring dispose.
+        // `detected` (not the raw payload) so bash's bare `C` — whose command
+        // only exists via the buffer read — still yields an interactive block.
         const promptMarker = marker;
         marker = null;
-        blocks.beginCommand(command, promptMarker, registerMarkerSafe(term));
+        blocks.beginCommand(
+          detected,
+          promptMarker,
+          registerMarkerSafe(term),
+          commandDepth > 1 ? "remote" : "local",
+        );
       }
     } else if (data.startsWith("D")) {
       // OSC 133 D — command ends.
       if (state) state.inCommand = false;
       clearCommandStart();
+      lastCLine = null;
+      // Stacked-integration duplicate (same command's second D, same row):
+      // skip — the first D already closed the block and fired onCommandEnd.
+      const dLine = cursorLineSafe(term);
+      if (dLine >= 0 && dLine === lastDLine) return true;
+      lastDLine = dLine;
       // Close one command level. Only the D that returns depth to 0 ends the
       // LOCAL command — D's from a nested remote shell's OSC 133 integration
       // (depth > 1) must not fire onCommandEnd, or the ssh pill would clear
@@ -278,7 +349,10 @@ export function registerPromptTracker(
       // even on the alt screen: a local `ssh` that dropped straight into a
       // remote TUI still exits at depth 0 and the indicator must clear.
       if (commandDepth > 0) commandDepth--;
-      if (commandDepth === 0) opts?.onCommandEnd?.();
+      if (commandDepth === 0) {
+        sawNested = false;
+        opts?.onCommandEnd?.();
+      }
       if (!isAltScreen(term)) {
         const exitCode = parseExitCode(data);
         blocks.endCommand(exitCode, registerMarkerSafe(term));
@@ -293,6 +367,7 @@ export function registerPromptTracker(
       if (!m || m.isDisposed) return null;
       return { line: m.line, col: commandStart!.col };
     },
+    sawNestedCommand: () => sawNested,
     blocks,
     dispose: () => {
       d.dispose();
@@ -344,9 +419,13 @@ function readTypedCommand(
   }
 }
 
-function registerMarkerSafe(term: Terminal): IMarker | null {
+/** registerMarker that never throws. `offset` is rows below the cursor; xterm
+ * does no bounds validation, so a marker pinned one row past the last buffer
+ * row simply tracks the future row (exported for the heuristic remote-block
+ * tracker, which pins output-start before the row exists). */
+export function registerMarkerSafe(term: Terminal, offset = 0): IMarker | null {
   try {
-    return term.registerMarker(0) ?? null;
+    return term.registerMarker(offset) ?? null;
   } catch {
     return null;
   }
@@ -357,6 +436,17 @@ function cursorColSafe(term: Terminal): number {
     return term.buffer.active.cursorX;
   } catch {
     return 0;
+  }
+}
+
+/** Absolute buffer row of the cursor, or -1 when unreadable (-1 never equals a
+ * stored row, so dedup degrades to "count everything" rather than collapsing). */
+function cursorLineSafe(term: Terminal): number {
+  try {
+    const buf = term.buffer.active;
+    return buf.baseY + buf.cursorY;
+  } catch {
+    return -1;
   }
 }
 
