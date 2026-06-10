@@ -102,6 +102,13 @@ type Session = {
   // captured to the Rust spill file (not the RAM ring) and wake replays the
   // full scrollback from that file. Mirrors the tab's spillToDisk choice.
   spill: boolean;
+  // Mirrors the Rust-side dormant flag. While true the backend parks output
+  // in an in-process tail ring instead of streaming every chunk over IPC just
+  // for deliverPtyBytes to ring (or drop) it here; waking splices the tail
+  // back into the data channel. Only set while hibernated with the
+  // dropHibernatedOutput preference on and spill off — in every other mode
+  // output streams exactly as before.
+  dormant: boolean;
   // True while a spill replay is writing the transcript on wake. Live bytes are
   // suppressed (they're already in the replayed file, spilled before shipping,
   // so re-writing them would duplicate output) until the queued write is sent.
@@ -112,6 +119,14 @@ type Session = {
 };
 
 const sessions = new Map<number, Session>();
+
+// Wake callbacks for the focused pane's overlay settle loops (block hover +
+// autocomplete), registered by the layers and poked by the bound slot's
+// controllers so the loops can park while there is nothing to paint. Kept
+// outside Session: a layer's effect can subscribe before its session exists
+// (child effects run before the parent's), and they survive slot rebinds.
+const blockOverlayKicks = new Map<number, () => void>();
+const autocompleteOverlayKicks = new Map<number, () => void>();
 
 // This machine's hostname, used to tell a remote (SSH) OSC 7 cwd apart from a
 // local one. Resolved once at startup; until it lands, every host is treated as
@@ -256,6 +271,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     autocompleteCtl: null,
     altScreenAtRelease: false,
     spill: false,
+    dormant: false,
     replaying: false,
     replayToken: 0,
   };
@@ -296,7 +312,10 @@ usePreferencesStore.subscribe((state) => {
   if (state.dropHibernatedOutput === lastDropPref) return;
   lastDropPref = state.dropHibernatedOutput;
   const caps = ringCapsFor(state.dropHibernatedOutput);
-  for (const s of sessions.values()) s.dormantRing.setCaps(...caps);
+  for (const s of sessions.values()) {
+    s.dormantRing.setCaps(...caps);
+    applyDormant(s);
+  }
 });
 
 function deliverPtyBytes(leafId: number, bytes: Uint8Array): void {
@@ -326,6 +345,25 @@ function applySpill(s: Session): void {
   });
 }
 
+/** Reconcile the Rust-side dormant flag with the session's current state.
+ * Backend buffering only replaces the IPC stream when hibernation output is
+ * bounded (dropHibernatedOutput on) and not already captured to disk (spill);
+ * with dropHibernatedOutput off the ring caps are Infinity — every byte must
+ * keep streaming — so the session stays non-dormant. Idempotent. */
+function applyDormant(s: Session): void {
+  const pty = s.pty;
+  if (!pty || s.disposed) return;
+  const next =
+    !s.hasSlot &&
+    !s.spill &&
+    usePreferencesStore.getState().dropHibernatedOutput;
+  if (s.dormant === next) return;
+  s.dormant = next;
+  pty.setDormant(next).catch((e) => {
+    console.warn("[termul] setDormant failed:", e);
+  });
+}
+
 /**
  * Toggle the per-tab "keep full output to disk" for a leaf's session. Driven by
  * the terminal pane when the owning tab's spill choice changes (and on mount).
@@ -344,6 +382,9 @@ export function setSessionSpill(leafId: number, enabled: boolean): void {
   s.pty?.setSpill(enabled, seed).catch((e) => {
     console.warn("[termul] setSpill failed:", e);
   });
+  // Spill and dormant are mutually exclusive: a spilled tab keeps streaming
+  // (chunks land on disk Rust-side), a non-spilled hibernated one may park.
+  applyDormant(s);
 }
 
 /**
@@ -397,6 +438,7 @@ async function openPtyForSession(
       onExit: (code) => {
         s.shellExited = true;
         s.pty = null;
+        s.dormant = false;
         const slot = getSlotForLeaf(leafId);
         if (slot) slot.term.options.disableStdin = true;
         if (s.callbacks.onExit) s.callbacks.onExit(code);
@@ -473,7 +515,9 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // getBlocks can read it. The prompt tracker disposes the ring on its own
       // disposer (returned below), so we only need to drop our reference.
       s.blocks = prompt.blocks;
-      const blockCtl = new BlockController(term, prompt.blocks);
+      const blockCtl = new BlockController(term, prompt.blocks, () =>
+        blockOverlayKicks.get(leafId)?.(),
+      );
       s.blockCtl = blockCtl;
       // Pass the live accessor (not a snapshot) so it tracks the tracker that's
       // rebuilt per slot bind after hibernation.
@@ -482,6 +526,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         (data) => s.pty?.write(data),
         prompt.getCommandStart,
         () => s.sshHost,
+        () => autocompleteOverlayKicks.get(leafId)?.(),
       );
       s.autocompleteCtl = autocompleteCtl;
       const cwd = registerCwdHandler(
@@ -540,6 +585,9 @@ function bindLeafToSlot(leafId: number, s: Session): void {
   });
   s.snapshot = null;
   s.hasSlot = true;
+  // After the bind: the OSC handlers registered above must exist before the
+  // spliced dormant tail arrives over the data channel.
+  applyDormant(s);
   if (fromSpill) replayFromSpill(leafId, s, fallbackSnapshot);
   if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd, s.lastCwdRemote);
   if (s.pendingExit !== null) {
@@ -569,6 +617,7 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
   s.blockCtl = null;
   s.autocompleteCtl = null;
   s.hasSlot = false;
+  applyDormant(s);
 }
 
 function attachSession(
@@ -594,6 +643,7 @@ function attachSession(
         }
         s.pty = pty;
         applySpill(s);
+        applyDormant(s);
         if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
       })
       .catch((e) => {
@@ -619,6 +669,7 @@ export async function respawnSession(
   if (!s || s.disposed) return;
   s.pty?.close();
   s.pty = null;
+  s.dormant = false;
   s.snapshot = null;
   s.dormantRing = makeDormantRing();
   s.shellExited = false;
@@ -648,6 +699,7 @@ export async function respawnSession(
   }
   s.pty = pty;
   applySpill(s);
+  applyDormant(s);
   if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
 }
 
@@ -903,6 +955,30 @@ export function useTerminalSession({
     [leafId],
   );
 
+  // The overlays park their rAF settle loops while there is nothing to paint;
+  // these subscriptions let the bound controllers wake them on activity.
+  const subscribeBlockHover = useCallback(
+    (cb: () => void) => {
+      blockOverlayKicks.set(leafId, cb);
+      return () => {
+        if (blockOverlayKicks.get(leafId) === cb)
+          blockOverlayKicks.delete(leafId);
+      };
+    },
+    [leafId],
+  );
+
+  const subscribeAutocomplete = useCallback(
+    (cb: () => void) => {
+      autocompleteOverlayKicks.set(leafId, cb);
+      return () => {
+        if (autocompleteOverlayKicks.get(leafId) === cb)
+          autocompleteOverlayKicks.delete(leafId);
+      };
+    },
+    [leafId],
+  );
+
   const applyTheme = useCallback(() => {
     applyPoolTheme();
   }, []);
@@ -924,6 +1000,8 @@ export function useTerminalSession({
       pinActiveBlock,
       getBlockHoverFrame,
       getAutocomplete,
+      subscribeBlockHover,
+      subscribeAutocomplete,
       applyTheme,
     }),
     [
@@ -942,6 +1020,8 @@ export function useTerminalSession({
       pinActiveBlock,
       getBlockHoverFrame,
       getAutocomplete,
+      subscribeBlockHover,
+      subscribeAutocomplete,
       applyTheme,
     ],
   );

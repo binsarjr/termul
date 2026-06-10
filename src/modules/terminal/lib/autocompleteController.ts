@@ -5,7 +5,6 @@ import { useRemoteHistoryStore } from "./remoteHistoryStore";
 import {
   cursorAtInputEnd,
   deriveInputFromRow,
-  ghostSuffix,
   matchHistory,
   promptInputStart,
 } from "./historyMatch";
@@ -40,14 +39,22 @@ export type AutocompleteRender = {
  * (shell without integration) simply yields no input, so we never show a wrong
  * suggestion.
  *
- * The overlay polls {@link getRender} on an animation frame (mirroring the
- * block hover layer), so this controller stays a plain object — no emitter, and
- * re-resolving it each frame means a rebind after hibernation is transparent.
+ * The overlay reads {@link getRender} on an animation frame while something is
+ * showing (mirroring the block hover layer) and parks once it goes null, so the
+ * controller pokes {@link notify} whenever the buffer, viewport, history, or
+ * prefs change — anything that could make a parked overlay paint again.
+ * Re-resolving the controller each frame means a rebind after hibernation is
+ * transparent.
  */
 export class AutocompleteController {
   private dropdownOpen = false;
   private selectedIndex = 0;
   private disposers: (() => void)[] = [];
+  // Single-slot memo over the history scans: the overlay settles on
+  // consecutive frames with unchanged input, and both stores replace their
+  // entry arrays immutably, so (entries, input) identity keys it exactly.
+  private matchCache: { entries: string[]; input: string; items: string[] } | null =
+    null;
 
   constructor(
     private readonly term: Terminal,
@@ -59,10 +66,21 @@ export class AutocompleteController {
     /** The session's current SSH target (`[user@]host`) when it's in an `ssh`
      * session, else null — so matching draws on the remote shell's history. */
     private readonly getSshHost: () => string | null = () => null,
+    /** Wakes the overlay's parked settle loop; the loop re-parks itself once
+     * getRender() goes null, so notifying is always safe. */
+    private readonly notify: () => void = () => {},
   ) {
     // Make sure history is loaded for matching (deduped in the store).
     void useHistoryStore.getState().load();
     this.disposers.push(term.onData((d) => this.onData(d)).dispose);
+    this.disposers.push(term.onCursorMove(() => this.notify()).dispose);
+    this.disposers.push(term.onRender(() => this.notify()).dispose);
+    this.disposers.push(term.onScroll(() => this.notify()).dispose);
+    // History arriving after the user already typed (first local load, a slow
+    // remote fetch) and the autocomplete pref flipping on must also wake it.
+    this.disposers.push(useHistoryStore.subscribe(() => this.notify()));
+    this.disposers.push(useRemoteHistoryStore.subscribe(() => this.notify()));
+    this.disposers.push(usePreferencesStore.subscribe(() => this.notify()));
   }
 
   dispose(): void {
@@ -88,6 +106,24 @@ export class AutocompleteController {
       return useRemoteHistoryStore.getState().entriesFor(host);
     }
     return useHistoryStore.getState().entries;
+  }
+
+  /** matchHistory, memoized on (entries, input) so the per-frame settle loop
+   * and repeated key handling never re-scan history while nothing changed. */
+  private cachedMatches(entries: string[], input: string): string[] {
+    const c = this.matchCache;
+    if (c && c.entries === entries && c.input === input) return c.items;
+    const items = matchHistory(entries, input, DROPDOWN_MAX);
+    this.matchCache = { entries, input, items };
+    return items;
+  }
+
+  /** The ghost suffix (ghostSuffix semantics), derived from the same memoized
+   * match list — the best match is its first row either way. */
+  private cachedGhost(entries: string[], input: string): string {
+    if (input === "") return "";
+    const best = this.cachedMatches(entries, input)[0];
+    return best ? best.slice(input.length) : "";
   }
 
   /** The current command input, read live from the buffer's prompt row, plus
@@ -171,8 +207,7 @@ export class AutocompleteController {
   }
 
   private clampSelection(): void {
-    const n = matchHistory(this.entries(), this.currentInput(), DROPDOWN_MAX)
-      .length;
+    const n = this.cachedMatches(this.entries(), this.currentInput()).length;
     this.selectedIndex = n === 0 ? 0 : Math.min(this.selectedIndex, n - 1);
   }
 
@@ -206,10 +241,8 @@ export class AutocompleteController {
 
     const entries = this.entries();
     // No ghost mid-line: it would paint over the text right of the cursor.
-    const ghost = input && atEnd ? ghostSuffix(entries, input) : "";
-    const items = this.dropdownOpen
-      ? matchHistory(entries, input, DROPDOWN_MAX)
-      : [];
+    const ghost = input && atEnd ? this.cachedGhost(entries, input) : "";
+    const items = this.dropdownOpen ? this.cachedMatches(entries, input) : [];
     const dropdown = items.length > 0 ? items : null;
     if (!ghost && !dropdown) return null;
 
@@ -236,7 +269,7 @@ export class AutocompleteController {
   private acceptGhost(): boolean {
     const { input, atEnd } = this.readInput();
     if (!input || !atEnd) return false;
-    const ghost = ghostSuffix(this.entries(), input);
+    const ghost = this.cachedGhost(this.entries(), input);
     if (!ghost) return false;
     this.write(ghost);
     return true;
@@ -244,7 +277,7 @@ export class AutocompleteController {
 
   private acceptSelected(): boolean {
     const input = this.currentInput();
-    const items = matchHistory(this.entries(), input, DROPDOWN_MAX);
+    const items = this.cachedMatches(this.entries(), input);
     const pick = items[this.selectedIndex];
     if (!pick) return false;
     // An empty input (blank-prompt dropdown) is fine — we write the whole pick.
@@ -287,6 +320,8 @@ export class AutocompleteController {
     ) {
       this.dropdownOpen = !this.dropdownOpen;
       this.selectedIndex = 0;
+      // No echo follows a consumed key, so wake the parked overlay directly.
+      this.notify();
       return true;
     }
 
@@ -296,13 +331,13 @@ export class AutocompleteController {
           this.dropdownOpen = false;
           return true;
         case "ArrowDown": {
-          const n = matchHistory(this.entries(), this.currentInput(), DROPDOWN_MAX)
+          const n = this.cachedMatches(this.entries(), this.currentInput())
             .length;
           if (n > 0) this.selectedIndex = (this.selectedIndex + 1) % n;
           return true;
         }
         case "ArrowUp": {
-          const n = matchHistory(this.entries(), this.currentInput(), DROPDOWN_MAX)
+          const n = this.cachedMatches(this.entries(), this.currentInput())
             .length;
           if (n > 0) this.selectedIndex = (this.selectedIndex - 1 + n) % n;
           return true;

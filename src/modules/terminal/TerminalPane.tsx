@@ -221,6 +221,7 @@ export function TerminalPane({
             active={visible && focused}
             zoom={zoom}
             getFrame={session.getBlockHoverFrame}
+            subscribe={session.subscribeBlockHover}
             onCopyCommand={() => copyActive("command")}
             onCopyOutput={() => copyActive("output")}
             onCopyBoth={() => copyActive("both")}
@@ -233,6 +234,7 @@ export function TerminalPane({
           <TerminalAutocompleteLayer
             active={visible && focused}
             getRender={getAutocompleteRender}
+            subscribe={session.subscribeAutocomplete}
             onPick={acceptAutocompleteItem}
           />
         </div>

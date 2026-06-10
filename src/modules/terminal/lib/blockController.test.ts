@@ -20,6 +20,9 @@ function makeFakeTerm() {
     scrollToLine(line: number) {
       scrolledTo.push(line);
     },
+    // The controller subscribes to these to wake the overlay's parked loop.
+    onScroll: () => ({ dispose: () => {} }),
+    onResize: () => ({ dispose: () => {} }),
   } as unknown as Terminal;
   return { term, scrolledTo };
 }
@@ -87,6 +90,8 @@ function makeDomTerm(
       },
     },
     scrollToLine() {},
+    onScroll: () => ({ dispose: () => {} }),
+    onResize: () => ({ dispose: () => {} }),
   } as unknown as Terminal;
   return {
     term,
