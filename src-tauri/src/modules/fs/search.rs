@@ -43,7 +43,17 @@ const PRUNE_DIRS: &[&str] = &[
 ];
 
 #[tauri::command]
-pub fn fs_search(
+pub async fn fs_search(
+    root: String,
+    query: String,
+    limit: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+    show_hidden: Option<bool>,
+) -> Result<SearchResult, String> {
+    super::blocking(move || fs_search_blocking(root, query, limit, workspace, show_hidden)).await
+}
+
+fn fs_search_blocking(
     root: String,
     query: String,
     limit: Option<usize>,
@@ -125,11 +135,7 @@ pub fn fs_search(
     }
 
     // Rank: filename matches first, then shorter relative paths.
-    out.sort_by(|a, b| {
-        let an = a.name.to_lowercase().contains(&q);
-        let bn = b.name.to_lowercase().contains(&q);
-        bn.cmp(&an).then(a.rel.len().cmp(&b.rel.len()))
-    });
+    out.sort_by_cached_key(|h| (!h.name.to_lowercase().contains(&q), h.rel.len()));
 
     Ok(SearchResult {
         hits: out,
@@ -144,7 +150,18 @@ pub struct ListFilesResult {
 }
 
 #[tauri::command]
-pub fn fs_list_files(
+pub async fn fs_list_files(
+    root: String,
+    limit: Option<usize>,
+    max_depth: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+    show_hidden: Option<bool>,
+) -> Result<ListFilesResult, String> {
+    super::blocking(move || fs_list_files_blocking(root, limit, max_depth, workspace, show_hidden))
+        .await
+}
+
+fn fs_list_files_blocking(
     root: String,
     limit: Option<usize>,
     max_depth: Option<usize>,
@@ -214,7 +231,7 @@ pub fn fs_list_files(
         }
     }
 
-    files.sort_by_key(|a| a.to_lowercase());
+    files.sort_by_cached_key(|a| a.to_lowercase());
     Ok(ListFilesResult { files, truncated })
 }
 

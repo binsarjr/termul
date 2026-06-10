@@ -7,6 +7,18 @@ pub mod watch;
 
 use std::path::Path;
 
+/// Run a blocking filesystem op off the Tauri async runtime so tree walks and
+/// large reads never stall the webview's IPC thread.
+pub(crate) async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// The single canonical-to-display conversion: forward slashes, Windows
 /// verbatim `\\?\` prefix stripped. Route every such conversion through here.
 pub fn to_canon(p: impl AsRef<Path>) -> String {

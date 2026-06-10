@@ -233,6 +233,32 @@ pub fn pty_set_spill(
     Ok(())
 }
 
+// Toggle hibernation-side buffering for a session. While dormant the flusher
+// parks output in a bounded in-process tail ring instead of waking the webview
+// with IPC chunks it would only ring-buffer (or drop) in JS; waking splices the
+// buffered tail back into the data channel, in order, ahead of newer output.
+// The frontend enables this only when "drop hibernated output" is on and the
+// tab isn't spilling to disk.
+#[tauri::command]
+pub fn pty_set_dormant(
+    state: tauri::State<PtyState>,
+    id: u32,
+    dormant: bool,
+) -> Result<(), String> {
+    let session = state
+        .sessions
+        .read()
+        .unwrap()
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| {
+            log::warn!("pty_set_dormant: unknown id={id}");
+            "no session".to_string()
+        })?;
+    session.set_dormant(dormant);
+    Ok(())
+}
+
 // Read back the spilled transcript tail (raw PTY bytes, bounded ~16 MiB) so the
 // frontend can replay it into a freshly-reset terminal on wake. Returns empty
 // when the session never spilled. Raw `Response` avoids JSON-encoding the bytes.

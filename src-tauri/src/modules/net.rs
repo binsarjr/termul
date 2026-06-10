@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
-use bytes::Bytes;
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use tauri::ipc::Channel;
+use tauri::ipc::{Channel, Response};
 
 const HEADER_BLOCKLIST: &[&str] = &[
     "host",
@@ -218,13 +217,6 @@ pub async fn lm_ping(base_url: String) -> Result<u16, String> {
 // AI HTTP proxy — bypasses webview CORS / Mixed-Content / PNA so local-network
 // model servers (LM Studio, Ollama, vLLM) work in the production bundle.
 
-#[derive(Debug, Serialize)]
-pub struct HttpResponse {
-    pub status: u16,
-    pub headers: HashMap<String, String>,
-    pub body: Vec<u8>,
-}
-
 fn build_request(
     client: &reqwest::Client,
     method: &str,
@@ -309,37 +301,6 @@ fn header_map_to_strings(headers: &HeaderMap) -> HashMap<String, String> {
     out
 }
 
-#[tauri::command]
-pub async fn ai_http_request(
-    url: String,
-    method: String,
-    headers: Option<HashMap<String, String>>,
-    body: Option<Vec<u8>>,
-    allow_private_network: Option<bool>,
-) -> Result<HttpResponse, String> {
-    let allow_private = allow_private_network.unwrap_or(false);
-    let parsed = validate_url(&url, allow_private)?;
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "missing host".to_string())?
-        .to_string();
-    let safe_ips = classify_and_collect_safe_ips(&host, allow_private).await?;
-
-    let client = build_safe_client(allow_private, &[(host, safe_ips)])?;
-
-    let req = build_request(&client, &method, parsed, headers, body)?;
-    let resp = req.send().await.map_err(|e| e.to_string())?;
-
-    let status = resp.status().as_u16();
-    let headers = header_map_to_strings(resp.headers());
-    let body = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
-    Ok(HttpResponse {
-        status,
-        headers,
-        body,
-    })
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AiStreamEvent {
@@ -347,23 +308,26 @@ pub enum AiStreamEvent {
         status: u16,
         headers: HashMap<String, String>,
     },
-    Chunk {
-        bytes: Vec<u8>,
-    },
     End,
     Error {
         message: String,
     },
 }
 
+// Response bytes flow over `on_data` as raw IPC payloads (same pattern as the
+// PTY output channel) — no per-byte JSON. A zero-length message is the end
+// sentinel: it tells JS every data chunk has been delivered, after which the
+// final End/Error on `on_event` is safe to act on. Without it, the two
+// channels could race and the close/error could beat the last chunk.
 #[tauri::command]
 pub async fn ai_http_stream(
     url: String,
     method: String,
     headers: Option<HashMap<String, String>>,
-    body: Option<Vec<u8>>,
+    body: Option<String>,
     allow_private_network: Option<bool>,
     on_event: Channel<AiStreamEvent>,
+    on_data: Channel<Response>,
 ) -> Result<(), String> {
     let allow_private = allow_private_network.unwrap_or(false);
     let parsed = match validate_url(&url, allow_private) {
@@ -391,7 +355,13 @@ pub async fn ai_http_stream(
 
     let client = build_safe_client(allow_private, &[(host, safe_ips)])?;
 
-    let req = build_request(&client, &method, parsed, headers, body)?;
+    let req = build_request(
+        &client,
+        &method,
+        parsed,
+        headers,
+        body.map(String::into_bytes),
+    )?;
     let resp = match req.send().await {
         Ok(r) => r,
         Err(e) => {
@@ -410,18 +380,13 @@ pub async fn ai_http_stream(
     while let Some(item) = stream.next().await {
         match item {
             Ok(chunk) => {
-                let bytes: Bytes = chunk;
-                if on_event
-                    .send(AiStreamEvent::Chunk {
-                        bytes: bytes.to_vec(),
-                    })
-                    .is_err()
-                {
+                if on_data.send(Response::new(chunk.to_vec())).is_err() {
                     // Channel dropped (frontend aborted) — stop streaming.
                     return Ok(());
                 }
             }
             Err(e) => {
+                let _ = on_data.send(Response::new(Vec::new()));
                 let _ = on_event.send(AiStreamEvent::Error {
                     message: e.to_string(),
                 });
@@ -430,6 +395,7 @@ pub async fn ai_http_stream(
         }
     }
 
+    let _ = on_data.send(Response::new(Vec::new()));
     let _ = on_event.send(AiStreamEvent::End);
     Ok(())
 }

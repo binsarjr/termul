@@ -133,13 +133,17 @@ pub async fn workspace_authorize(
     Ok(crate::modules::fs::to_canon(&canonical))
 }
 
+pub fn current_workspace_dir(registry: &WorkspaceRegistry) -> Result<String, String> {
+    let launch = resolve_launch_dir();
+    let canonical = registry.authorize(&launch).map_err(|e| e.to_string())?;
+    Ok(crate::modules::fs::to_canon(&canonical))
+}
+
 #[tauri::command]
 pub async fn workspace_current_dir(
     registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<String, String> {
-    let launch = resolve_launch_dir();
-    let canonical = registry.authorize(&launch).map_err(|e| e.to_string())?;
-    Ok(crate::modules::fs::to_canon(&canonical))
+    current_workspace_dir(&registry)
 }
 
 // Snapshotted once at app startup so the live `current_dir()` drifting later
