@@ -785,14 +785,14 @@ export default function App() {
 
   const handleClose = useCallback(
     (id: number) => {
-      const t = tabs.find((x) => x.id === id);
+      const t = tabsRef.current.find((x) => x.id === id);
       if (t?.kind === "editor" && t.dirty) {
         setPendingCloseTab(id);
         return;
       }
       disposeTab(id);
     },
-    [tabs, disposeTab],
+    [disposeTab],
   );
 
   const confirmClose = useCallback(() => {
@@ -1189,35 +1189,42 @@ export default function App() {
     : activeContextPath;
   const sourceControl = useSourceControl(sourceControlPath, true);
 
+  // Mirror the source-control snapshot + context path into refs so callbacks
+  // passed to memo'd children (Header/TabBar) stay referentially stable across
+  // git refreshes instead of capturing the latest snapshot.
+  const sourceControlRef = useRef(sourceControl);
+  sourceControlRef.current = sourceControl;
+  const sourceControlContextPathRef = useRef(sourceControlContextPath);
+  sourceControlContextPathRef.current = sourceControlContextPath;
+
   const toggleSourceControl = useCallback(() => {
     cycleSidebarView("source-control");
   }, [cycleSidebarView]);
 
   const openGitGraphFromContext = useCallback(async () => {
-    const known = sourceControl.hasRepo ? sourceControl.repo : null;
+    const sc = sourceControlRef.current;
+    const known = sc.hasRepo ? sc.repo : null;
     if (known) {
       openCommitHistoryTab({
         repoRoot: known.repoRoot,
-        branch: sourceControl.status?.branch ?? null,
+        branch: sc.status?.branch ?? null,
       });
       return;
     }
-    if (!sourceControlContextPath || isRemotePath(sourceControlContextPath))
-      return;
+    const contextPath = sourceControlContextPathRef.current;
+    if (!contextPath || isRemotePath(contextPath)) return;
     try {
-      const repo = await native.gitResolveRepo(sourceControlContextPath);
+      const repo = await native.gitResolveRepo(contextPath);
       if (!repo) return;
       openCommitHistoryTab({ repoRoot: repo.repoRoot, branch: repo.branch });
     } catch {
       /* noop */
     }
-  }, [
-    openCommitHistoryTab,
-    sourceControl.hasRepo,
-    sourceControl.repo,
-    sourceControl.status?.branch,
-    sourceControlContextPath,
-  ]);
+  }, [openCommitHistoryTab]);
+
+  const openNewEditor = useCallback(() => setNewEditorOpen(true), []);
+
+  const handleOpenSettings = useCallback(() => openSettings(), []);
 
   const switchToTab = useCallback(
     (id: number) => {
@@ -1774,7 +1781,7 @@ export default function App() {
             onSelect={setActiveId}
             onNew={openNewTab}
             onNewPrivate={openNewPrivateTab}
-            onNewEditor={() => setNewEditorOpen(true)}
+            onNewEditor={openNewEditor}
             onNewGitGraph={openGitGraphFromContext}
             onClose={handleClose}
             onPin={pinTab}
@@ -1790,7 +1797,7 @@ export default function App() {
             }
             onActivateAgent={onActivateAgent}
             onActivateLocalAgent={onActivateLocalAgent}
-            onOpenSettings={() => openSettings()}
+            onOpenSettings={handleOpenSettings}
             searchTarget={searchTarget}
             searchRef={searchInlineRef}
           />

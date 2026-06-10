@@ -19,7 +19,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtShortcut, MOD_KEY } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl, useIconsLoaded } from "@/modules/explorer/lib/iconResolver";
 import {
   Cancel01Icon,
   Clock01Icon,
@@ -35,7 +35,7 @@ import {
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { GroupChip } from "./GroupChip";
 import {
   buildTabRows,
@@ -105,7 +105,7 @@ function dropTargetAt(clientX: number, clientY: number): DragOver | null {
   return { id, place };
 }
 
-export function TabBar({
+export const TabBar = memo(function TabBar({
   tabs,
   activeId,
   onSelect,
@@ -214,6 +214,7 @@ export function TabBar({
                 memberGroupId != null
                   ? groups.find((g) => g.id === memberGroupId)?.color
                   : undefined;
+              const otherGroups = groups.filter((g) => g.id !== memberGroupId);
 
               // Inline rename field (terminal tabs only). Rendered in place of
               // the trigger so we never nest an <input> inside a <button>.
@@ -440,27 +441,23 @@ export function TabBar({
                         Add to group
                       </ContextMenuSubTrigger>
                       <ContextMenuSubContent className="min-w-40">
-                        {groups
-                          .filter((g) => g.id !== memberGroupId)
-                          .map((g) => (
-                            <ContextMenuItem
-                              key={g.id}
-                              onSelect={() =>
-                                groupControls.onAssignToGroup(t.id, g.id)
-                              }
-                            >
-                              <span
-                                className="size-2.5 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: groupColorVar(g.color),
-                                }}
-                              />
-                              <span className="truncate">{g.name}</span>
-                            </ContextMenuItem>
-                          ))}
-                        {groups.some((g) => g.id !== memberGroupId) && (
-                          <ContextMenuSeparator />
-                        )}
+                        {otherGroups.map((g) => (
+                          <ContextMenuItem
+                            key={g.id}
+                            onSelect={() =>
+                              groupControls.onAssignToGroup(t.id, g.id)
+                            }
+                          >
+                            <span
+                              className="size-2.5 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: groupColorVar(g.color),
+                              }}
+                            />
+                            <span className="truncate">{g.name}</span>
+                          </ContextMenuItem>
+                        ))}
+                        {otherGroups.length > 0 && <ContextMenuSeparator />}
                         <ContextMenuItem
                           onSelect={() => groupControls.onCreateGroup(t.id)}
                         >
@@ -561,9 +558,10 @@ export function TabBar({
       </div>
     </div>
   );
-}
+});
 
 export function TabIcon({ tab }: { tab: Tab }) {
+  useIconsLoaded();
   if (
     tab.kind === "editor" ||
     tab.kind === "markdown" ||

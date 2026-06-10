@@ -5,9 +5,9 @@ import { useLazyRef } from "@/lib/useLazyRef";
 import { native } from "../lib/native";
 import { checkReadable } from "../lib/security";
 import { resolvePath } from "../tools/tools";
+import { getOrCreateChat } from "../store/chatRuntime";
 import {
   flushPersist,
-  getOrCreateChat,
   useChatStore,
   type AgentRunStatus,
 } from "../store/chatStore";
@@ -63,6 +63,7 @@ function Bridge({
   const chat = useMemo(() => getOrCreateChat(sessionId), [sessionId]);
   const { status, messages, addToolApprovalResponse } = useChat<UIMessage>({
     chat,
+    experimental_throttle: 50,
   });
   const patch = useChatStore((s) => s.patchAgentMeta);
   const openMini = useChatStore((s) => s.openMini);

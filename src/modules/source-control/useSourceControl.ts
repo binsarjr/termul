@@ -180,7 +180,16 @@ export function useSourceControl(
           ? activeRoot
           : undefined;
 
-      setState((current) => ({ ...current, isLoading: true, localError: null }));
+      // Only flip isLoading when there is no snapshot yet: background
+      // refreshes over an existing snapshot settle in a single render, and
+      // the panel only renders a spinner when repo/status are absent anyway.
+      if (!stateRef.current.hasRepo || !stateRef.current.status) {
+        setState((current) => ({
+          ...current,
+          isLoading: true,
+          localError: null,
+        }));
+      }
 
       try {
         let repo: GitRepoInfo | null;

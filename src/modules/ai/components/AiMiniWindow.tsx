@@ -34,7 +34,8 @@ import type { ResizeDir } from "../lib/miniWindowGeometry";
 import type { SessionMeta } from "../lib/sessions";
 import { useMiniWindowGeometry } from "../lib/useMiniWindowGeometry";
 import { useAgentsStore } from "../store/agentsStore";
-import { getOrCreateChat, useChatStore } from "../store/chatStore";
+import { getOrCreateChat } from "../store/chatRuntime";
+import { useChatStore } from "../store/chatStore";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { usePlanStore } from "../store/planStore";
 import { AgentSwitcher } from "./AgentSwitcher";
@@ -172,7 +173,7 @@ function Body({
   const step = useChatStore((s) => s.agentMeta.step);
 
   const chat = useMemo(() => getOrCreateChat(sessionId), [sessionId]);
-  const helpers = useChat<UIMessage>({ chat });
+  const helpers = useChat<UIMessage>({ chat, experimental_throttle: 50 });
   const isBusy =
     helpers.status === "submitted" || helpers.status === "streaming";
 
@@ -341,7 +342,10 @@ function ContextIndicator({ messages }: { messages: UIMessage[] }) {
   const tokens = useChatStore((s) => s.agentMeta.tokens);
   const lastInput = useChatStore((s) => s.agentMeta.lastInputTokens);
   const lastCached = useChatStore((s) => s.agentMeta.lastCachedTokens);
-  const estimated = useMemo(() => estimateTokens(messages), [messages]);
+  const estimated = useMemo(
+    () => (lastInput > 0 ? 0 : estimateTokens(messages)),
+    [lastInput, messages],
+  );
   const used = lastInput > 0 ? lastInput : estimated;
   const reported = tokens.inputTokens + tokens.outputTokens;
   const openaiCompatibleContextLimit = usePreferencesStore(

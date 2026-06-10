@@ -23,6 +23,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useMemo, useRef, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
+import { useSliderDraft } from "../lib/useSliderDraft";
 
 const onCreateTheme = () => {
   void emitThemeEdit({ action: "create" });
@@ -55,6 +56,9 @@ export function ThemesSection() {
   const backgroundImageId = usePreferencesStore((s) => s.backgroundImageId);
   const backgroundOpacity = usePreferencesStore((s) => s.backgroundOpacity);
   const backgroundBlur = usePreferencesStore((s) => s.backgroundBlur);
+
+  const [opacityShown, setOpacityDraft] = useSliderDraft(backgroundOpacity);
+  const [blurShown, setBlurDraft] = useSliderDraft(backgroundBlur);
 
   const handleThemeFiles = async (files: FileList | null) => {
     setImportError(null);
@@ -327,28 +331,30 @@ export function ThemesSection() {
                 Opacity
               </span>
               <span className="tabular-nums text-[11px] text-muted-foreground">
-                {Math.round(backgroundOpacity * 100)}%
+                {Math.round(opacityShown * 100)}%
               </span>
             </div>
             <Slider
-              value={[backgroundOpacity]}
+              value={[opacityShown]}
               min={0}
               max={1}
               step={0.01}
-              onValueChange={(v) => void setBackgroundOpacity(v[0] ?? 0)}
+              onValueChange={(v) => setOpacityDraft(v[0] ?? 0)}
+              onValueCommit={(v) => void setBackgroundOpacity(v[0] ?? 0)}
             />
             <div className="flex items-center justify-between gap-3 pt-1">
               <span className="text-[11.5px] text-muted-foreground">Blur</span>
               <span className="tabular-nums text-[11px] text-muted-foreground">
-                {backgroundBlur}px
+                {blurShown}px
               </span>
             </div>
             <Slider
-              value={[backgroundBlur]}
+              value={[blurShown]}
               min={0}
               max={64}
               step={1}
-              onValueChange={(v) => void setBackgroundBlur(v[0] ?? 0)}
+              onValueChange={(v) => setBlurDraft(v[0] ?? 0)}
+              onValueCommit={(v) => void setBackgroundBlur(v[0] ?? 0)}
             />
           </div>
         ) : (
