@@ -156,3 +156,38 @@ Fitur session restore (ROADMAP "Persistent terminal sessions and layout restore"
   AutoSaveDelayInput) — bukan dari perubahan ini.
 - Follow-up opsional belum dikerjakan: custom Quit menu utk flush saat Cmd+Q,
   dormant-ring append saat close-flush, sesi per-workspace, auto-reconnect SSH.
+
+## Cmd+click URL hard-wrap fix (2026-06-11)
+
+Bug: URL panjang yang dicetak CLI (Ink/Claude Code) dengan newline asli per-baris
+(bukan soft-wrap xterm) -> WebLinksAddon hanya match per logical line, cmd+click
+membuka fragmen URL terpotong.
+
+- [x] 1. `linkProvider.ts`: port LinkComputer addon + join hard-wrap (baris penuh
+      sampai kolom terakhir + baris berikut mulai non-spasi di kolom 0)
+- [x] 2. rendererPool.ts: ganti WebLinksAddon -> registerLinkProvider(TermulWebLinkProvider)
+- [x] 3. Hapus dep @xterm/addon-web-links (package.json + lockfile)
+- [x] 4. linkProvider.test.ts (10 tes, fake buffer) + linkProvider.integration.test.ts
+      (4 tes, Terminal xterm ASLI tanpa DOM: hard-wrap URL OAuth riil per-baris,
+      soft-wrap, negative no-glue / no-url)
+- [x] 5. Verif: tsc clean, vitest 383/383, pnpm build OK, modulepreload tetap
+      5 chunk (react/xterm/utils/radix/motion)
+
+### Review
+- Root cause: WebLinksAddon hanya join baris ber-flag isWrapped (soft wrap).
+  CLI berbasis Ink (Claude Code dsb) mencetak URL panjang yang sudah dipotong
+  newline asli selebar terminal, jadi tiap baris = logical line sendiri dan
+  cmd+click membuka fragmen terpotong.
+- Fix: provider kustom (port LinkComputer, atribusi MIT di header) dengan
+  heuristik tambahan a la iTerm2/WezTerm: baris terisi penuh sampai kolom
+  terakhir + baris berikut mulai non-spasi di kolom 0 = lanjutan URL.
+  Mapping string->buffer tetap eksak karena join hanya terjadi pada baris
+  penuh (trimRight tak memangkas apa pun kecuali baris terakhir window).
+- Trade-off yang diterima: URL yang berakhir TEPAT di kolom terakhir dengan
+  baris teks non-spasi tepat di bawahnya akan ikut tergabung (ambiguitas
+  inheren; perilaku sama dengan iTerm2). Kasus nyata jarang.
+- Belum diverifikasi via GUI (hover+cmd+click butuh interaksi mouse riil);
+  jalur registerLinkProvider identik dengan wiring addon lama, dan parser/
+  buffer dibuktikan lewat test integrasi xterm asli. Cek manual cepat:
+  jalankan `claude` sampai muncul URL OAuth wrap, cmd+click harus membuka
+  URL utuh.

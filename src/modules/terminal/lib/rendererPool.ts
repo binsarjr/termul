@@ -5,7 +5,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import {
@@ -13,6 +12,7 @@ import {
   terminalLineNavigationSequence,
   terminalWordNavigationSequence,
 } from "./keymap";
+import { TermulWebLinkProvider } from "./linkProvider";
 
 // Upper bound on live xterm renderer slots. Must be >= the max panes a single
 // tab can hold (see MAX_PANES_PER_TAB_MAX) so panes in one tab never evict each
@@ -126,8 +126,10 @@ function createSlot(): Slot {
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
   term.loadAddon(serializeAddon);
-  term.loadAddon(
-    new WebLinksAddon((_e, uri) => openUrl(uri).catch(console.error)),
+  term.registerLinkProvider(
+    new TermulWebLinkProvider(term, (_e, uri) =>
+      openUrl(uri).catch(console.error),
+    ),
   );
 
   const host = document.createElement("div");
