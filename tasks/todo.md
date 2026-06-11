@@ -191,3 +191,33 @@ membuka fragmen URL terpotong.
   buffer dibuktikan lewat test integrasi xterm asli. Cek manual cepat:
   jalankan `claude` sampai muncul URL OAuth wrap, cmd+click harus membuka
   URL utuh.
+
+## Autocomplete ghost hilang (trace + fix, 2026-06-11)
+
+Trace: pin commandStart (OSC 133 B, marker xterm) hancur tanpa pemicu pin baru
+sampai prompt cycle berikutnya -> ghost autocomplete mati di prompt aktif.
+Dua jalur: (1) Cmd+K -> term.clear() -> buffer.clearAllMarkers() (baris prompt
+selamat, marker tidak); (2) rebind hibernasi -> term.reset() + replay snapshot
+serializeAddon yang tidak membawa OSC 133.
+
+- [x] osc-handlers: PromptTracker.repinCommandStart() (re-pin marker di baris
+      kursor saat pin ada tapi markernya disposed)
+- [x] osc-handlers: PromptTrackerOpts.initialCommandStart (seed col+rowOffset;
+      anchor via callback term.write("") karena write async-FIFO -- mendarat
+      tepat di antara snapshot dan dormant ring; A/B/C/D dari ring menggantikan)
+- [x] useTerminalSession: capture seed di unbindLeafFromSlot (relatif kursor,
+      skip alt-screen), konsumsi sekali di bind (null untuk jalur spill),
+      repin di clearFocusedTerminal (hanya bila pin di baris kursor)
+- [x] 5 tes baru di osc-handlers.test.ts terhadap Terminal xterm ASLI:
+      clear->repin, repin no-op, anchor-setelah-replay, ring override seed,
+      dispose void anchor
+- [x] Verif: tsc clean, vitest 388/388, build OK, modulepreload tetap 5 chunk
+
+### Review
+- Heal Cmd+K instan (repin sinkron setelah clear); heal hibernasi lewat seed
+  yang persis menganchor ke posisi kursor hasil replay snapshot.
+- Degradasi aman: pin yang salah tidak mungkin menampilkan ghost keliru karena
+  readInput tetap menuntut cursorRow === pin.line; mismatch hanya berarti
+  tidak ada saran.
+- Belum diverifikasi via GUI (butuh keystroke Cmd+K riil); mekanisme inti
+  (clearAllMarkers + async write FIFO) dikunci tes xterm asli, glue tipis.
