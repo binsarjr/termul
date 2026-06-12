@@ -1,4 +1,5 @@
 import { DEFAULT_THEME_ID, type Theme } from "../types";
+import { adeberry } from "./adeberry";
 import { caffeine } from "./caffeine";
 import { catppuccin } from "./catppuccin";
 import { claude } from "./claude";
@@ -21,6 +22,7 @@ const BUILTIN: Theme[] = [
   gruvbox,
   rosePine,
   caffeine,
+  adeberry,
 ];
 
 const BY_ID = new Map<string, Theme>(BUILTIN.map((t) => [t.id, t]));
