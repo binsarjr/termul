@@ -21,6 +21,7 @@ import {
   registerPromptTracker,
 } from "./osc-handlers";
 import { createRemoteBlockTracker } from "./remoteBlocks";
+import { pasteImage, quotePathsForShell } from "./remoteUpload";
 import { openPty, type PtySession } from "./pty-bridge";
 import {
   acquireSlot,
@@ -198,6 +199,15 @@ export function writeToSession(leafId: number, data: string): boolean {
 }
 
 /**
+ * The `ssh <target>` this pane is currently in (the dialed `[user@]host`), or
+ * null on the local shell. Used by the file-drop handler to upload a dropped
+ * file to the remote instead of inserting a useless local path.
+ */
+export function sshHostForSession(leafId: number): string | null {
+  return sessions.get(leafId)?.sshHost ?? null;
+}
+
+/**
  * Clear the scrollback and screen of the currently focused terminal, keeping
  * the active prompt line — macOS Terminal's ⌘K behaviour. Returns false when no
  * focused terminal slot is bound (e.g. focus is in the editor or AI panel).
@@ -257,6 +267,13 @@ configureRendererPool({
           .resize(cols, rows + 1)
           .then(() => pty.resize(cols, rows))
           .catch((e) => console.warn("[termul] kickPty failed:", e));
+      },
+      handlePasteImage: (blob, mime) => {
+        // Upload to the SSHed host (or save locally), then drop the resulting
+        // path at the prompt — same shape as a dropped file.
+        void pasteImage({ host: s.sshHost, blob, mime }).then((path) => {
+          if (path) void s.pty?.write(`${quotePathsForShell([path])} `);
+        });
       },
     };
   },

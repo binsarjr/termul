@@ -283,3 +283,132 @@ pub fn delete(state: &SshState, host: &str, path: &str) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Replace anything that would need shell/scp quoting (whitespace, shell
+/// metacharacters, path separators, control bytes) with `_`, so the remote
+/// filename is safe to hand scp *unquoted* — the only form that behaves the
+/// same under both legacy-RCP and new-SFTP scp protocols. Unicode letters and
+/// digits are kept. Falls back to `upload` for an empty or all-dots result.
+fn sanitize_upload_name(name: &str) -> String {
+    const UNSAFE: &[char] = &[
+        ' ', '\t', '\'', '"', '`', '$', '\\', ';', '&', '|', '<', '>', '(', ')', '*', '?', '[',
+        ']', '{', '}', '~', '!', '#', ':', '/',
+    ];
+    let out: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || UNSAFE.contains(&c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    if out.is_empty() || out.chars().all(|c| c == '.') {
+        format!("upload{out}")
+    } else {
+        out
+    }
+}
+
+/// Upload a local file to `termul-uploads/` under the remote's temp dir
+/// (`$TMPDIR` or `/tmp`) on `host`, reusing the host's ControlMaster (no
+/// re-auth) via `scp` over its control socket. Returns the absolute remote path
+/// so the caller can drop it at the pane's prompt for a remote tool (e.g.
+/// `claude`) to read.
+pub fn upload_file(state: &SshState, host: &str, local_path: &str) -> Result<String, String> {
+    let local = std::path::Path::new(local_path);
+    let meta = std::fs::metadata(local).map_err(|e| format!("cannot read {local_path}: {e}"))?;
+    if !meta.is_file() {
+        return Err(format!(
+            "not a file (folders aren't supported): {local_path}"
+        ));
+    }
+    let name = local
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(sanitize_upload_name)
+        .ok_or_else(|| format!("invalid file name: {local_path}"))?;
+
+    // Resolve the remote OS temp dir (honoring $TMPDIR — macOS' per-user temp,
+    // else /tmp), create our uploads subdir, and echo its absolute path: one
+    // round-trip over the master (also ensures it). Take the last non-empty
+    // stdout line so a stray login banner can't corrupt the path.
+    let mkdir = session::exec(
+        state,
+        host,
+        r#"d=${TMPDIR:-/tmp}; d=${d%/}/termul-uploads; mkdir -p -- "$d" || exit 1; printf '%s\n' "$d""#,
+        &[],
+        dur(),
+    )?;
+    if !mkdir.ok() {
+        return Err(op_error(host, "create uploads dir", &mkdir));
+    }
+    let remote_dir = mkdir
+        .stdout_string()
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .to_string();
+    if remote_dir.is_empty() {
+        return Err(format!("ssh: could not resolve temp dir on {host}"));
+    }
+    let remote_path = format!("{remote_dir}/{name}");
+
+    // scp over the live master. The local path is a plain argv (never touches a
+    // shell); the remote path is one we built and sanitized, so it needs no
+    // quoting and behaves identically under legacy and SFTP-mode scp.
+    let sock = session::socket_path(host)?.to_string_lossy().into_owned();
+    let args = vec![
+        "-o".into(),
+        format!("ControlPath={sock}"),
+        "-o".into(),
+        "ControlMaster=no".into(),
+        "-o".into(),
+        "BatchMode=yes".into(),
+        "-q".into(),
+        "-p".into(),
+        local_path.to_string(),
+        format!("{host}:{remote_path}"),
+    ];
+    // Generous cap: a large drop can take a while; the master keeps it auth-free.
+    let run = session::run("scp", &args, Duration::from_secs(600))?;
+    if !run.ok() {
+        return Err(op_error(host, "upload", &run));
+    }
+    Ok(remote_path)
+}
+
+#[cfg(test)]
+mod upload_tests {
+    use super::sanitize_upload_name;
+
+    #[test]
+    fn keeps_plain_names_and_extensions() {
+        assert_eq!(sanitize_upload_name("photo.png"), "photo.png");
+        assert_eq!(sanitize_upload_name("a-b_c.1.jpg"), "a-b_c.1.jpg");
+    }
+
+    #[test]
+    fn replaces_spaces_and_shell_metachars() {
+        assert_eq!(
+            sanitize_upload_name("Screenshot 2026-06-12 at 10.30.png"),
+            "Screenshot_2026-06-12_at_10.30.png"
+        );
+        assert_eq!(sanitize_upload_name("a;rm -rf $HOME`.png"), "a_rm_-rf__HOME_.png");
+    }
+
+    #[test]
+    fn falls_back_for_empty_or_dotonly() {
+        assert_eq!(sanitize_upload_name(""), "upload");
+        assert_eq!(sanitize_upload_name(".."), "upload..");
+        assert_eq!(sanitize_upload_name("."), "upload.");
+    }
+
+    #[test]
+    fn keeps_unicode_letters() {
+        assert_eq!(sanitize_upload_name("café.png"), "café.png");
+    }
+}
