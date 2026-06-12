@@ -1,8 +1,8 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useEffect } from "react";
 import { IS_WINDOWS } from "@/lib/platform";
-import { quoteShellArg } from "@/lib/shellQuote";
-import { writeToSession } from "./useTerminalSession";
+import { quotePathsForShell, uploadDroppedPaths } from "./remoteUpload";
+import { sshHostForSession, writeToSession } from "./useTerminalSession";
 
 const PANE_SELECTOR = "[data-pane-leaf]";
 // Literal classes so Tailwind keeps them; toggled imperatively on the hovered
@@ -18,12 +18,7 @@ const DEDUPE_MS = 400;
 
 /** Shell-quote and space-join dropped file paths for insertion into a shell. */
 export function formatDropPaths(paths: string[]): string {
-  return paths
-    .reduce<string[]>((acc, path) => {
-      if (path.length > 0) acc.push(quoteShellArg(path));
-      return acc;
-    }, [])
-    .join(" ");
+  return quotePathsForShell(paths);
 }
 
 type Point = { x: number; y: number };
@@ -54,7 +49,7 @@ type DragDropPayload =
 
 type DropAction<T> =
   | { kind: "highlight"; target: T | null }
-  | { kind: "drop"; target: T; text: string };
+  | { kind: "drop"; target: T; text: string; paths: string[] };
 
 /**
  * Pure drag-drop routing: tracks the hovered target across enter/over events
@@ -94,7 +89,7 @@ export function createDropRouter<T>(deps: {
       }
       lastText = text;
       lastDropAt = now;
-      return { kind: "drop", target, text };
+      return { kind: "drop", target, text, paths: payload.paths };
     },
   };
 }
@@ -110,11 +105,12 @@ function paneAtPoint(point: Point): PaneTarget | null {
 }
 
 /**
- * Drop OS files onto a terminal pane to insert their shell-quoted paths at that
- * pane's prompt. This mirrors how iTerm/Terminal handle a dragged file, and is
- * how Claude Code (running in the pane) ingests a dropped image: it reads the
- * path from the prompt. Drop targets the pane under the cursor, not the focused
- * one, so it works across splits.
+ * Drop OS files onto a terminal pane. On a local shell, insert their
+ * shell-quoted paths at the pane's prompt (mirrors iTerm/Terminal, and how
+ * Claude Code in the pane ingests a dropped image: it reads the path). On a pane
+ * that is SSHed in, upload the files to the remote first and insert the remote
+ * paths instead. Drop targets the pane under the cursor, not the focused one, so
+ * it works across splits.
  */
 export function useTerminalFileDrop(): void {
   useEffect(() => {
@@ -144,7 +140,15 @@ export function useTerminalFileDrop(): void {
           return;
         }
         setHighlight(null);
-        writeToSession(action.target.leafId, `${action.text} `);
+        const { leafId } = action.target;
+        const host = sshHostForSession(leafId);
+        if (host) {
+          void uploadDroppedPaths(host, action.paths).then((remote) => {
+            if (remote) writeToSession(leafId, `${quotePathsForShell(remote)} `);
+          });
+        } else {
+          writeToSession(leafId, `${action.text} `);
+        }
       })
       .then((un) => {
         if (disposed) un();

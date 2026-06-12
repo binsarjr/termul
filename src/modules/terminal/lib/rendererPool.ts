@@ -5,7 +5,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import {
@@ -13,6 +12,7 @@ import {
   terminalLineNavigationSequence,
   terminalWordNavigationSequence,
 } from "./keymap";
+import { TermulWebLinkProvider } from "./linkProvider";
 
 // Upper bound on live xterm renderer slots. Must be >= the max panes a single
 // tab can hold (see MAX_PANES_PER_TAB_MAX) so panes in one tab never evict each
@@ -39,6 +39,10 @@ export type LeafBridge = {
   // ioctls that don't actually change the size. Used to make alt-screen
   // TUIs repaint from scratch after they were dormant.
   kickPty(cols: number, rows: number): void;
+  // Handle an image pasted into the pane: upload it to the SSHed host (or save
+  // it locally) and insert the resulting path at the prompt. Absent on
+  // non-terminal leaves; when present, the pool intercepts image paste.
+  handlePasteImage?(blob: Blob, mime: string): void;
 };
 
 export type Slot = {
@@ -126,8 +130,10 @@ function createSlot(): Slot {
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
   term.loadAddon(serializeAddon);
-  term.loadAddon(
-    new WebLinksAddon((_e, uri) => openUrl(uri).catch(console.error)),
+  term.registerLinkProvider(
+    new TermulWebLinkProvider(term, (_e, uri) =>
+      openUrl(uri).catch(console.error),
+    ),
   );
 
   const host = document.createElement("div");
@@ -229,6 +235,37 @@ function createSlot(): Slot {
     }
     return true;
   });
+
+  // Pasting an image (Cmd/Ctrl+V or right-click) has no place in a text PTY:
+  // intercept it in the capture phase — before xterm's own textarea paste
+  // handler — and hand the blob to the leaf, which uploads it to the SSHed host
+  // or saves it locally and inserts the path. Text paste is untouched: we only
+  // claim the event when the clipboard actually holds an image.
+  host.addEventListener(
+    "paste",
+    (event) => {
+      const leafId = slot.currentLeafId;
+      if (leafId === null) return;
+      const bridge = adapter?.resolveLeaf(leafId);
+      if (!bridge?.handlePasteImage) return;
+      const items = event.clipboardData?.items;
+      if (!items) return;
+      let image: DataTransferItem | null = null;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          image = it;
+          break;
+        }
+      }
+      const blob = image?.getAsFile();
+      if (!blob) return;
+      event.preventDefault();
+      event.stopPropagation();
+      bridge.handlePasteImage(blob, blob.type || image?.type || "image/png");
+    },
+    true,
+  );
 
   term.onData((data) => {
     const leafId = slot.currentLeafId;

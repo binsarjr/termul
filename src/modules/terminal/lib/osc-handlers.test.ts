@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Terminal as XTerminal } from "@xterm/xterm";
 import type { IMarker, Terminal } from "@xterm/xterm";
 import {
   CommandBlockRing,
@@ -411,6 +412,86 @@ describe("OSC 133 command-start tracking (autocomplete input source)", () => {
     for (const m of markers as unknown as IMarker[]) {
       expect(m.dispose).toHaveBeenCalled();
     }
+  });
+});
+
+/**
+ * Command-start pin survival, against the REAL @xterm/xterm Terminal (no
+ * fakes, never open()ed): term.clear() runs buffer.clearAllMarkers() and
+ * term.write parses async-FIFO — the exact behaviors these paths exist for.
+ */
+describe("command-start pin survival (real xterm)", () => {
+  const ESC = "\x1b";
+  const osc133 = (p: string) => `${ESC}]133;${p}${ESC}\\`;
+  const makeTerm = () => new XTerminal({ cols: 80, rows: 24 });
+  const writeP = (t: XTerminal, data: string) =>
+    new Promise<void>((r) => t.write(data, r));
+  // "user@mac ~ % " is 13 columns, so B pins col 13.
+  const PROMPT = "user@mac ~ % ";
+
+  it("repinCommandStart restores a pin killed by term.clear (Cmd+K)", async () => {
+    const term = makeTerm();
+    const tracker = registerPromptTracker(term);
+    await writeP(
+      term,
+      `old output\r\n${osc133("A")}${PROMPT}${osc133("B")}git sta`,
+    );
+    expect(tracker.getCommandStart()).toEqual({ line: 1, col: 13 });
+
+    term.clear(); // clearAllMarkers — the prompt row survives as row 0
+    expect(tracker.getCommandStart()).toBeNull();
+
+    tracker.repinCommandStart();
+    expect(tracker.getCommandStart()).toEqual({ line: 0, col: 13 });
+  });
+
+  it("repinCommandStart is a no-op without a pin or with a live one", async () => {
+    const term = makeTerm();
+    const tracker = registerPromptTracker(term);
+    tracker.repinCommandStart();
+    expect(tracker.getCommandStart()).toBeNull();
+
+    await writeP(term, `${osc133("A")}${PROMPT}${osc133("B")}`);
+    const before = tracker.getCommandStart();
+    tracker.repinCommandStart();
+    expect(tracker.getCommandStart()).toEqual(before);
+  });
+
+  it("initialCommandStart anchors only after the queued snapshot parses", async () => {
+    const term = makeTerm();
+    // bindSlot order: the snapshot write is queued first, the tracker is
+    // registered synchronously after — before any byte has parsed.
+    const replayed = writeP(term, `line one\r\n${PROMPT}git sta`);
+    const tracker = registerPromptTracker(term, undefined, {
+      initialCommandStart: { col: 13, rowOffset: 0 },
+    });
+    expect(tracker.getCommandStart()).toBeNull(); // not anchored yet
+    await replayed;
+    await writeP(term, ""); // drain past the anchor write
+    expect(tracker.getCommandStart()).toEqual({ line: 1, col: 13 });
+  });
+
+  it("a replayed prompt cycle from the dormant ring overrides the seed", async () => {
+    const term = makeTerm();
+    const replayed = writeP(term, PROMPT);
+    const tracker = registerPromptTracker(term, undefined, {
+      initialCommandStart: { col: 13, rowOffset: 0 },
+    });
+    await replayed;
+    await writeP(term, `\r\nout\r\n${osc133("A")}${PROMPT}${osc133("B")}`);
+    expect(tracker.getCommandStart()).toEqual({ line: 2, col: 13 });
+  });
+
+  it("a pending seed anchor is voided by dispose", async () => {
+    const term = makeTerm();
+    const replayed = writeP(term, PROMPT);
+    const tracker = registerPromptTracker(term, undefined, {
+      initialCommandStart: { col: 13, rowOffset: 0 },
+    });
+    tracker.dispose();
+    await replayed;
+    await writeP(term, "");
+    expect(tracker.getCommandStart()).toBeNull();
   });
 });
 

@@ -1,6 +1,8 @@
 pub mod modules;
 
-use modules::{agent, fs, git, history, net, pty, secrets, shell, snapshots, ssh, workspace};
+use modules::{
+    agent, fs, git, history, net, paste, pty, secrets, shell, snapshots, ssh, workspace,
+};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_window_state::StateFlags;
@@ -151,12 +153,14 @@ pub fn run() {
             ssh::ssh_stat,
             ssh::ssh_canonicalize,
             ssh::ssh_write_file,
+            ssh::ssh_upload_file,
             ssh::ssh_create_file,
             ssh::ssh_create_dir,
             ssh::ssh_rename,
             ssh::ssh_delete,
             ssh::ssh_watch_add,
             ssh::ssh_watch_remove,
+            paste::materialize_paste_image,
             workspace::wsl_list_distros,
             workspace::wsl_default_distro,
             workspace::wsl_home,

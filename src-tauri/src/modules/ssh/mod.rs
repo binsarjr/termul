@@ -149,6 +149,19 @@ pub async fn ssh_write_file(
     Ok(())
 }
 
+/// Upload a local file to `termul-uploads/` under the remote temp dir on `host`
+/// over the ControlMaster, returning the absolute remote path (for insertion at
+/// the pane's prompt).
+#[tauri::command]
+pub async fn ssh_upload_file(
+    host: String,
+    local_path: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<String, String> {
+    let st = state.inner().clone();
+    blocking(move || ops::upload_file(&st, &host, &local_path)).await
+}
+
 #[tauri::command]
 pub async fn ssh_create_file(
     host: String,

@@ -90,6 +90,7 @@ describe("createDropRouter", () => {
       kind: "drop",
       target: { leafId: 2 },
       text: quoteShellArg("/shot.png"),
+      paths: ["/shot.png"],
     });
   });
 
@@ -105,6 +106,23 @@ describe("createDropRouter", () => {
       kind: "drop",
       target: { leafId: 2 },
       text: quoteShellArg("/shot.png"),
+      paths: ["/shot.png"],
+    });
+  });
+
+  it("threads the raw (unquoted) paths through for the SSH upload branch", () => {
+    const { router } = makeRouter();
+    router.handle({ type: "over", position: { x: 100, y: 100 } });
+    const action = router.handle({
+      type: "drop",
+      paths: ["/Users/me/my shot.png", "/b.png"],
+      position: { x: 100, y: 100 },
+    });
+    expect(action).toEqual({
+      kind: "drop",
+      target: { leafId: 1 },
+      text: formatDropPaths(["/Users/me/my shot.png", "/b.png"]),
+      paths: ["/Users/me/my shot.png", "/b.png"],
     });
   });
 

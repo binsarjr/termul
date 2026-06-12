@@ -187,6 +187,12 @@ export type PromptTracker = {
    * command died with it (a kill mid-ssh leaves depth stuck at 1, so the new
    * shell's every C would read as nested and onCommand would never fire). */
   resetNesting: () => void;
+  /** Re-pin a command-start whose marker was destroyed out-of-band while the
+   * prompt row survived: term.clear() (Cmd+K) keeps the cursor line but runs
+   * buffer.clearAllMarkers(), and without a new pin the autocomplete ghost
+   * stays dead until the next prompt cycle. Call with the cursor back on the
+   * pin's row; no-op when there is no pin or its marker is still alive. */
+  repinCommandStart: () => void;
   blocks: CommandBlockRing;
   dispose: () => void;
 };
@@ -220,6 +226,15 @@ export type PromptTrackerOpts = {
    * Seed 1 when the session is known to be inside ssh. The spill path replays
    * the FULL transcript (the outer C included), so it must keep seeding 0. */
   initialDepth?: number;
+  /** Seed for the command-start pin. A hibernation rebind replays a
+   * serialized snapshot that carries no OSC 133, so a fresh tracker would
+   * have no pin (autocomplete dead at the restored prompt) until the next
+   * full prompt cycle. `col` is the buffer column captured at release;
+   * `rowOffset` is the pin row relative to the cursor — the cursor position
+   * is what snapshot replay reproduces exactly. Any replayed A/B/C/D takes
+   * over from the seed. The spill path replays the raw transcript (OSC 133
+   * included) and resets the terminal first, so it must keep passing null. */
+  initialCommandStart?: { col: number; rowOffset: number } | null;
 };
 
 export function registerPromptTracker(
@@ -236,6 +251,28 @@ export function registerPromptTracker(
     commandStart?.marker?.dispose();
     commandStart = null;
   };
+  // Re-seed the pin captured before a hibernation release (see
+  // PromptTrackerOpts.initialCommandStart). term.write is async-FIFO and the
+  // tracker is registered while the snapshot bytes are still queued, so the
+  // marker must anchor via an empty write's callback — it lands exactly
+  // between the snapshot and the dormant-ring bytes. A replayed A/B/C/D from
+  // the ring replaces commandStart, which voids a still-pending anchor.
+  const seed = opts?.initialCommandStart;
+  if (seed) {
+    const pin: { marker: IMarker | null; col: number } = {
+      marker: null,
+      col: seed.col,
+    };
+    commandStart = pin;
+    try {
+      term.write("", () => {
+        if (commandStart !== pin || isAltScreen(term)) return;
+        pin.marker = registerMarkerSafe(term, seed.rowOffset);
+      });
+    } catch {
+      commandStart = null;
+    }
+  }
   // OSC 133 command nesting. A C opens a command (+1), its D closes it (−1).
   // A remote shell with its own OSC 133 integration emits inner C/D pairs that
   // nest inside the local command's span; only the D that returns depth to 0
@@ -377,6 +414,12 @@ export function registerPromptTracker(
       sawNested = false;
       lastCLine = null;
       lastDLine = null;
+    },
+    repinCommandStart: () => {
+      if (!commandStart || isAltScreen(term)) return;
+      const m = commandStart.marker;
+      if (m && !m.isDisposed) return;
+      commandStart.marker = registerMarkerSafe(term);
     },
     blocks,
     dispose: () => {

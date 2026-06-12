@@ -21,6 +21,7 @@ import {
   registerPromptTracker,
 } from "./osc-handlers";
 import { createRemoteBlockTracker } from "./remoteBlocks";
+import { pasteImage, quotePathsForShell } from "./remoteUpload";
 import { openPty, type PtySession } from "./pty-bridge";
 import {
   acquireSlot,
@@ -111,6 +112,12 @@ type Session = {
   // at the most recent release. Read once on the next bind to trigger a
   // SIGWINCH-driven repaint instead of replaying dormant bytes.
   altScreenAtRelease: boolean;
+  // The autocomplete's command-start pin captured at release (col + pin row
+  // relative to the cursor). The serialized snapshot replayed on rebind has
+  // no OSC 133, so the fresh prompt tracker re-seeds from this instead of
+  // staying pinless (ghost dead) until the next prompt cycle. Consumed once
+  // on the next bind; null when released mid-command or on the alt screen.
+  commandStartSeed: { col: number; rowOffset: number } | null;
   // Per-tab "keep full output" disk spill. When true, hibernation bytes are
   // captured to the Rust spill file (not the RAM ring) and wake replays the
   // full scrollback from that file. Mirrors the tab's spillToDisk choice.
@@ -192,6 +199,15 @@ export function writeToSession(leafId: number, data: string): boolean {
 }
 
 /**
+ * The `ssh <target>` this pane is currently in (the dialed `[user@]host`), or
+ * null on the local shell. Used by the file-drop handler to upload a dropped
+ * file to the remote instead of inserting a useless local path.
+ */
+export function sshHostForSession(leafId: number): string | null {
+  return sessions.get(leafId)?.sshHost ?? null;
+}
+
+/**
  * Clear the scrollback and screen of the currently focused terminal, keeping
  * the active prompt line — macOS Terminal's ⌘K behaviour. Returns false when no
  * focused terminal slot is bound (e.g. focus is in the editor or AI panel).
@@ -201,7 +217,19 @@ export function clearFocusedTerminal(): boolean {
     if (!s.visibleNow || !s.focusedNow) continue;
     const slot = getSlotForLeaf(leafId);
     if (!slot) continue;
+    // term.clear() keeps the cursor's row but runs buffer.clearAllMarkers(),
+    // killing the autocomplete's command-start pin mid-prompt — the ghost
+    // would stay dead until the next prompt cycle. Re-pin right after, but
+    // only when the pin sits on the cursor row (the one row clear preserves;
+    // a wrapped multi-row edit line loses its pin row for real).
+    const buf = slot.term.buffer.active;
+    const cs = s.promptTracker?.getCommandStart() ?? null;
+    const repin =
+      cs !== null &&
+      buf.type !== "alternate" &&
+      cs.line === buf.baseY + buf.cursorY;
     slot.term.clear();
+    if (repin) s.promptTracker?.repinCommandStart();
     return true;
   }
   return false;
@@ -239,6 +267,13 @@ configureRendererPool({
           .resize(cols, rows + 1)
           .then(() => pty.resize(cols, rows))
           .catch((e) => console.warn("[termul] kickPty failed:", e));
+      },
+      handlePasteImage: (blob, mime) => {
+        // Upload to the SSHed host (or save locally), then drop the resulting
+        // path at the prompt — same shape as a dropped file.
+        void pasteImage({ host: s.sshHost, blob, mime }).then((path) => {
+          if (path) void s.pty?.write(`${quotePathsForShell([path])} `);
+        });
       },
     };
   },
@@ -284,6 +319,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     blockCtl: null,
     autocompleteCtl: null,
     altScreenAtRelease: false,
+    commandStartSeed: null,
     spill: false,
     dormant: false,
     replaying: false,
@@ -559,7 +595,12 @@ function bindLeafToSlot(leafId: number, s: Session): void {
         // them as local pairs and clear the pill. The spill path replays the
         // FULL transcript (outer C included), so it must recount from 0.
         initialDepth: fromSpill ? 0 : s.sshHost ? 1 : 0,
+        // Same asymmetry for the autocomplete pin: the snapshot has no OSC
+        // 133 (re-seed from the release capture), the spill transcript does
+        // (and its replay resets the terminal, killing a seeded marker).
+        initialCommandStart: fromSpill ? null : s.commandStartSeed,
       });
+      s.commandStartSeed = null;
       // Expose the slot's command-block ring to the session so getLastBlock /
       // getBlocks can read it. The prompt tracker disposes the ring on its own
       // disposer (returned below), so we only need to drop our reference.
@@ -665,6 +706,21 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
   // late read result can't write into (or freeze) a now-unbound terminal.
   s.replayToken++;
   s.replaying = false;
+  // Capture the autocomplete's command-start pin before releaseSlot disposes
+  // the tracker, keyed to the cursor (the one position snapshot replay
+  // restores exactly) so the rebind can re-seed it — see commandStartSeed.
+  s.commandStartSeed = null;
+  const cs = s.promptTracker?.getCommandStart() ?? null;
+  const slot = cs ? getSlotForLeaf(leafId) : null;
+  if (cs && slot) {
+    const buf = slot.term.buffer.active;
+    if (buf.type !== "alternate") {
+      s.commandStartSeed = {
+        col: cs.col,
+        rowOffset: cs.line - (buf.baseY + buf.cursorY),
+      };
+    }
+  }
   const out = releaseSlot(leafId);
   if (out) {
     s.snapshot = out.snapshot;
