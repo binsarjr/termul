@@ -10,6 +10,17 @@ dialog after an update).
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-06-14
+
+### Fixed
+
+- Resize handles work again: the pane, sidebar, and tab-bar dividers had become
+  invisible and could not be dragged.
+- Settings search keeps its highlight in range, so pressing Enter always opens
+  the highlighted result instead of doing nothing.
+- The tab-close and theme Edit/Remove buttons now show a visible focus ring when
+  reached by keyboard, instead of being invisible focus stops.
+
 ## [0.3.8] - 2026-06-14
 
 ### Added
