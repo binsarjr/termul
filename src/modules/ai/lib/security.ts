@@ -56,6 +56,15 @@ const SECRET_BASENAME_PATTERNS: RegExp[] = [
   /^\.pypirc(?:[.\s:]|$)/i,
   /^secrets?\.(json|ya?ml|toml|env)(?:[.\s:]|$)/i,
   /^service[-_]?account.*\.json(?:[.\s:]|$)/i, // GCP service account keys
+  /^firebase[-_]adminsdk.*\.json(?:[.\s:]|$)/i, // Firebase admin SDK keys
+  /^.*\.ppk(?:[.\s:]|$)/i, // PuTTY private keys
+  /^.*\.tfstate(\..+)?(?:[.\s:]|$)/i, // Terraform state (plaintext secrets)
+  /^\.vault-token(?:[.\s:]|$)/i, // HashiCorp Vault token
+  /^rclone\.conf(?:[.\s:]|$)/i, // rclone remotes (often embed tokens)
+  /^\.(bash|zsh|sh|ksh|mysql|psql|node_repl)_history(?:[.\s:]|$)/i, // shell histories
+  /^logins\.json(?:[.\s:]|$)/i, // Firefox saved logins
+  /^key[0-9]*\.db(?:[.\s:]|$)/i, // Firefox NSS key DB (key4.db)
+  /^login data(?:[.\s:]|$)/i, // Chrome/Chromium credential store
 ];
 
 /**
@@ -345,28 +354,30 @@ export function checkShellCommand(cmd: string): SafetyResult {
       reason: "Refused: command contains Unicode bidirectional override characters.",
     };
   }
-  // rm -rf / (and variants with quoted /, --no-preserve-root, etc.)
-  if (
-    /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|--recursive\s+--force|--force\s+--recursive)\s+(['"]?\/['"]?\s*($|;|&|\|))/.test(
-      c,
-    )
-  ) {
-    return {
-      ok: false,
-      reason:
-        "Refused: command attempts to recursively delete the filesystem root.",
-    };
-  }
-  // rm -rf ~ / $HOME — wiping the user's home dir
-  if (
-    /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(['"]?(~|\$HOME)['"]?)(\s|$|;|&|\|)/.test(
-      c,
-    )
-  ) {
-    return {
-      ok: false,
-      reason: "Refused: command attempts to recursively delete the home directory.",
-    };
+  // rm targeting filesystem root or home. The recursive and force flags are
+  // detected independently so split forms (`rm -r -f /`) are caught, and the
+  // target tolerates a glob/trailing slash (`/*`, `~/`) and quoting.
+  if (/\brm\b/.test(c)) {
+    const recursive = /\s-[a-z]*r/i.test(c) || /\s--recursive\b/.test(c);
+    const force = /\s-[a-z]*f/i.test(c) || /\s--force\b/.test(c);
+    if (recursive && force) {
+      // Root: /, /*, '/' — optional glob and quoting, then a boundary.
+      if (/\s(['"]?)\/\*?\1(\s|$|;|&|\|)/.test(c)) {
+        return {
+          ok: false,
+          reason:
+            "Refused: command attempts to recursively delete the filesystem root.",
+        };
+      }
+      // Home: ~, ~/, $HOME, $HOME/ — trailing slash wipes the same contents.
+      if (/\s(['"]?)(~|\$HOME)\/?\1(\s|$|;|&|\|)/.test(c)) {
+        return {
+          ok: false,
+          reason:
+            "Refused: command attempts to recursively delete the home directory.",
+        };
+      }
+    }
   }
   if (/--no-preserve-root/.test(c)) {
     return { ok: false, reason: "Refused: --no-preserve-root is not allowed." };

@@ -231,3 +231,57 @@ describe("checkShellCommand — control-character / newline injection", () => {
     });
   });
 });
+
+describe("checkShellCommand — destructive rm variants", () => {
+  it.each([
+    ["canonical", "rm -rf /"],
+    ["reversed flags", "rm -fr /"],
+    ["root glob", "rm -rf /*"],
+    ["split flags", "rm -r -f /"],
+    ["long flags + glob", "rm --recursive --force /*"],
+    ["quoted root", "rm -rf '/'"],
+    ["root then semicolon", "rm -rf /;"],
+    ["home", "rm -rf ~"],
+    ["home trailing slash", "rm -rf ~/"],
+    ["HOME var", "rm -rf $HOME"],
+    ["HOME var trailing slash", "rm -rf $HOME/"],
+  ])("blocks full-wipe variant: %s", (_label, cmd) => {
+    expect(checkShellCommand(cmd)).toMatchObject({ ok: false });
+  });
+
+  it.each([
+    ["relative build dir", "rm -rf ./build"],
+    ["named dir", "rm -rf node_modules"],
+    ["subdir of root", "rm -rf /tmp/scratch"],
+    ["subdir of home", "rm -rf ~/project/dist"],
+    ["single file", "rm file.txt"],
+  ])("allows non-root/home deletes: %s", (_label, cmd) => {
+    expect(checkShellCommand(cmd)).toMatchObject({ ok: true });
+  });
+});
+
+describe("checkReadable — additional secret formats", () => {
+  it.each([
+    ["PuTTY key", "/home/me/keys/server.ppk"],
+    ["Terraform state", "/home/me/infra/terraform.tfstate"],
+    ["Terraform state backup", "/home/me/infra/terraform.tfstate.backup"],
+    ["Vault token", "/home/me/.vault-token"],
+    ["rclone config", "/home/me/.config/rclone/rclone.conf"],
+    ["Firebase admin SDK", "/home/me/svc/firebase-adminsdk-abc12.json"],
+    ["bash history", "/home/me/.bash_history"],
+    ["zsh history", "/home/me/.zsh_history"],
+    ["Firefox key DB", "/home/me/.mozilla/profile/key4.db"],
+    ["Firefox logins", "/home/me/.mozilla/profile/logins.json"],
+    ["Chrome login store", "/home/me/.config/google-chrome/Default/Login Data"],
+  ])("refuses %s", (_label, path) => {
+    expect(checkReadable(path)).toMatchObject({ ok: false });
+  });
+
+  it.each([
+    ["app state file (not tfstate)", "/home/me/app/state.json"],
+    ["a plain sqlite db", "/home/me/app/database.db"],
+    ["a normal config", "/home/me/app/app.config.json"],
+  ])("still allows %s", (_label, path) => {
+    expect(checkReadable(path)).toMatchObject({ ok: true });
+  });
+});
