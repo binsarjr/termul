@@ -7,7 +7,7 @@ import {
 } from "@/settings/lib/searchIndex";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   onSelect: (entry: SettingsSearchEntry) => void;
@@ -19,7 +19,10 @@ export function SettingsSearch({ onSelect }: Props) {
   const [active, setActive] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  const results = useMemo(() => searchSettings(query), [query]);
+  // Defer the searched query so rapid typing stays responsive: the input
+  // updates immediately while ranking runs in a non-blocking transition.
+  const deferredQuery = useDeferredValue(query);
+  const results = useMemo(() => searchSettings(deferredQuery), [deferredQuery]);
 
   // Reset highlight to the top result whenever the list changes.
   useEffect(() => {
