@@ -5,3 +5,11 @@ minimumReleaseAge: 10080
 allowBuilds:
   esbuild: true
   msw: true
+
+overrides:
+  # Patch GHSA-w5hq-g745-h8pq (uuid buffer bounds check); mermaid accepts ^11.1.0.
+  uuid@<11.1.1: '11.1.1'
+  # Keep the AI SDK provider core in lockstep so providers sharing one Chat
+  # instance can't drift onto different cores (was 3.0.8 + 3.0.9 / 4.0.23 + 4.0.24).
+  '@ai-sdk/provider': 3.0.9
+  '@ai-sdk/provider-utils': 4.0.24
