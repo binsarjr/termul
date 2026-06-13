@@ -73,10 +73,18 @@ export default defineConfig(async ({ mode }) => ({
           if (id.includes("@ai-sdk/")) return "ai-sdk-shared";
 
           if (id.includes("/xterm/") || id.includes("@xterm/")) return "xterm";
+          // CodeMirror *core* runtime only (shared by the editor and the
+          // markdown Lezer highlighter). Language packs (@codemirror/lang-*,
+          // legacy-modes) and the merge view are dynamically imported
+          // (languageResolver, chat-code-lezer, the lazy diff panes), so leave
+          // them unmatched — Rollup then honors those import() boundaries and
+          // emits one lazy chunk per language instead of folding all 12
+          // grammars + every theme into a monolith that loads the moment any
+          // editor/diff tab opens.
           if (
-            id.includes("@codemirror/") ||
-            id.includes("@uiw/codemirror") ||
-            id.includes("@replit/codemirror")
+            /@codemirror\/(state|view|language|commands|autocomplete|search|lint)(\/|$)/.test(
+              id,
+            )
           )
             return "codemirror";
           if (id.includes("/streamdown/") || id.includes("@streamdown/"))
