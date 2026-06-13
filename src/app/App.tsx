@@ -1,3 +1,4 @@
+import { PortalContainerProvider } from "@/components/ui/portal-container";
 import {
   ResizablePanel,
   ResizablePanelGroup,
@@ -492,6 +493,12 @@ export default function App() {
   );
 
   const tabBarPosition = usePreferencesStore((s) => s.tabBarPosition);
+  // Radix overlays whose triggers live in the zoomed workspace portal into this
+  // element (a child of `.zoom-content`) instead of document.body, so the popover
+  // shares the trigger's zoom coordinate space and anchors correctly. See
+  // PortalContainerProvider below and src/components/ui/portal-container.tsx.
+  const [zoomPortalContainer, setZoomPortalContainer] =
+    useState<HTMLDivElement | null>(null);
   const tabColumnRef = useRef<PanelImperativeHandle | null>(null);
   const tabColumnWidthRef = useLazyRef(() => readTabColumnWidth());
   const tabColumnWidthWriteTimerRef = useRef(0);
@@ -2028,150 +2035,155 @@ export default function App() {
           />
 
           <main className="zoom-content flex min-h-0 flex-1 flex-col">
-            <ResizablePanelGroup
-              orientation="horizontal"
-              className="min-h-0 flex-1"
-            >
-              {tabBarPosition === "left" && (
-                <>
-                  <ResizablePanel
-                    id="tab-column"
-                    panelRef={tabColumnRef}
-                    defaultSize={`${tabColumnWidthRef.current}px`}
-                    minSize={`${Math.round(TABCOL_MIN_WIDTH / sidebarZoom)}px`}
-                    maxSize={`${Math.round(TABCOL_MAX_WIDTH / sidebarZoom)}px`}
-                    onResize={(size) => {
-                      if (size.inPixels > 0) persistTabColumnWidth(size.inPixels);
-                    }}
-                  >
-                    <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
-                      <TabBar
-                        orientation="vertical"
-                        tabs={tabs}
-                        activeId={activeId}
-                        onSelect={setActiveId}
-                        onNew={openNewTab}
-                        onNewPrivate={openNewPrivateTab}
-                        onNewEditor={openNewEditor}
-                        onNewGitGraph={openGitGraphFromContext}
-                        onClose={handleClose}
-                        onPin={pinTab}
-                        onRename={renameTab}
-                        onToggleSpill={setTabSpillToDisk}
-                        onReorder={reorderTab}
-                        groupControls={groupControls}
-                      />
-                    </div>
-                  </ResizablePanel>
-                  <div
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Resize tab bar"
-                    onPointerDown={handleTabColumnResizeStart}
-                    onDoubleClick={() =>
-                      tabColumnRef.current?.resize(
-                        `${Math.round(TABCOL_DEFAULT_WIDTH / sidebarZoom)}px`,
-                      )
-                    }
-                    style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
-                    className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
-                  >
-                    <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
-                  </div>
-                </>
-              )}
-              <ResizablePanel
-                id="sidebar"
-                panelRef={sidebarRef}
-                defaultSize={`${sidebarWidthRef.current}px`}
-                minSize={`${Math.round(SIDEBAR_MIN_WIDTH / sidebarZoom)}px`}
-                maxSize={`${Math.round(SIDEBAR_MAX_WIDTH / sidebarZoom)}px`}
-                collapsible
-                collapsedSize={0}
-                onResize={(size) => {
-                  if (size.inPixels > 0) persistSidebarWidth(size.inPixels);
-                }}
+            <PortalContainerProvider container={zoomPortalContainer}>
+              {/* display:contents so it adds zero layout/paint/stacking: Radix
+               * appends position:fixed overlays here, inside the zoom layer. */}
+              <div ref={setZoomPortalContainer} className="contents" />
+              <ResizablePanelGroup
+                orientation="horizontal"
+                className="min-h-0 flex-1"
               >
-                <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
-                  <div className="min-h-0 flex-1">
-                    {sidebarView === "explorer" ? (
-                      <FileExplorer
-                        ref={explorerRef}
-                        rootPath={effectiveExplorerRoot}
-                        sshStatus={sshExplorerStatus}
-                        onRetrySsh={retrySshExplorer}
-                        onOpenFile={handleOpenFile}
-                        onPathRenamed={handlePathRenamed}
-                        onPathDeleted={handlePathDeleted}
-                        onRevealInTerminal={cdInNewTab}
-                        onAttachToAgent={handleAttachFileToAgent}
-                        onOpenMarkdownPreview={openMarkdownPreview}
-                      />
-                    ) : (
-                      <SourceControlPanel
-                        open
-                        sourceControl={sourceControl}
-                        onOpenDiff={openGitDiffTab}
-                        onOpenGitGraph={openGitGraphFromContext}
-                      />
-                    )}
-                  </div>
-                  <SidebarRail
-                    activeView={sidebarView}
-                    onSelectView={persistSidebarView}
-                    changedCount={sourceControl.changedCount}
-                  />
-                </div>
-              </ResizablePanel>
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize sidebar"
-                onPointerDown={handleSidebarResizeStart}
-                onDoubleClick={() =>
-                  sidebarRef.current?.resize(
-                    `${Math.round(SIDEBAR_DEFAULT_WIDTH / sidebarZoom)}px`,
-                  )
-                }
-                // Hit area holds a constant ~10px on-screen width regardless of
-                // CSS `zoom`; otherwise a thin handle becomes ungrabbable when
-                // zoomed out (the pointer hit-test resolves to the panel behind
-                // it). The visible line stays slim via the inner element.
-                style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
-                className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
-              >
-                <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
-              </div>
-              <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="relative min-h-0 flex-1">
-                    {workspaceSurface}
-                  </div>
-
-                  {keysLoaded ? (
-                    <motion.div
-                      data-ai-input-bar
-                      initial={false}
-                      animate={{
-                        height: panelOpen ? "auto" : 0,
-                        opacity: panelOpen ? 1 : 0,
+                {tabBarPosition === "left" && (
+                  <>
+                    <ResizablePanel
+                      id="tab-column"
+                      panelRef={tabColumnRef}
+                      defaultSize={`${tabColumnWidthRef.current}px`}
+                      minSize={`${Math.round(TABCOL_MIN_WIDTH / sidebarZoom)}px`}
+                      maxSize={`${Math.round(TABCOL_MAX_WIDTH / sidebarZoom)}px`}
+                      onResize={(size) => {
+                        if (size.inPixels > 0) persistTabColumnWidth(size.inPixels);
                       }}
-                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="overflow-hidden"
-                      aria-hidden={!panelOpen}
                     >
-                      {hasComposer ? (
-                        <AiInputBar />
+                      <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
+                        <TabBar
+                          orientation="vertical"
+                          tabs={tabs}
+                          activeId={activeId}
+                          onSelect={setActiveId}
+                          onNew={openNewTab}
+                          onNewPrivate={openNewPrivateTab}
+                          onNewEditor={openNewEditor}
+                          onNewGitGraph={openGitGraphFromContext}
+                          onClose={handleClose}
+                          onPin={pinTab}
+                          onRename={renameTab}
+                          onToggleSpill={setTabSpillToDisk}
+                          onReorder={reorderTab}
+                          groupControls={groupControls}
+                        />
+                      </div>
+                    </ResizablePanel>
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label="Resize tab bar"
+                      onPointerDown={handleTabColumnResizeStart}
+                      onDoubleClick={() =>
+                        tabColumnRef.current?.resize(
+                          `${Math.round(TABCOL_DEFAULT_WIDTH / sidebarZoom)}px`,
+                        )
+                      }
+                      style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
+                      className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
+                    >
+                      <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
+                    </div>
+                  </>
+                )}
+                <ResizablePanel
+                  id="sidebar"
+                  panelRef={sidebarRef}
+                  defaultSize={`${sidebarWidthRef.current}px`}
+                  minSize={`${Math.round(SIDEBAR_MIN_WIDTH / sidebarZoom)}px`}
+                  maxSize={`${Math.round(SIDEBAR_MAX_WIDTH / sidebarZoom)}px`}
+                  collapsible
+                  collapsedSize={0}
+                  onResize={(size) => {
+                    if (size.inPixels > 0) persistSidebarWidth(size.inPixels);
+                  }}
+                >
+                  <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
+                    <div className="min-h-0 flex-1">
+                      {sidebarView === "explorer" ? (
+                        <FileExplorer
+                          ref={explorerRef}
+                          rootPath={effectiveExplorerRoot}
+                          sshStatus={sshExplorerStatus}
+                          onRetrySsh={retrySshExplorer}
+                          onOpenFile={handleOpenFile}
+                          onPathRenamed={handlePathRenamed}
+                          onPathDeleted={handlePathDeleted}
+                          onRevealInTerminal={cdInNewTab}
+                          onAttachToAgent={handleAttachFileToAgent}
+                          onOpenMarkdownPreview={openMarkdownPreview}
+                        />
                       ) : (
-                        <AiInputBarConnect
-                          onAdd={() => openSettings("models")}
+                        <SourceControlPanel
+                          open
+                          sourceControl={sourceControl}
+                          onOpenDiff={openGitDiffTab}
+                          onOpenGitGraph={openGitGraphFromContext}
                         />
                       )}
-                    </motion.div>
-                  ) : null}
+                    </div>
+                    <SidebarRail
+                      activeView={sidebarView}
+                      onSelectView={persistSidebarView}
+                      changedCount={sourceControl.changedCount}
+                    />
+                  </div>
+                </ResizablePanel>
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize sidebar"
+                  onPointerDown={handleSidebarResizeStart}
+                  onDoubleClick={() =>
+                    sidebarRef.current?.resize(
+                      `${Math.round(SIDEBAR_DEFAULT_WIDTH / sidebarZoom)}px`,
+                    )
+                  }
+                  // Hit area holds a constant ~10px on-screen width regardless of
+                  // CSS `zoom`; otherwise a thin handle becomes ungrabbable when
+                  // zoomed out (the pointer hit-test resolves to the panel behind
+                  // it). The visible line stays slim via the inner element.
+                  style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
+                  className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
+                >
+                  <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
                 </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="relative min-h-0 flex-1">
+                      {workspaceSurface}
+                    </div>
+
+                    {keysLoaded ? (
+                      <motion.div
+                        data-ai-input-bar
+                        initial={false}
+                        animate={{
+                          height: panelOpen ? "auto" : 0,
+                          opacity: panelOpen ? 1 : 0,
+                        }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                        aria-hidden={!panelOpen}
+                      >
+                        {hasComposer ? (
+                          <AiInputBar />
+                        ) : (
+                          <AiInputBarConnect
+                            onAdd={() => openSettings("models")}
+                          />
+                        )}
+                      </motion.div>
+                    ) : null}
+                  </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </PortalContainerProvider>
           </main>
 
           <StatusBar

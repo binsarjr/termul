@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { PortalContainerProvider } from "@/components/ui/portal-container";
 import {
   Popover,
   PopoverAnchor,
@@ -622,58 +623,63 @@ export function GitHistoryPane({
           </>
         )}
 
-        <Popover
-          open={!!openAnchor}
-          onOpenChange={(next) => {
-            if (!next) closePopover();
-          }}
-        >
-          {typeof document !== "undefined"
-            ? createPortal(
-                <PopoverAnchor asChild>
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "fixed",
-                      top: openAnchor?.top ?? -9999,
-                      left: openAnchor?.left ?? -9999,
-                      width: openAnchor?.width ?? 0,
-                      height: openAnchor?.height ?? 0,
-                      pointerEvents: "none",
-                    }}
-                  />
-                </PopoverAnchor>,
-                document.body,
-              )
-            : null}
-          <PopoverContent
-            side="bottom"
-            align="start"
-            sideOffset={4}
-            alignOffset={0}
-            collisionPadding={16}
-            avoidCollisions
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            className="flex w-[420px] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-xl"
+        {/* The anchor is a fixed div portaled to body at the pointer's
+         * on-screen coords, so the content must also portal to body (not the
+         * zoom-content layer) to share that coordinate space at any zoom. */}
+        <PortalContainerProvider container={null}>
+          <Popover
+            open={!!openAnchor}
+            onOpenChange={(next) => {
+              if (!next) closePopover();
+            }}
           >
-            {openAnchor
-              ? (() => {
-                  const commit = commits.find((c) => c.sha === openAnchor.sha);
-                  if (!commit) return null;
-                  return (
-                    <CommitDetail
-                      commit={commit}
-                      filesEntry={openFilesEntry}
-                      remoteWeb={remoteWeb}
-                      onCopySha={copyToClipboard}
-                      onOpenFile={handleFileOpen}
-                      onRetryFiles={() => void fetchFiles(openAnchor.sha)}
+            {typeof document !== "undefined"
+              ? createPortal(
+                  <PopoverAnchor asChild>
+                    <div
+                      aria-hidden
+                      style={{
+                        position: "fixed",
+                        top: openAnchor?.top ?? -9999,
+                        left: openAnchor?.left ?? -9999,
+                        width: openAnchor?.width ?? 0,
+                        height: openAnchor?.height ?? 0,
+                        pointerEvents: "none",
+                      }}
                     />
-                  );
-                })()
+                  </PopoverAnchor>,
+                  document.body,
+                )
               : null}
-          </PopoverContent>
-        </Popover>
+            <PopoverContent
+              side="bottom"
+              align="start"
+              sideOffset={4}
+              alignOffset={0}
+              collisionPadding={16}
+              avoidCollisions
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              className="flex w-[420px] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-xl"
+            >
+              {openAnchor
+                ? (() => {
+                    const commit = commits.find((c) => c.sha === openAnchor.sha);
+                    if (!commit) return null;
+                    return (
+                      <CommitDetail
+                        commit={commit}
+                        filesEntry={openFilesEntry}
+                        remoteWeb={remoteWeb}
+                        onCopySha={copyToClipboard}
+                        onOpenFile={handleFileOpen}
+                        onRetryFiles={() => void fetchFiles(openAnchor.sha)}
+                      />
+                    );
+                  })()
+                : null}
+            </PopoverContent>
+          </Popover>
+        </PortalContainerProvider>
       </div>
     </TooltipProvider>
   );

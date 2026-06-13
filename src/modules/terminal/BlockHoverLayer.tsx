@@ -5,6 +5,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PortalContainerProvider } from "@/components/ui/portal-container";
 import { cn } from "@/lib/utils";
 import {
   CodeIcon,
@@ -280,33 +281,37 @@ export function BlockHoverLayer({
           onClick={() => run("output", onCopyOutput)}
         />
         <ToolbarButton title="Filter output" icon={FilterIcon} onClick={onFilter} />
-        <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpen}>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              title="More actions"
-              aria-label="More actions"
-              className="flex size-5 items-center justify-center rounded transition-colors hover:bg-muted"
-            >
-              <HugeiconsIcon icon={MoreVerticalIcon} size={13} strokeWidth={1.75} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem onSelect={onCopyCommand}>
-              Copy command
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={onCopyOutput}>Copy output</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onCopyBoth}>
-              Copy command &amp; output
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onReinput}>
-              Reinput command
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onFilter}>Filter output…</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* This toolbar lives in the zoom-exempt overlay (net zoom 1, same as
+         * the body), so the menu portals to body, not the zoom-content layer. */}
+        <PortalContainerProvider container={null}>
+          <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                title="More actions"
+                aria-label="More actions"
+                className="flex size-5 items-center justify-center rounded transition-colors hover:bg-muted"
+              >
+                <HugeiconsIcon icon={MoreVerticalIcon} size={13} strokeWidth={1.75} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={onCopyCommand}>
+                Copy command
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onCopyOutput}>Copy output</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onCopyBoth}>
+                Copy command &amp; output
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onReinput}>
+                Reinput command
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onFilter}>Filter output…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </PortalContainerProvider>
       </div>
     </div>
   );

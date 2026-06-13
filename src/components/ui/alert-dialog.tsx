@@ -3,6 +3,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { PortalContainerProvider } from "@/components/ui/portal-container"
 
 function AlertDialog({
   ...props
@@ -45,6 +46,7 @@ function AlertDialogOverlay({
 function AlertDialogContent({
   className,
   size = "default",
+  children,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   size?: "default" | "sm"
@@ -60,7 +62,10 @@ function AlertDialogContent({
           className
         )}
         {...props}
-      />
+      >
+        {/* Portals to body (zoom 1); reset so nested overlays target body too. */}
+        <PortalContainerProvider container={null}>{children}</PortalContainerProvider>
+      </AlertDialogPrimitive.Content>
     </AlertDialogPortal>
   )
 }

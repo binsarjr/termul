@@ -63,6 +63,10 @@ function ContextMenuContent({
 }: React.ComponentProps<typeof ContextMenuPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
 }) {
+  // No portal container override: ContextMenu anchors to a pointer clientX/clientY
+  // virtual rect (on-screen px), which only lines up when the content portals to
+  // body. Routing it into the zoom layer would double-apply the zoom. See
+  // src/components/ui/portal-container.tsx.
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
