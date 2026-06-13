@@ -1,5 +1,4 @@
 import {
-  ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
@@ -145,7 +144,14 @@ import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { SearchAddon } from "@xterm/addon-search";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 type TuiWaitResult = "ready" | "gone" | "timeout";
@@ -172,16 +178,38 @@ function dirname(path: string | null): string | null {
   return normalized.slice(0, idx);
 }
 
+// Sidebar min/max/default are ON-SCREEN (visual) pixels. `.zoom-content`
+// applies CSS `zoom`, so a panel's visual width is its layout width times the
+// zoom factor. Keeping the bounds in visual px lets the sidebar be dragged to
+// the same on-screen size at any zoom level. A layout-px cap would instead pin
+// the sidebar to a tiny strip when zoomed out (480 layout px is only 240 px on
+// screen at zoom 0.5).
 const SIDEBAR_DEFAULT_WIDTH = 260;
 const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
+// Loose layout-px guard so a corrupted localStorage value cannot blow up the
+// layout. The real on-screen bounds are enforced by clampSidebarVisual and the
+// panel's zoom-scaled minSize/maxSize.
+const SIDEBAR_LAYOUT_FLOOR = 100;
+const SIDEBAR_LAYOUT_CEIL = 1200;
 const SIDEBAR_WIDTH_STORAGE_KEY = "termul:sidebar.width";
 const SIDEBAR_VIEW_STORAGE_KEY = "termul:sidebar.view";
 
-function clampSidebarWidth(width: number): number {
-  return Math.min(
+// Clamp a candidate layout width so the sidebar's on-screen width stays within
+// [MIN, MAX]. visualWidth = layoutWidth * zoom.
+function clampSidebarVisual(layoutWidth: number, zoom: number): number {
+  const visual = layoutWidth * zoom;
+  const clamped = Math.min(
     SIDEBAR_MAX_WIDTH,
-    Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)),
+    Math.max(SIDEBAR_MIN_WIDTH, visual),
+  );
+  return Math.round(clamped / zoom);
+}
+
+function sanitizeSidebarLayoutWidth(width: number): number {
+  return Math.min(
+    SIDEBAR_LAYOUT_CEIL,
+    Math.max(SIDEBAR_LAYOUT_FLOOR, Math.round(width)),
   );
 }
 
@@ -190,7 +218,7 @@ function readSidebarWidth(): number {
     const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
     const parsed = stored ? Number.parseInt(stored, 10) : NaN;
     return Number.isFinite(parsed)
-      ? clampSidebarWidth(parsed)
+      ? sanitizeSidebarLayoutWidth(parsed)
       : SIDEBAR_DEFAULT_WIDTH;
   } catch {
     return SIDEBAR_DEFAULT_WIDTH;
@@ -332,6 +360,8 @@ export default function App() {
   const explorerReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const sidebarRef = useRef<PanelImperativeHandle | null>(null);
+  // Drives the zoom-scaled sidebar bounds and resize-handle hit area below.
+  const sidebarZoom = usePreferencesStore((s) => s.zoomLevel) || 1;
   const sidebarWidthRef = useLazyRef(() => readSidebarWidth());
   const sidebarWidthWriteTimerRef = useRef(0);
   const [sidebarView, setSidebarViewState] = useState<SidebarViewId>(readSidebarView);
@@ -387,6 +417,52 @@ export default function App() {
       }
     };
   }, []);
+
+  const handleSidebarResizeStart = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const panel = sidebarRef.current;
+      if (!panel) return;
+      e.preventDefault();
+      // `.zoom-content` uses CSS `zoom`. In this WebKit, getBoundingClientRect /
+      // offsetWidth stay in unscaled layout px while pointer clientX is in
+      // zoomed (on-screen) px, so the panel library's own drag math drifts by
+      // the zoom factor. Convert the visual delta back to layout px (divide by
+      // zoom) so the divider tracks the cursor 1:1, then drive the panel
+      // imperatively.
+      const zoom =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--app-zoom",
+          ),
+        ) || 1;
+      const startX = e.clientX;
+      const startWidth = panel.getSize().inPixels || sidebarWidthRef.current;
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const prevCursor = document.body.style.cursor;
+      const prevSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (ev: PointerEvent) => {
+        const next = clampSidebarVisual(
+          startWidth + (ev.clientX - startX) / zoom,
+          zoom,
+        );
+        panel.resize(`${next}px`);
+      };
+      const onUp = () => {
+        el.releasePointerCapture?.(e.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = prevCursor;
+        document.body.style.userSelect = prevSelect;
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    },
+    [sidebarWidthRef],
+  );
 
   const toggleExplorerFocus = useCallback(() => {
     const explorer = explorerRef.current;
@@ -1856,8 +1932,8 @@ export default function App() {
                 id="sidebar"
                 panelRef={sidebarRef}
                 defaultSize={`${sidebarWidthRef.current}px`}
-                minSize={`${SIDEBAR_MIN_WIDTH}px`}
-                maxSize={`${SIDEBAR_MAX_WIDTH}px`}
+                minSize={`${Math.round(SIDEBAR_MIN_WIDTH / sidebarZoom)}px`}
+                maxSize={`${Math.round(SIDEBAR_MAX_WIDTH / sidebarZoom)}px`}
                 collapsible
                 collapsedSize={0}
                 onResize={(size) => {
@@ -1895,7 +1971,25 @@ export default function App() {
                   />
                 </div>
               </ResizablePanel>
-              <ResizableHandle withHandle />
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+                onPointerDown={handleSidebarResizeStart}
+                onDoubleClick={() =>
+                  sidebarRef.current?.resize(
+                    `${Math.round(SIDEBAR_DEFAULT_WIDTH / sidebarZoom)}px`,
+                  )
+                }
+                // Hit area holds a constant ~10px on-screen width regardless of
+                // CSS `zoom`; otherwise a thin handle becomes ungrabbable when
+                // zoomed out (the pointer hit-test resolves to the panel behind
+                // it). The visible line stays slim via the inner element.
+                style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
+                className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
+              >
+                <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
+              </div>
               <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="relative min-h-0 flex-1">
