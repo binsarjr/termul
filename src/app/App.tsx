@@ -502,6 +502,12 @@ export default function App() {
   const tabColumnRef = useRef<PanelImperativeHandle | null>(null);
   const tabColumnWidthRef = useLazyRef(() => readTabColumnWidth());
   const tabColumnWidthWriteTimerRef = useRef(0);
+  const cancelTabColumnWidthWrite = useCallback(() => {
+    if (tabColumnWidthWriteTimerRef.current) {
+      window.clearTimeout(tabColumnWidthWriteTimerRef.current);
+      tabColumnWidthWriteTimerRef.current = 0;
+    }
+  }, []);
   const persistTabColumnWidth = useCallback((next: number) => {
     tabColumnWidthRef.current = next;
     if (tabColumnWidthWriteTimerRef.current) {
@@ -516,13 +522,8 @@ export default function App() {
       }
     }, 200);
   }, []);
-  useEffect(() => {
-    return () => {
-      if (tabColumnWidthWriteTimerRef.current) {
-        window.clearTimeout(tabColumnWidthWriteTimerRef.current);
-      }
-    };
-  }, []);
+  // Clear any pending debounced width write when the app unmounts.
+  useEffect(() => cancelTabColumnWidthWrite, [cancelTabColumnWidthWrite]);
 
   // Mirrors handleSidebarResizeStart: the tab column lives inside `.zoom-content`
   // too, so the visual drag delta is divided by the CSS zoom to track the cursor.
@@ -831,18 +832,19 @@ export default function App() {
     editorWatchRef.current = want;
   }, [tabs]);
 
+  const reloadChangedEditors = useCallback((paths: string[]) => {
+    const changed = new Set(paths.map((p) => p.replace(/\\/g, "/")));
+    for (const t of tabsRef.current) {
+      if (t.kind !== "editor") continue;
+      if (changed.has(t.path.replace(/\\/g, "/"))) {
+        editorRefs.current.get(t.id)?.reload();
+      }
+    }
+  }, [editorRefs, tabsRef]);
   useEffect(() => {
     let alive = true;
     let unlisten: (() => void) | undefined;
-    void listenFsChanged((paths) => {
-      const changed = new Set(paths.map((p) => p.replace(/\\/g, "/")));
-      for (const t of tabsRef.current) {
-        if (t.kind !== "editor") continue;
-        if (changed.has(t.path.replace(/\\/g, "/"))) {
-          editorRefs.current.get(t.id)?.reload();
-        }
-      }
-    }).then((un) => {
+    void listenFsChanged(reloadChangedEditors).then((un) => {
       if (alive) unlisten = un;
       else un();
     });
@@ -850,7 +852,7 @@ export default function App() {
       alive = false;
       unlisten?.();
     };
-  }, []);
+  }, [reloadChangedEditors]);
 
   // Theme editing: a custom theme is materialized to a real file and edited in
   // the code editor. Saving it re-ingests into the runtime store + applies live.
@@ -2077,8 +2079,7 @@ export default function App() {
                         />
                       </div>
                     </ResizablePanel>
-                    <div
-                      role="separator"
+                    <hr
                       aria-orientation="vertical"
                       aria-label="Resize tab bar"
                       tabIndex={-1}
@@ -2089,10 +2090,8 @@ export default function App() {
                         )
                       }
                       style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
-                      className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
-                    >
-                      <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
-                    </div>
+                      className="relative z-20 m-0 shrink-0 cursor-col-resize touch-none select-none border-0 bg-transparent p-0 after:pointer-events-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border/60 after:transition-colors after:content-[''] hover:after:bg-primary"
+                    />
                   </>
                 )}
                 <ResizablePanel
@@ -2138,8 +2137,7 @@ export default function App() {
                     />
                   </div>
                 </ResizablePanel>
-                <div
-                  role="separator"
+                <hr
                   aria-orientation="vertical"
                   aria-label="Resize sidebar"
                   tabIndex={-1}
@@ -2152,12 +2150,10 @@ export default function App() {
                   // Hit area holds a constant ~10px on-screen width regardless of
                   // CSS `zoom`; otherwise a thin handle becomes ungrabbable when
                   // zoomed out (the pointer hit-test resolves to the panel behind
-                  // it). The visible line stays slim via the inner element.
+                  // it). The visible line stays slim via the ::after pseudo-element.
                   style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
-                  className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
-                >
-                  <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
-                </div>
+                  className="relative z-20 m-0 shrink-0 cursor-col-resize touch-none select-none border-0 bg-transparent p-0 after:pointer-events-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border/60 after:transition-colors after:content-[''] hover:after:bg-primary"
+                />
                 <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
                   <div className="flex h-full min-h-0 flex-col">
                     <div className="relative min-h-0 flex-1">
