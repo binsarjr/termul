@@ -6,11 +6,24 @@ type Props = {
   description?: string;
   children: React.ReactNode;
   className?: string;
+  /**
+   * Scroll anchor target for settings search. Defaults to `title` when it is a
+   * plain string; pass this explicitly when `title` is a ReactNode.
+   */
+  anchorId?: string;
 };
 
-export function SettingRow({ title, description, children, className }: Props) {
+export function SettingRow({
+  title,
+  description,
+  children,
+  className,
+  anchorId,
+}: Props) {
+  const anchor = anchorId ?? (typeof title === "string" ? title : undefined);
   return (
     <div
+      data-setting-anchor={anchor}
       className={cn(
         "flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5",
         className,
