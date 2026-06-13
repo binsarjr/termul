@@ -91,6 +91,14 @@ export type Preferences = {
   shortcuts: Record<ShortcutId, KeyBinding[]>;
   editorAutoSave: boolean;
   editorAutoSaveDelay: number;
+  /** Auto-name terminal tabs from the active pane (cwd / ssh host) until the
+   * user pins a custom name. Off keeps the static "shell" title. */
+  tabTitleFromActivePane: boolean;
+  /** Show a host badge on terminal tabs whose active pane is SSH-connected. */
+  tabSshBadge: boolean;
+  /** Truncate long tab titles with an ellipsis. Off shows the full name and
+   * lets the tab strip scroll horizontally. */
+  truncateTabTitles: boolean;
 };
 
 const STORE_PATH = "termul-settings.json";
@@ -141,6 +149,9 @@ const KEY_SHORTCUTS = "shortcuts";
 const KEY_EDITOR_AUTO_SAVE = "editorAutoSave";
 const KEY_EDITOR_AUTO_SAVE_DELAY = "editorAutoSaveDelay";
 const KEY_DIM_INACTIVE_PANES = "dimInactivePanes";
+const KEY_TAB_TITLE_FROM_ACTIVE_PANE = "tabTitleFromActivePane";
+const KEY_TAB_SSH_BADGE = "tabSshBadge";
+const KEY_TRUNCATE_TAB_TITLES = "truncateTabTitles";
 
 const TERMINAL_FONT_SIZE_DEFAULT = 14;
 const TERMINAL_FONT_SIZE_MIN = 8;
@@ -210,6 +221,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   shortcuts: {} as Record<ShortcutId, KeyBinding[]>,
   editorAutoSave: false,
   editorAutoSaveDelay: 1000,
+  tabTitleFromActivePane: true,
+  tabSshBadge: true,
+  truncateTabTitles: false,
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -368,6 +382,14 @@ export async function loadPreferences(): Promise<Preferences> {
       get<number>(KEY_EDITOR_AUTO_SAVE_DELAY) ??
         DEFAULT_PREFERENCES.editorAutoSaveDelay,
     ),
+    tabTitleFromActivePane:
+      get<boolean>(KEY_TAB_TITLE_FROM_ACTIVE_PANE) ??
+      DEFAULT_PREFERENCES.tabTitleFromActivePane,
+    tabSshBadge:
+      get<boolean>(KEY_TAB_SSH_BADGE) ?? DEFAULT_PREFERENCES.tabSshBadge,
+    truncateTabTitles:
+      get<boolean>(KEY_TRUNCATE_TAB_TITLES) ??
+      DEFAULT_PREFERENCES.truncateTabTitles,
   };
 }
 
@@ -582,6 +604,20 @@ export async function setDimInactivePanes(value: boolean): Promise<void> {
   await writePref(KEY_DIM_INACTIVE_PANES, value);
 }
 
+export async function setTabTitleFromActivePane(
+  value: boolean,
+): Promise<void> {
+  await writePref(KEY_TAB_TITLE_FROM_ACTIVE_PANE, value);
+}
+
+export async function setTabSshBadge(value: boolean): Promise<void> {
+  await writePref(KEY_TAB_SSH_BADGE, value);
+}
+
+export async function setTruncateTabTitles(value: boolean): Promise<void> {
+  await writePref(KEY_TRUNCATE_TAB_TITLES, value);
+}
+
 
 export async function setHistoryAutocomplete(value: boolean): Promise<void> {
   await writePref(KEY_HISTORY_AUTOCOMPLETE, value);
@@ -671,6 +707,9 @@ export async function onPreferencesChange(
     [KEY_SHORTCUTS]: "shortcuts",
     [KEY_EDITOR_AUTO_SAVE]: "editorAutoSave",
     [KEY_EDITOR_AUTO_SAVE_DELAY]: "editorAutoSaveDelay",
+    [KEY_TAB_TITLE_FROM_ACTIVE_PANE]: "tabTitleFromActivePane",
+    [KEY_TAB_SSH_BADGE]: "tabSshBadge",
+    [KEY_TRUNCATE_TAB_TITLES]: "truncateTabTitles",
   };
   // Same-process writes still fire onChange immediately; cross-window writes
   // arrive via the Tauri event emitted by writePref().

@@ -38,6 +38,9 @@ import {
   setDropHibernatedOutput,
   setTerminalScrollback,
   setTerminalWebglEnabled,
+  setTabSshBadge,
+  setTabTitleFromActivePane,
+  setTruncateTabTitles,
   setVimMode,
   setZoomLevel,
 } from "@/modules/settings/store";
@@ -108,6 +111,11 @@ export function GeneralSection() {
   const terminalScrollback = usePreferencesStore((s) => s.terminalScrollback);
   const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
   const dimInactivePanes = usePreferencesStore((s) => s.dimInactivePanes);
+  const tabTitleFromActivePane = usePreferencesStore(
+    (s) => s.tabTitleFromActivePane,
+  );
+  const tabSshBadge = usePreferencesStore((s) => s.tabSshBadge);
+  const truncateTabTitles = usePreferencesStore((s) => s.truncateTabTitles);
   const zoomLevel = usePreferencesStore((s) => s.zoomLevel);
   const agentNotifications = usePreferencesStore((s) => s.agentNotifications);
 
@@ -374,6 +382,37 @@ export function GeneralSection() {
           <Switch
             checked={dimInactivePanes}
             onCheckedChange={(v) => void setDimInactivePanes(v)}
+          />
+        </SettingRow>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>Tabs</Label>
+        <SettingRow
+          title="Name tabs from active pane"
+          description="Auto-name a terminal tab after its focused pane (current folder or SSH host) until you rename it. Off keeps a static title."
+        >
+          <Switch
+            checked={tabTitleFromActivePane}
+            onCheckedChange={(v) => void setTabTitleFromActivePane(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Show SSH host badge"
+          description="Badge a terminal tab with its host when its active pane is connected over SSH."
+        >
+          <Switch
+            checked={tabSshBadge}
+            onCheckedChange={(v) => void setTabSshBadge(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Truncate long tab titles"
+          description="Cut long tab names with an ellipsis. Off shows the full name and lets the tab strip scroll."
+        >
+          <Switch
+            checked={truncateTabTitles}
+            onCheckedChange={(v) => void setTruncateTabTitles(v)}
           />
         </SettingRow>
       </div>

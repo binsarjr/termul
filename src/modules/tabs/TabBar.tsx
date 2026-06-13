@@ -44,6 +44,7 @@ import {
   type TabGroup,
   type TabGroupMap,
 } from "./lib/groups";
+import { usePreferencesStore } from "@/modules/settings/preferences";
 import { labelFor, remoteIdentity } from "./lib/labelFor";
 import type { EditorTab, Tab } from "./lib/useTabs";
 import { TabRenameField } from "./TabRenameField";
@@ -122,6 +123,11 @@ export const TabBar = memo(function TabBar({
   compact,
 }: Props) {
   const { groups, tabGroupOf } = groupControls;
+  const truncateTabTitles = usePreferencesStore((s) => s.truncateTabTitles);
+  const tabSshBadge = usePreferencesStore((s) => s.tabSshBadge);
+  const tabTitleFromActivePane = usePreferencesStore(
+    (s) => s.tabTitleFromActivePane,
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   // Pointer-based reorder. HTML5 drag-and-drop does not fire inside the Tauri
   // webview (native drag-drop is enabled for the terminal file-drop feature),
@@ -209,6 +215,11 @@ export const TabBar = memo(function TabBar({
               const t = row.tab;
               const isPreview = t.kind === "editor" && (t as EditorTab).preview;
               const remote = remoteIdentity(t);
+              // Active pane's SSH host, surfaced as a badge on the terminal tab.
+              const sshHost =
+                tabSshBadge && t.kind === "terminal"
+                  ? (t.sshHost ?? null)
+                  : null;
               const memberGroupId = tabGroupOf[t.id];
               const memberColor =
                 memberGroupId != null
@@ -349,16 +360,24 @@ export const TabBar = memo(function TabBar({
                       )}
                       <span
                         className={cn(
-                          "flex items-center gap-1.5 truncate",
-                          compact ? "max-w-48" : "max-w-80",
+                          "flex items-center gap-1.5",
+                          // When truncation is off, the tab grows to fit the
+                          // full name and the tab strip scrolls horizontally.
+                          truncateTabTitles &&
+                            cn("truncate", compact ? "max-w-48" : "max-w-80"),
                         )}
                         title={remote ? `${remote.host}:${remote.path}` : undefined}
                       >
                         <TabIcon tab={t} />
                         {/* Preview tabs use italic to signal the transient
                             state, matching the convention from VSCode. */}
-                        <span className={cn("truncate", isPreview && "italic")}>
-                          {labelFor(t)}
+                        <span
+                          className={cn(
+                            truncateTabTitles && "truncate",
+                            isPreview && "italic",
+                          )}
+                        >
+                          {labelFor(t, tabTitleFromActivePane)}
                         </span>
                         {/* A remote (SSH) file tab carries a small host badge so
                             it's distinguishable from a same-named local file. */}
@@ -368,6 +387,16 @@ export const TabBar = memo(function TabBar({
                             aria-label={`Remote host ${remote.host}`}
                           >
                             {remote.host}
+                          </span>
+                        ) : null}
+                        {/* A terminal tab whose active pane is SSH-connected
+                            shows its host, so SSH sessions stand out at a glance. */}
+                        {sshHost ? (
+                          <span
+                            className="shrink-0 rounded bg-primary/15 px-1 text-[9px] leading-tight text-primary"
+                            aria-label={`SSH host ${sshHost}`}
+                          >
+                            {sshHost}
                           </span>
                         ) : null}
                         {t.kind === "editor" && t.dirty ? (

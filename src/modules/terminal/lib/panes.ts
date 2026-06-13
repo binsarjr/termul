@@ -2,8 +2,19 @@ export type PaneId = number;
 
 export type SplitDir = "row" | "col";
 
+export type LeafNode = {
+  kind: "leaf";
+  id: PaneId;
+  cwd?: string;
+  /** Active SSH host detected in this pane (OSC 133 C `ssh <host>`), per pane so
+   * the tab label/badge can follow whichever pane is focused. */
+  sshHost?: string;
+  /** Remote cwd this pane roamed onto (OSC 7 on another host), per pane. */
+  remoteCwd?: string;
+};
+
 export type PaneNode =
-  | { kind: "leaf"; id: PaneId; cwd?: string }
+  | LeafNode
   | {
       kind: "split";
       id: PaneId;
@@ -11,10 +22,20 @@ export type PaneNode =
       children: PaneNode[];
     };
 
-function isLeaf(
-  n: PaneNode,
-): n is Extract<PaneNode, { kind: "leaf" }> {
+function isLeaf(n: PaneNode): n is LeafNode {
   return n.kind === "leaf";
+}
+
+/** The leaf node with `id`, or undefined. Unlike findLeafCwd this distinguishes
+ * "leaf not found" from "leaf found but the field is unset", which matters for
+ * optional per-pane fields (sshHost/remoteCwd) that are usually undefined. */
+export function findLeafNode(n: PaneNode, id: PaneId): LeafNode | undefined {
+  if (isLeaf(n)) return n.id === id ? n : undefined;
+  for (const c of n.children) {
+    const found = findLeafNode(c, id);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 export function leafIds(n: PaneNode): PaneId[] {
@@ -47,6 +68,46 @@ export function setLeafCwd(
     return u;
   });
   return changed ? { ...n, children: next } : n;
+}
+
+/** Apply `update` to the leaf with `id`, returning a new tree (or the same node
+ * when nothing changed). Shared by the per-pane field setters. */
+function mapLeaf(
+  n: PaneNode,
+  id: PaneId,
+  update: (leaf: LeafNode) => LeafNode,
+): PaneNode {
+  if (isLeaf(n)) {
+    if (n.id !== id) return n;
+    return update(n);
+  }
+  let changed = false;
+  const children = n.children.map((c) => {
+    const u = mapLeaf(c, id, update);
+    if (u !== c) changed = true;
+    return u;
+  });
+  return changed ? { ...n, children } : n;
+}
+
+export function setLeafSshHost(
+  n: PaneNode,
+  id: PaneId,
+  sshHost: string | undefined,
+): PaneNode {
+  return mapLeaf(n, id, (leaf) =>
+    leaf.sshHost === sshHost ? leaf : { ...leaf, sshHost },
+  );
+}
+
+export function setLeafRemoteCwd(
+  n: PaneNode,
+  id: PaneId,
+  remoteCwd: string | undefined,
+): PaneNode {
+  return mapLeaf(n, id, (leaf) =>
+    leaf.remoteCwd === remoteCwd ? leaf : { ...leaf, remoteCwd },
+  );
 }
 
 /**

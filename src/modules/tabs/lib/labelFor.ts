@@ -36,7 +36,7 @@ export function remoteHostOf(t: Tab): string | null {
  * when the shell has roamed onto another host, else the local cwd (falling back
  * to the stored title). Clearing the custom title reverts to the dynamic name.
  */
-export function labelFor(t: Tab): string {
+export function labelFor(t: Tab, dynamicTerminalTitle = true): string {
   if (t.kind === "editor") return t.title;
   if (t.kind === "markdown") return t.title;
   if (t.kind === "pdf") return t.title;
@@ -48,6 +48,8 @@ export function labelFor(t: Tab): string {
   if (t.kind === "settings") return t.title;
   // terminal: a user-pinned name wins over the dynamic cwd-based label.
   if (t.customTitle) return t.customTitle;
+  // When auto-naming from the active pane is off, keep the static title.
+  if (!dynamicTerminalTitle) return t.title;
   // A detected `ssh <host>` session with no remote cwd shows the bare host, so
   // the tab visibly changes the moment the user connects.
   if (t.sshHost && !t.remoteCwd) return t.sshHost;
