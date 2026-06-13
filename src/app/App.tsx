@@ -2081,6 +2081,7 @@ export default function App() {
                       role="separator"
                       aria-orientation="vertical"
                       aria-label="Resize tab bar"
+                      tabIndex={-1}
                       onPointerDown={handleTabColumnResizeStart}
                       onDoubleClick={() =>
                         tabColumnRef.current?.resize(
@@ -2141,6 +2142,7 @@ export default function App() {
                   role="separator"
                   aria-orientation="vertical"
                   aria-label="Resize sidebar"
+                  tabIndex={-1}
                   onPointerDown={handleSidebarResizeStart}
                   onDoubleClick={() =>
                     sidebarRef.current?.resize(

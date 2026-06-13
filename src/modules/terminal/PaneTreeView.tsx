@@ -1,4 +1,5 @@
-import { Fragment, type PointerEvent as ReactPointerEvent, useRef } from "react";
+import { Fragment, type PointerEvent as ReactPointerEvent } from "react";
+import { useLazyRef } from "@/lib/useLazyRef";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import type { SearchAddon } from "@xterm/addon-search";
 import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -84,6 +85,8 @@ function SplitResizeHandle({
     <div
       role="separator"
       aria-orientation={horizontal ? "vertical" : "horizontal"}
+      aria-label="Resize panes"
+      tabIndex={-1}
       onPointerDown={onPointerDown}
       style={
         horizontal ? { width: `${thickness}px` } : { height: `${thickness}px` }
@@ -114,7 +117,9 @@ export function PaneTreeView({
 }: Props) {
   // Imperative handle per child pane, keyed by id so it survives index shifts
   // when panes are split or closed. A divider resizes its preceding sibling.
-  const panelHandles = useRef(new Map<number, PanelImperativeHandle | null>());
+  const panelHandles = useLazyRef(
+    () => new Map<number, PanelImperativeHandle | null>(),
+  );
 
   if (node.kind === "leaf") {
     const focused = node.id === activeLeafId;

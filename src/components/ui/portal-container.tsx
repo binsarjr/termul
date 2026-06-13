@@ -76,7 +76,7 @@ export function PortalContainerProvider({
 
 /** The portal target for the current React-tree position, or null for body. */
 export function usePortalContainer(): Element | null {
-  return React.useContext(PortalContainerContext).container;
+  return React.use(PortalContainerContext).container;
 }
 
 /**
@@ -84,5 +84,5 @@ export function usePortalContainer(): Element | null {
  * position, or undefined when no correction is needed (body / zoom 1).
  */
 export function useCollisionPadding(): CollisionPadding | undefined {
-  return React.useContext(PortalContainerContext).collisionPadding;
+  return React.use(PortalContainerContext).collisionPadding;
 }

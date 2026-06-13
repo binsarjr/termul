@@ -24,10 +24,13 @@ export function SettingsSearch({ onSelect }: Props) {
   const deferredQuery = useDeferredValue(query);
   const results = useMemo(() => searchSettings(deferredQuery), [deferredQuery]);
 
-  // Reset highlight to the top result whenever the list changes.
-  useEffect(() => {
+  // Reset the highlight to the top result whenever the list changes — adjusted
+  // during render (not via an effect) so there is no stale-highlight frame.
+  const [prevResults, setPrevResults] = useState(results);
+  if (results !== prevResults) {
+    setPrevResults(results);
     setActive(0);
-  }, [results]);
+  }
 
   // Close the dropdown when clicking outside the search box.
   useEffect(() => {
