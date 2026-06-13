@@ -376,3 +376,19 @@ html *::-webkit-scrollbar {
 .termul-collapsible-content[data-state="closed"] {
   animation: termul-collapsible-up 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Settings search: briefly highlight the row a search result jumps to. */
+@keyframes termul-setting-flash {
+  0%,
+  20% {
+    box-shadow: 0 0 0 2px var(--ring);
+    background-color: color-mix(in oklch, var(--primary) 14%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    background-color: transparent;
+  }
+}
+.termul-setting-flash {
+  animation: termul-setting-flash 1.5s ease-out;
+}

@@ -1,6 +1,8 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SettingsSection } from "@/modules/settings/openSettings";
+import { SettingsSearch } from "@/settings/components/SettingsSearch";
+import { entryAnchor, type SettingsSearchEntry } from "@/settings/lib/searchIndex";
 import { AboutSection } from "@/settings/sections/AboutSection";
 import { AgentsSection } from "@/settings/sections/AgentsSection";
 import { GeneralSection } from "@/settings/sections/GeneralSection";
@@ -18,7 +20,7 @@ import {
   UserMultiple02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { JSX, useEffect } from "react";
+import { JSX, useCallback, useEffect, useRef } from "react";
 
 const SECTIONS: {
   id: SettingsSection;
@@ -52,9 +54,24 @@ export function SettingsView({
   const init = usePreferencesStore((s) => s.init);
   const ActiveSection = SECTIONS.find((s) => s.id === section)?.component;
 
+  const mainRef = useRef<HTMLElement>(null);
+
   useEffect(() => {
     void init();
   }, [init]);
+
+  const onSearchSelect = useCallback(
+    (entry: SettingsSearchEntry) => {
+      onSectionChange(entry.section);
+      const anchor = entryAnchor(entry);
+      // Wait for the chosen section to commit, then scroll + flash. Two frames:
+      // one for React to render the new section, one for layout to settle.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => scrollToSetting(mainRef.current, anchor)),
+      );
+    },
+    [onSectionChange],
+  );
 
   // Esc closes the Settings tab, but only while it is the active tab and the
   // user isn't typing in a field (mirrors the old settings-window behavior).
@@ -95,11 +112,40 @@ export function SettingsView({
         </Tabs>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto px-8 pt-6 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <main
+        ref={mainRef}
+        className="min-h-0 flex-1 overflow-y-auto px-8 pt-3 pb-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         <div className="mx-auto w-full max-w-160">
+          <div className="sticky top-0 z-20 -mx-2 -mt-3 mb-8 bg-background/95 px-2 pt-3 pb-3 backdrop-blur-sm">
+            <SettingsSearch onSelect={onSearchSelect} />
+          </div>
           {ActiveSection && <ActiveSection />}
         </div>
       </main>
     </div>
   );
+}
+
+/**
+ * Scroll the matching setting row into the scroll container and flash it.
+ * `anchor === null` (group-level results) just scrolls back to the top.
+ */
+function scrollToSetting(main: HTMLElement | null, anchor: string | null): void {
+  if (!main) return;
+  if (!anchor) {
+    main.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  const selector = `[data-setting-anchor="${anchor.replace(/"/g, '\\"')}"]`;
+  const el = main.querySelector<HTMLElement>(selector);
+  if (!el) {
+    main.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  // Restart the flash animation even if the row was flashed moments ago.
+  el.classList.remove("termul-setting-flash");
+  void el.offsetWidth;
+  el.classList.add("termul-setting-flash");
 }
