@@ -7,7 +7,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches tauri.conf.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          conf="$(jq -r .version src-tauri/tauri.conf.json)"
+          echo "tag=$tag conf=$conf"
+          if [ "$tag" != "$conf" ]; then
+            echo "::error::Release tag v$tag does not match tauri.conf.json version $conf. Bump the version before tagging."
+            exit 1
+          fi
+
   publish-tauri:
+    needs: verify-version
     permissions:
       contents: write
     strategy:
