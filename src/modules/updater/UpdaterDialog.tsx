@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { IS_LINUX } from "@/lib/platform";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState } from "react";
 import { useUpdater } from "./useUpdater";
@@ -42,7 +43,7 @@ export function UpdaterDialog() {
   // useUpdater drives the on-mount auto-check; dialogOpen/restart come straight
   // from the shared store so dismissing here doesn't drop the update state that
   // keeps the header indicator alive.
-  const { status, install, restart, dismiss } = useUpdater();
+  const { status, check, install, restart, dismiss } = useUpdater();
   const dialogOpen = useUpdaterStore((s) => s.dialogOpen);
   const [copied, setCopied] = useState(false);
   const [distro, setDistro] = useState<DistroKey>("arch");
@@ -50,11 +51,14 @@ export function UpdaterDialog() {
     status.kind === "manual-available" ? status.info.version : "";
   const activeCommand = distroCommand(distro, manualVersion);
 
+  // "checking" stays showable so a recheck triggered from inside the dialog
+  // doesn't flash it closed; dialogOpen still gates the very first auto-check.
   const showable =
     status.kind === "available" ||
     status.kind === "manual-available" ||
     status.kind === "downloading" ||
-    status.kind === "ready";
+    status.kind === "ready" ||
+    status.kind === "checking";
   const open = dialogOpen && showable;
 
   if (!open) return null;
@@ -63,6 +67,7 @@ export function UpdaterDialog() {
   const manual = status.kind === "manual-available" ? status.info : null;
   const downloading = status.kind === "downloading";
   const ready = status.kind === "ready";
+  const checking = status.kind === "checking";
 
   const copyCommand = async () => {
     if (!navigator?.clipboard?.writeText) return;
@@ -91,24 +96,30 @@ export function UpdaterDialog() {
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>
-            {ready
-              ? "Update ready"
-              : downloading
-                ? "Downloading update…"
-                : manual
-                  ? `Termul v${manual.version} is available`
-                  : `Termul v${update?.version} is available`}
+            {checking
+              ? "Checking for updates…"
+              : ready
+                ? "Update ready"
+                : downloading
+                  ? "Downloading update…"
+                  : manual
+                    ? `Termul v${manual.version} is available`
+                    : `Termul v${update?.version} is available`}
           </DialogTitle>
           <DialogDescription>
-            {ready
-              ? "Update downloaded. Restart now to finish installing — this closes all open tabs."
-              : downloading
-                ? progress !== null
-                  ? `${progress.toFixed(0)}% — ${formatBytes(status.downloaded)}`
-                  : formatBytes(status.downloaded)
-                : manual
-                  ? `You're on v${manual.currentVersion}. Pick your distro and run the command, or grab the package from GitHub.`
-                  : update?.body || "A new version is ready to install."}
+            {checking
+              ? "Looking for the latest release…"
+              : ready
+                ? "Update downloaded. Restart now to finish installing — this closes all open tabs."
+                : downloading
+                  ? progress !== null
+                    ? `${progress.toFixed(0)}% — ${formatBytes(status.downloaded)}`
+                    : formatBytes(status.downloaded)
+                  : manual
+                    ? IS_LINUX
+                      ? `You're on v${manual.currentVersion}. Pick your distro and run the command, or grab the package from GitHub.`
+                      : `You're on v${manual.currentVersion}. Grab the latest package from GitHub to update.`
+                    : update?.body || "A new version is ready to install."}
           </DialogDescription>
         </DialogHeader>
 
@@ -119,7 +130,7 @@ export function UpdaterDialog() {
           <Progress value={undefined} className="mt-2 animate-pulse" />
         )}
 
-        {manual && (
+        {manual && IS_LINUX && (
           <div className="mt-2 flex flex-col gap-2">
             <div className="flex gap-1 rounded-md bg-muted/40 p-1">
               {DISTROS.map((d) => (
@@ -152,8 +163,21 @@ export function UpdaterDialog() {
         )}
 
         <DialogFooter>
+          {checking && (
+            <Button variant="ghost" size="sm" disabled>
+              Checking…
+            </Button>
+          )}
           {status.kind === "available" && (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-auto"
+                onClick={() => void check({ manual: true })}
+              >
+                Check again
+              </Button>
               <Button variant="ghost" size="sm" onClick={dismiss}>
                 Later
               </Button>
@@ -174,6 +198,14 @@ export function UpdaterDialog() {
           )}
           {manual && (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-auto"
+                onClick={() => void check({ manual: true })}
+              >
+                Check again
+              </Button>
               <Button variant="ghost" size="sm" onClick={dismiss}>
                 Later
               </Button>

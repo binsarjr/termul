@@ -1082,6 +1082,15 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Refresh on refocus so returning to the window after a release went out
+  // picks it up without a restart. The store's 30-min throttle keeps this from
+  // hammering the network, and an already-surfaced update is left untouched.
+  useEffect(() => {
+    const onFocus = () => void useUpdaterStore.getState().check();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
   const sendCd = useCallback(
     (path: string) => {
       if (activeLeafId === null) return;

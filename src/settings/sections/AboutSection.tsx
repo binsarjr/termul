@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { useUpdater } from "@/modules/updater";
+import { useUpdater, useUpdaterStore } from "@/modules/updater";
 import { GithubIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { getName, getVersion } from "@tauri-apps/api/app";
@@ -24,6 +24,7 @@ export function AboutSection() {
   const [name, setName] = useState("Termul");
   const [build, setBuild] = useState("");
   const { status, check, install, restart } = useUpdater({ autoCheck: false });
+  const openDialog = useUpdaterStore((s) => s.openDialog);
   const checking = status.kind === "checking";
   const downloading = status.kind === "downloading";
   const available = status.kind === "available";
@@ -48,8 +49,13 @@ export function AboutSection() {
   const onUpdateClick = () => {
     if (ready) void restart();
     else if (available) void install();
+    else if (manualAvailable) openDialog();
     else void check({ manual: true });
   };
+  // Once an update is surfaced the primary button installs/opens it, so a
+  // recheck needs its own affordance to re-poll and supersede a closely-spaced
+  // earlier release the in-app check first landed on.
+  const showRecheck = available || manualAvailable || ready;
 
   useEffect(() => {
     void getVersion().then(setVersion);
@@ -117,6 +123,16 @@ export function AboutSection() {
           >
             {checkLabel}
           </Button>
+          {showRecheck && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void check({ manual: true })}
+              disabled={checking || downloading}
+            >
+              Check again
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
