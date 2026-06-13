@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { native } from "../lib/native";
-import { checkReadableCanonical } from "../lib/security";
+import { checkReadable, checkReadableCanonical } from "../lib/security";
 import { resolvePath, type ToolContext } from "./context";
 
 function resolveRoot(
@@ -30,6 +30,23 @@ const MAX_LINE_LEN = 160;
 function clipLine(s: string): string {
   if (s.length <= MAX_LINE_LEN) return s;
   return `${s.slice(0, MAX_LINE_LEN)}…[+${s.length - MAX_LINE_LEN}]`;
+}
+
+// grep/glob auto-execute (no approval), so a matched secret file would stream
+// its contents to the model unguarded. The root is checked, but the walker
+// only skips dot-hidden / gitignored files — a tracked `*.tfstate` or
+// `service-account.json` is not hidden. Drop any hit whose own path fails the
+// read deny-list, and report how many were withheld.
+function partitionSecrets<T extends { path: string }>(
+  hits: T[],
+): { visible: T[]; redacted: number } {
+  const visible: T[] = [];
+  let redacted = 0;
+  for (const h of hits) {
+    if (checkReadable(h.path).ok) visible.push(h);
+    else redacted += 1;
+  }
+  return { visible, redacted };
 }
 
 export function buildSearchTools(ctx: ToolContext) {
@@ -79,9 +96,10 @@ export function buildSearchTools(ctx: ToolContext) {
             caseInsensitive: case_insensitive,
             maxResults: cap,
           });
+          const { visible, redacted } = partitionSecrets(res.hits);
           return {
             root: r.path,
-            hits: res.hits.map((h) => ({
+            hits: visible.map((h) => ({
               path: h.path,
               rel: h.rel,
               line: h.line,
@@ -89,6 +107,7 @@ export function buildSearchTools(ctx: ToolContext) {
             })),
             truncated: res.truncated,
             files_scanned: res.files_scanned,
+            ...(redacted > 0 ? { redacted_secret_files: redacted } : {}),
           };
         } catch (e) {
           return { error: String(e), root: r.path };
@@ -116,10 +135,12 @@ export function buildSearchTools(ctx: ToolContext) {
             root: r.path,
             maxResults: max_results,
           });
+          const { visible, redacted } = partitionSecrets(res.hits);
           return {
             root: r.path,
-            hits: res.hits,
+            hits: visible,
             truncated: res.truncated,
+            ...(redacted > 0 ? { redacted_secret_files: redacted } : {}),
           };
         } catch (e) {
           return { error: String(e), root: r.path };

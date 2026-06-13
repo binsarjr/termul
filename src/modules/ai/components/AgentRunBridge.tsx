@@ -60,6 +60,8 @@ function Bridge({
   openAiDiffTab,
   closeAiDiffTab,
 }: BridgeProps) {
+  // false positive: memoized chat instance, not event-handler-in-effect logic
+  // react-doctor-disable-next-line no-event-handler, react-doctor/no-event-handler
   const chat = useMemo(() => getOrCreateChat(sessionId), [sessionId]);
   const { status, messages, addToolApprovalResponse } = useChat<UIMessage>({
     chat,
@@ -134,7 +136,9 @@ function Bridge({
   useEffect(() => {
     openedRef.current = new Set();
     fileMutationFingerprintRef.current = "";
-  }, [sessionId]);
+    // openedRef / fileMutationFingerprintRef are stable ref identities (added
+    // only to satisfy exhaustive-deps; they never change between renders).
+  }, [sessionId, openedRef, fileMutationFingerprintRef]);
 
   // Cheap fingerprint of file-mutation tool parts only. The diff-tab effect
   // is the most expensive thing on the streaming path, so we skip it when
@@ -203,6 +207,9 @@ function Bridge({
 
     for (const id of toClose) {
       openedRef.current.delete(id);
+      // false positive: imperative tab-close reacting to async stream state,
+      // not lifting local state to a parent; there is no shared state to lift.
+      // react-doctor-disable-next-line no-prop-callback-in-effect, react-doctor/no-prop-callback-in-effect
       closeAiDiffTab(id);
     }
 
@@ -248,7 +255,16 @@ function Bridge({
     return () => {
       cancelled = true;
     };
-  }, [messages, fileMutationFingerprint, openAiDiffTab, closeAiDiffTab]);
+    // openedRef / fileMutationFingerprintRef are stable ref identities (added
+    // only to satisfy exhaustive-deps; they never change between renders).
+  }, [
+    messages,
+    fileMutationFingerprint,
+    openAiDiffTab,
+    closeAiDiffTab,
+    openedRef,
+    fileMutationFingerprintRef,
+  ]);
 
   return null;
 }

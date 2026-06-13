@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import type { ThemePref } from "@/modules/settings/store";
+import type { TabBarPositionPref, ThemePref } from "@/modules/settings/store";
 import {
   MAX_PANES_PER_TAB_MAX,
   MAX_PANES_PER_TAB_MIN,
@@ -38,6 +38,10 @@ import {
   setDropHibernatedOutput,
   setTerminalScrollback,
   setTerminalWebglEnabled,
+  setTabBarPosition,
+  setTabSshBadge,
+  setTabTitleFromActivePane,
+  setTruncateTabTitles,
   setVimMode,
   setZoomLevel,
 } from "@/modules/settings/store";
@@ -83,6 +87,8 @@ const onToggleAutostart = async (next: boolean) => {
   }
 };
 
+// structural refactor deferred (settings section kept as one component)
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function GeneralSection() {
   const { mode, setMode } = useTheme();
 
@@ -108,6 +114,12 @@ export function GeneralSection() {
   const terminalScrollback = usePreferencesStore((s) => s.terminalScrollback);
   const maxPanesPerTab = usePreferencesStore((s) => s.maxPanesPerTab);
   const dimInactivePanes = usePreferencesStore((s) => s.dimInactivePanes);
+  const tabTitleFromActivePane = usePreferencesStore(
+    (s) => s.tabTitleFromActivePane,
+  );
+  const tabSshBadge = usePreferencesStore((s) => s.tabSshBadge);
+  const truncateTabTitles = usePreferencesStore((s) => s.truncateTabTitles);
+  const tabBarPosition = usePreferencesStore((s) => s.tabBarPosition);
   const zoomLevel = usePreferencesStore((s) => s.zoomLevel);
   const agentNotifications = usePreferencesStore((s) => s.agentNotifications);
 
@@ -380,6 +392,58 @@ export function GeneralSection() {
       </div>
 
       <div className="flex flex-col gap-2">
+        <Label>Tabs</Label>
+        <SettingRow
+          title="Name tabs from active pane"
+          description="Auto-name a terminal tab after its focused pane (current folder or SSH host) until you rename it. Off keeps a static title."
+        >
+          <Switch
+            checked={tabTitleFromActivePane}
+            onCheckedChange={(v) => void setTabTitleFromActivePane(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Show SSH host badge"
+          description="Badge a terminal tab with its host when its active pane is connected over SSH."
+        >
+          <Switch
+            checked={tabSshBadge}
+            onCheckedChange={(v) => void setTabSshBadge(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Truncate long tab titles"
+          description="Cut long tab names with an ellipsis. Off shows the full name and lets the tab strip scroll."
+        >
+          <Switch
+            checked={truncateTabTitles}
+            onCheckedChange={(v) => void setTruncateTabTitles(v)}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Tab bar position"
+          description="Show tabs across the top or as a resizable column to the left of the sidebar."
+        >
+          <Select
+            value={tabBarPosition}
+            onValueChange={(v) => void setTabBarPosition(v as TabBarPositionPref)}
+          >
+            <SelectTrigger size="sm" className="h-8 w-28 text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="top" className="text-[12px]">
+                Top
+              </SelectItem>
+              <SelectItem value="left" className="text-[12px]">
+                Left
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+      </div>
+
+      <div className="flex flex-col gap-2">
         <Label>Agents</Label>
         <SettingRow
           title="Coding agent notifications"
@@ -457,7 +521,10 @@ function AutoSaveDelayInput({
 }) {
   const [draft, setDraft] = useState(String(value));
 
+  // draft is independently editable; this resyncs it to the canonical value prop, not pure derived state
+  // react-doctor-disable-next-line react-doctor/no-derived-state-effect, react-doctor/no-reset-all-state-on-prop-change
   useEffect(() => {
+    // react-doctor-disable-next-line react-doctor/no-derived-state
     setDraft(String(value));
   }, [value]);
 

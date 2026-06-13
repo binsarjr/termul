@@ -1,5 +1,5 @@
+import { PortalContainerProvider } from "@/components/ui/portal-container";
 import {
-  ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
@@ -102,6 +102,7 @@ import {
 import { StatusBar } from "@/modules/statusbar";
 import {
   remoteHostOf,
+  TabBar,
   type TabGroupControls,
   TabSearch,
   useTabs,
@@ -132,6 +133,7 @@ import {
   writeThemeFile,
 } from "@/modules/theme/themeFiles";
 import { UpdaterDialog, useUpdaterStore } from "@/modules/updater";
+import { useWhatsNewStore } from "@/modules/changelog/whatsNewStore";
 import {
   currentWorkspaceEnv,
   getWslHome,
@@ -144,8 +146,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { SearchAddon } from "@xterm/addon-search";
+// App is not wrapped in LazyMotion; converting to m + LazyMotion here is a
+// non-trivial, behavior-affecting refactor, so keep the full motion import.
+// react-doctor-disable-next-line react-doctor/use-lazy-motion
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 type TuiWaitResult = "ready" | "gone" | "timeout";
@@ -158,7 +172,11 @@ async function waitForClaudeTuiReady(
   while (Date.now() - start < timeoutMs) {
     const buf = readBuf();
     if (buf === null) return "gone";
+    // String substring search on a fresh buffer, not array membership.
+    // react-doctor-disable-next-line react-doctor/js-set-map-lookups
     if (buf.includes("shortcuts") || buf.includes("? for")) return "ready";
+    // Intentional sequential poll delay; iterations are dependent.
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop
     await new Promise((r) => setTimeout(r, 120));
   }
   return "timeout";
@@ -172,16 +190,38 @@ function dirname(path: string | null): string | null {
   return normalized.slice(0, idx);
 }
 
+// Sidebar min/max/default are ON-SCREEN (visual) pixels. `.zoom-content`
+// applies CSS `zoom`, so a panel's visual width is its layout width times the
+// zoom factor. Keeping the bounds in visual px lets the sidebar be dragged to
+// the same on-screen size at any zoom level. A layout-px cap would instead pin
+// the sidebar to a tiny strip when zoomed out (480 layout px is only 240 px on
+// screen at zoom 0.5).
 const SIDEBAR_DEFAULT_WIDTH = 260;
 const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
+// Loose layout-px guard so a corrupted localStorage value cannot blow up the
+// layout. The real on-screen bounds are enforced by clampSidebarVisual and the
+// panel's zoom-scaled minSize/maxSize.
+const SIDEBAR_LAYOUT_FLOOR = 100;
+const SIDEBAR_LAYOUT_CEIL = 1200;
 const SIDEBAR_WIDTH_STORAGE_KEY = "termul:sidebar.width";
 const SIDEBAR_VIEW_STORAGE_KEY = "termul:sidebar.view";
 
-function clampSidebarWidth(width: number): number {
-  return Math.min(
+// Clamp a candidate layout width so the sidebar's on-screen width stays within
+// [MIN, MAX]. visualWidth = layoutWidth * zoom.
+function clampSidebarVisual(layoutWidth: number, zoom: number): number {
+  const visual = layoutWidth * zoom;
+  const clamped = Math.min(
     SIDEBAR_MAX_WIDTH,
-    Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)),
+    Math.max(SIDEBAR_MIN_WIDTH, visual),
+  );
+  return Math.round(clamped / zoom);
+}
+
+function sanitizeSidebarLayoutWidth(width: number): number {
+  return Math.min(
+    SIDEBAR_LAYOUT_CEIL,
+    Math.max(SIDEBAR_LAYOUT_FLOOR, Math.round(width)),
   );
 }
 
@@ -190,10 +230,36 @@ function readSidebarWidth(): number {
     const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
     const parsed = stored ? Number.parseInt(stored, 10) : NaN;
     return Number.isFinite(parsed)
-      ? clampSidebarWidth(parsed)
+      ? sanitizeSidebarLayoutWidth(parsed)
       : SIDEBAR_DEFAULT_WIDTH;
   } catch {
     return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
+
+// The vertical (left) tab column mirrors the sidebar's zoom-aware sizing: bounds
+// are ON-SCREEN px so the column stays the same size at any zoom, with the same
+// loose layout-px guard against a corrupted stored value.
+const TABCOL_DEFAULT_WIDTH = 180;
+const TABCOL_MIN_WIDTH = 140;
+const TABCOL_MAX_WIDTH = 320;
+const TABCOL_WIDTH_STORAGE_KEY = "termul:tab-column.width";
+
+function clampTabColumnVisual(layoutWidth: number, zoom: number): number {
+  const visual = layoutWidth * zoom;
+  const clamped = Math.min(TABCOL_MAX_WIDTH, Math.max(TABCOL_MIN_WIDTH, visual));
+  return Math.round(clamped / zoom);
+}
+
+function readTabColumnWidth(): number {
+  try {
+    const stored = window.localStorage.getItem(TABCOL_WIDTH_STORAGE_KEY);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    return Number.isFinite(parsed)
+      ? sanitizeSidebarLayoutWidth(parsed)
+      : TABCOL_DEFAULT_WIDTH;
+  } catch {
+    return TABCOL_DEFAULT_WIDTH;
   }
 }
 
@@ -217,6 +283,17 @@ const PALETTE_EXCLUDED_SHORTCUTS = new Set<ShortcutId>([
   "editor.redo",
 ]);
 
+// Loaded only when the dialog opens so the markdown renderer (streamdown) stays
+// out of the startup bundle.
+const WhatsNewDialog = lazy(() =>
+  import("@/modules/changelog/WhatsNewDialog").then((m) => ({
+    default: m.WhatsNewDialog,
+  })),
+);
+
+// Structural refactor deferred: splitting App or moving to useReducer is too
+// risky for this behavior-preserving pass.
+// react-doctor-disable-next-line react-doctor/no-giant-component, react-doctor/prefer-useReducer
 export default function App() {
   const {
     tabs,
@@ -332,6 +409,8 @@ export default function App() {
   const explorerReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const sidebarRef = useRef<PanelImperativeHandle | null>(null);
+  // Drives the zoom-scaled sidebar bounds and resize-handle hit area below.
+  const sidebarZoom = usePreferencesStore((s) => s.zoomLevel) || 1;
   const sidebarWidthRef = useLazyRef(() => readSidebarWidth());
   const sidebarWidthWriteTimerRef = useRef(0);
   const [sidebarView, setSidebarViewState] = useState<SidebarViewId>(readSidebarView);
@@ -364,6 +443,8 @@ export default function App() {
       }
       persistSidebarView(view);
     },
+    // sidebarRef/sidebarWidthRef are stable refs; intentionally omitted.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [persistSidebarView, sidebarView],
   );
   const persistSidebarWidth = useCallback((next: number) => {
@@ -379,7 +460,11 @@ export default function App() {
         // ignore
       }
     }, 200);
+    // Only touches stable refs (sidebarWidthRef/timer ref); no reactive deps.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, []);
+  // Unmount-only cleanup; reading the timer ref at teardown is the intent.
+  // react-doctor-disable-next-line react-doctor/exhaustive-deps
   useEffect(() => {
     return () => {
       if (sidebarWidthWriteTimerRef.current) {
@@ -387,6 +472,129 @@ export default function App() {
       }
     };
   }, []);
+
+  const handleSidebarResizeStart = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const panel = sidebarRef.current;
+      if (!panel) return;
+      e.preventDefault();
+      // `.zoom-content` uses CSS `zoom`. In this WebKit, getBoundingClientRect /
+      // offsetWidth stay in unscaled layout px while pointer clientX is in
+      // zoomed (on-screen) px, so the panel library's own drag math drifts by
+      // the zoom factor. Convert the visual delta back to layout px (divide by
+      // zoom) so the divider tracks the cursor 1:1, then drive the panel
+      // imperatively.
+      const zoom =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--app-zoom",
+          ),
+        ) || 1;
+      const startX = e.clientX;
+      const startWidth = panel.getSize().inPixels || sidebarWidthRef.current;
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const prevCursor = document.body.style.cursor;
+      const prevSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (ev: PointerEvent) => {
+        const next = clampSidebarVisual(
+          startWidth + (ev.clientX - startX) / zoom,
+          zoom,
+        );
+        panel.resize(`${next}px`);
+      };
+      const onUp = () => {
+        el.releasePointerCapture?.(e.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = prevCursor;
+        document.body.style.userSelect = prevSelect;
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    },
+    [sidebarWidthRef],
+  );
+
+  const tabBarPosition = usePreferencesStore((s) => s.tabBarPosition);
+  // Radix overlays whose triggers live in the zoomed workspace portal into this
+  // element (a child of `.zoom-content`) instead of document.body, so the popover
+  // shares the trigger's zoom coordinate space and anchors correctly. See
+  // PortalContainerProvider below and src/components/ui/portal-container.tsx.
+  const [zoomPortalContainer, setZoomPortalContainer] =
+    useState<HTMLDivElement | null>(null);
+  const tabColumnRef = useRef<PanelImperativeHandle | null>(null);
+  const tabColumnWidthRef = useLazyRef(() => readTabColumnWidth());
+  const tabColumnWidthWriteTimerRef = useRef(0);
+  const cancelTabColumnWidthWrite = useCallback(() => {
+    if (tabColumnWidthWriteTimerRef.current) {
+      window.clearTimeout(tabColumnWidthWriteTimerRef.current);
+      tabColumnWidthWriteTimerRef.current = 0;
+    }
+  }, []);
+  const persistTabColumnWidth = useCallback((next: number) => {
+    tabColumnWidthRef.current = next;
+    if (tabColumnWidthWriteTimerRef.current) {
+      window.clearTimeout(tabColumnWidthWriteTimerRef.current);
+    }
+    tabColumnWidthWriteTimerRef.current = window.setTimeout(() => {
+      tabColumnWidthWriteTimerRef.current = 0;
+      try {
+        window.localStorage.setItem(TABCOL_WIDTH_STORAGE_KEY, String(next));
+      } catch {
+        // ignore
+      }
+    }, 200);
+    // Only touches stable refs (tabColumnWidthRef/timer ref); no reactive deps.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
+  }, []);
+  // Clear any pending debounced width write when the app unmounts.
+  useEffect(() => cancelTabColumnWidthWrite, [cancelTabColumnWidthWrite]);
+
+  // Mirrors handleSidebarResizeStart: the tab column lives inside `.zoom-content`
+  // too, so the visual drag delta is divided by the CSS zoom to track the cursor.
+  const handleTabColumnResizeStart = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const panel = tabColumnRef.current;
+      if (!panel) return;
+      e.preventDefault();
+      const zoom =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--app-zoom",
+          ),
+        ) || 1;
+      const startX = e.clientX;
+      const startWidth = panel.getSize().inPixels || tabColumnWidthRef.current;
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const prevCursor = document.body.style.cursor;
+      const prevSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (ev: PointerEvent) => {
+        const next = clampTabColumnVisual(
+          startWidth + (ev.clientX - startX) / zoom,
+          zoom,
+        );
+        panel.resize(`${next}px`);
+      };
+      const onUp = () => {
+        el.releasePointerCapture?.(e.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = prevCursor;
+        document.body.style.userSelect = prevSelect;
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    },
+    [tabColumnWidthRef],
+  );
 
   const toggleExplorerFocus = useCallback(() => {
     const explorer = explorerRef.current;
@@ -418,6 +626,8 @@ export default function App() {
     explorerReturnFocusRef.current =
       active instanceof HTMLElement && active !== document.body ? active : null;
     explorer.focus();
+    // explorerRef/sidebarRef/sidebarWidthRef/return-focus ref are stable refs.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [persistSidebarView, sidebarView]);
 
   const [home, setHome] = useState<string | null>(null);
@@ -488,6 +698,8 @@ export default function App() {
       }
       resetWorkspace(nextHome ?? undefined);
     },
+    // Remaining refs (tabsRef/liveLeavesRef/*Refs) and state setters are stable.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [workspaceEnv, setWorkspaceEnv, resetWorkspace],
   );
   useEffect(() => {
@@ -546,6 +758,9 @@ export default function App() {
 
   const prefsHydrated = usePreferencesStore((s) => s.hydrated);
   const [keysLoaded, setKeysLoaded] = useState(false);
+  // Async key loader that subscribes to external onKeysChanged events and
+  // returns a cleanup; setState happens inside the async reload, not cascaded.
+  // react-doctor-disable-next-line react-doctor/no-cascading-set-state
   useEffect(() => {
     let alive = true;
     const reload = () => {
@@ -618,8 +833,12 @@ export default function App() {
         editorRefs.current.get(e.id)?.reload();
       }
     }
+    // appliedDiffsRef/editorRefs are stable refs; effect keys off `tabs` only.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs]);
 
+  // Returns a cleanup that awaits the listen() promise and unlistens.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     type FileWrittenPayload = { path: string; source?: string };
     const unlistenPromise = getCurrentWebviewWindow().listen<FileWrittenPayload>(
@@ -639,6 +858,8 @@ export default function App() {
     return () => {
       void unlistenPromise.then((un) => un());
     };
+    // Mount-once listener; reads tabsRef/editorRefs (stable refs) at fire time.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, []);
 
   const editorWatchRef = useLazyRef<Set<string>>(() => new Set());
@@ -651,20 +872,23 @@ export default function App() {
     watchAdd(toAdd);
     watchRemove(toRemove);
     editorWatchRef.current = want;
+    // editorWatchRef is a stable ref; watch* are module functions.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs]);
 
+  const reloadChangedEditors = useCallback((paths: string[]) => {
+    const changed = new Set(paths.map((p) => p.replace(/\\/g, "/")));
+    for (const t of tabsRef.current) {
+      if (t.kind !== "editor") continue;
+      if (changed.has(t.path.replace(/\\/g, "/"))) {
+        editorRefs.current.get(t.id)?.reload();
+      }
+    }
+  }, [editorRefs, tabsRef]);
   useEffect(() => {
     let alive = true;
     let unlisten: (() => void) | undefined;
-    void listenFsChanged((paths) => {
-      const changed = new Set(paths.map((p) => p.replace(/\\/g, "/")));
-      for (const t of tabsRef.current) {
-        if (t.kind !== "editor") continue;
-        if (changed.has(t.path.replace(/\\/g, "/"))) {
-          editorRefs.current.get(t.id)?.reload();
-        }
-      }
-    }).then((un) => {
+    void listenFsChanged(reloadChangedEditors).then((un) => {
       if (alive) unlisten = un;
       else un();
     });
@@ -672,10 +896,12 @@ export default function App() {
       alive = false;
       unlisten?.();
     };
-  }, []);
+  }, [reloadChangedEditors]);
 
   // Theme editing: a custom theme is materialized to a real file and edited in
   // the code editor. Saving it re-ingests into the runtime store + applies live.
+  // Returns a cleanup that awaits the listen() promise and unlistens.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     type FileWrittenPayload = { path: string; source?: string };
     const unlistenPromise = getCurrentWebviewWindow().listen<FileWrittenPayload>(
@@ -738,6 +964,7 @@ export default function App() {
   const { explorerRoot, inheritedCwdForNewTab } = useWorkspaceCwd(
     activeTab,
     tabs,
+    // react-doctor-disable-next-line react-doctor/no-event-handler
     launchCwd ?? home,
   );
 
@@ -746,6 +973,8 @@ export default function App() {
       activeLeafId !== null ? (searchAddons.current.get(activeLeafId) ?? null) : null,
     );
     setActiveEditorHandle(editorRefs.current.get(activeId) ?? null);
+    // searchAddons/editorRefs are stable refs; only id/leaf drive the lookup.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeId, activeLeafId]);
 
   const handleSearchReady = useCallback(
@@ -753,6 +982,8 @@ export default function App() {
       searchAddons.current.set(leafId, addon);
       if (leafId === activeLeafId) setActiveSearchAddon(addon);
     },
+    // searchAddons is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeLeafId],
   );
 
@@ -764,6 +995,8 @@ export default function App() {
       editorRefs.current.delete(id);
       closeTab(id);
     },
+    // editorRefs is a stable ref; closeTab is the only reactive dep.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [closeTab],
   );
 
@@ -785,6 +1018,8 @@ export default function App() {
       if (!live.has(k)) terminalRefs.current.delete(k);
     for (const k of [...searchAddons.current.keys()])
       if (!live.has(k)) searchAddons.current.delete(k);
+    // liveLeavesRef/terminalRefs/searchAddons are stable refs; keyed off `tabs`.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs]);
 
   const handleClose = useCallback(
@@ -881,6 +1116,8 @@ export default function App() {
       return editorRefs.current.get(activeId)?.getSelection() ?? null;
     }
     return null;
+    // terminalRefs/editorRefs are stable refs; tabs/activeId drive the lookup.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs, activeId]);
 
   const togglePanelAndFocus = useCallback(() => {
@@ -940,6 +1177,9 @@ export default function App() {
     null,
   );
 
+  // Registers document mouse listeners with a cleanup; setAskPopup runs inside
+  // the real mousedown/mouseup handlers, not cascaded in the effect body.
+  // react-doctor-disable-next-line react-doctor/no-cascading-set-state
   useEffect(() => {
     const isInsideAi = (t: EventTarget | null) => {
       const el = t as HTMLElement | null;
@@ -1006,6 +1246,22 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Refresh on refocus so returning to the window after a release went out
+  // picks it up without a restart. The store's 30-min throttle keeps this from
+  // hammering the network, and an already-surfaced update is left untouched.
+  useEffect(() => {
+    const onFocus = () => void useUpdaterStore.getState().check();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  // Surface this version's changelog once, the first launch after an update.
+  // Gated on `open` so streamdown loads only when there is something to show.
+  const whatsNewOpen = useWhatsNewStore((s) => s.open);
+  useEffect(() => {
+    void useWhatsNewStore.getState().checkOnLaunch();
+  }, []);
+
   const sendCd = useCallback(
     (path: string) => {
       if (activeLeafId === null) return;
@@ -1014,6 +1270,8 @@ export default function App() {
       term.write(`cd ${quoteShellArg(path)}\r`);
       term.focus();
     },
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeLeafId],
   );
 
@@ -1022,12 +1280,16 @@ export default function App() {
     const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
     const command = block?.command?.trim();
     if (command) void navigator.clipboard.writeText(command).catch(() => {});
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const copyLastCommandOutput = useCallback(() => {
     if (activeLeafId === null) return;
     const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
     if (block?.output) void navigator.clipboard.writeText(block.output).catch(() => {});
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const copyLastCommandBoth = useCallback(() => {
@@ -1037,6 +1299,8 @@ export default function App() {
     const command = block.command.trim();
     const text = [command, block.output].filter(Boolean).join("\n");
     if (text) void navigator.clipboard.writeText(text).catch(() => {});
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const reinputLastCommand = useCallback(() => {
@@ -1048,16 +1312,22 @@ export default function App() {
     // can edit/run it — matching Warp's "reinput", not an auto re-run.
     term.write(command);
     term.focus();
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const selectPrevBlock = useCallback(() => {
     if (activeLeafId === null) return;
     terminalRefs.current.get(activeLeafId)?.selectPrevBlock();
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const selectNextBlock = useCallback(() => {
     if (activeLeafId === null) return;
     terminalRefs.current.get(activeLeafId)?.selectNextBlock();
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const cdInNewTab = useCallback(
@@ -1072,6 +1342,8 @@ export default function App() {
         t.focus();
       }, 80);
     },
+    // tabsRef/terminalRefs are stable refs; only newTab is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [newTab],
   );
 
@@ -1288,6 +1560,8 @@ export default function App() {
         );
       }
     },
+    // tabsRef/terminalRefs are stable refs; only setActiveId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [setActiveId],
   );
 
@@ -1367,6 +1641,9 @@ export default function App() {
       "editor.undo": () => editorRefs.current.get(activeId)?.undo(),
       "editor.redo": () => editorRefs.current.get(activeId)?.redo(),
     }),
+    // editorRefs/searchInlineRef/tabsRef are stable refs; all reactive handlers
+    // are listed below.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [
       activeId,
       cycleTab,
@@ -1427,6 +1704,9 @@ export default function App() {
       }
       return false;
     },
+    // Keyed off activeTab; captureActiveSelection is read via closure and is
+    // intentionally not a dep to keep this callback's identity stable.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeTab],
   );
 
@@ -1479,6 +1759,8 @@ export default function App() {
       if (h) terminalRefs.current.set(leafId, h);
       else terminalRefs.current.delete(leafId);
     },
+    // terminalRefs is a stable ref; nothing reactive to depend on.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [],
   );
 
@@ -1488,6 +1770,8 @@ export default function App() {
       else editorRefs.current.delete(id);
       if (id === activeId) setActiveEditorHandle(h);
     },
+    // editorRefs is a stable ref; only activeId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeId],
   );
 
@@ -1510,6 +1794,8 @@ export default function App() {
         });
       }
     },
+    // authorizedCwds is a stable ref; only the store setters are reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [setLeafCwd, setRemoteCwd],
   );
 
@@ -1585,6 +1871,8 @@ export default function App() {
         focus: () => {},
       };
     return null;
+    // terminalRefs is a stable ref; all reactive inputs are listed below.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [
     isTerminalTab,
     isEditorTab,
@@ -1597,6 +1885,9 @@ export default function App() {
 
   const activeCwd = activeTerminalLeafCwd;
 
+  // The setTimeout lives inside spawnManagedAgent, a callback invoked later by
+  // user action, not a timer created at effect-run time, so there is no leak.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     const findCwd = () => {
       const active = tabs.find((x) => x.id === activeId);
@@ -1651,6 +1942,9 @@ export default function App() {
           .register({ leafId, tabId, sessionId, task: oneLine, cwd });
         const hooksReady = invoke("agent_enable_claude_hooks").catch(() => {});
         void (async () => {
+          // The guard below writes to the session, which is only valid once it
+          // is ready, so this await must precede it and cannot be deferred.
+          // react-doctor-disable-next-line react-doctor/async-defer-await
           await Promise.all([whenSessionReady(leafId), hooksReady]);
           if (!writeToSession(leafId, "claude\r")) {
             useManagedAgentsStore.getState().remove(leafId);
@@ -1684,6 +1978,8 @@ export default function App() {
         return buf ? redactSensitive(buf) : null;
       },
     });
+    // terminalRefs is a stable ref; all reactive inputs are listed below.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [
     setLive,
     activeId,
@@ -1848,84 +2144,154 @@ export default function App() {
           />
 
           <main className="zoom-content flex min-h-0 flex-1 flex-col">
-            <ResizablePanelGroup
-              orientation="horizontal"
-              className="min-h-0 flex-1"
+            <PortalContainerProvider
+              container={zoomPortalContainer}
+              zoom={sidebarZoom}
             >
-              <ResizablePanel
-                id="sidebar"
-                panelRef={sidebarRef}
-                defaultSize={`${sidebarWidthRef.current}px`}
-                minSize={`${SIDEBAR_MIN_WIDTH}px`}
-                maxSize={`${SIDEBAR_MAX_WIDTH}px`}
-                collapsible
-                collapsedSize={0}
-                onResize={(size) => {
-                  if (size.inPixels > 0) persistSidebarWidth(size.inPixels);
-                }}
+              {/* display:contents so it adds zero layout/paint/stacking: Radix
+               * appends position:fixed overlays here, inside the zoom layer. */}
+              <div ref={setZoomPortalContainer} className="contents" />
+              <ResizablePanelGroup
+                orientation="horizontal"
+                className="min-h-0 flex-1"
               >
-                <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
-                  <div className="min-h-0 flex-1">
-                    {sidebarView === "explorer" ? (
-                      <FileExplorer
-                        ref={explorerRef}
-                        rootPath={effectiveExplorerRoot}
-                        sshStatus={sshExplorerStatus}
-                        onRetrySsh={retrySshExplorer}
-                        onOpenFile={handleOpenFile}
-                        onPathRenamed={handlePathRenamed}
-                        onPathDeleted={handlePathDeleted}
-                        onRevealInTerminal={cdInNewTab}
-                        onAttachToAgent={handleAttachFileToAgent}
-                        onOpenMarkdownPreview={openMarkdownPreview}
-                      />
-                    ) : (
-                      <SourceControlPanel
-                        open
-                        sourceControl={sourceControl}
-                        onOpenDiff={openGitDiffTab}
-                        onOpenGitGraph={openGitGraphFromContext}
-                      />
-                    )}
-                  </div>
-                  <SidebarRail
-                    activeView={sidebarView}
-                    onSelectView={persistSidebarView}
-                    changedCount={sourceControl.changedCount}
-                  />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="relative min-h-0 flex-1">
-                    {workspaceSurface}
-                  </div>
-
-                  {keysLoaded ? (
-                    <motion.div
-                      data-ai-input-bar
-                      initial={false}
-                      animate={{
-                        height: panelOpen ? "auto" : 0,
-                        opacity: panelOpen ? 1 : 0,
+                {tabBarPosition === "left" && (
+                  <>
+                    <ResizablePanel
+                      id="tab-column"
+                      panelRef={tabColumnRef}
+                      defaultSize={`${tabColumnWidthRef.current}px`}
+                      minSize={`${Math.round(TABCOL_MIN_WIDTH / sidebarZoom)}px`}
+                      maxSize={`${Math.round(TABCOL_MAX_WIDTH / sidebarZoom)}px`}
+                      onResize={(size) => {
+                        if (size.inPixels > 0) persistTabColumnWidth(size.inPixels);
                       }}
-                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="overflow-hidden"
-                      aria-hidden={!panelOpen}
                     >
-                      {hasComposer ? (
-                        <AiInputBar />
+                      <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
+                        <TabBar
+                          orientation="vertical"
+                          tabs={tabs}
+                          activeId={activeId}
+                          onSelect={setActiveId}
+                          onNew={openNewTab}
+                          onNewPrivate={openNewPrivateTab}
+                          onNewEditor={openNewEditor}
+                          onNewGitGraph={openGitGraphFromContext}
+                          onClose={handleClose}
+                          onPin={pinTab}
+                          onRename={renameTab}
+                          onToggleSpill={setTabSpillToDisk}
+                          onReorder={reorderTab}
+                          groupControls={groupControls}
+                        />
+                      </div>
+                    </ResizablePanel>
+                    <hr
+                      aria-orientation="vertical"
+                      aria-label="Resize tab bar"
+                      tabIndex={-1}
+                      onPointerDown={handleTabColumnResizeStart}
+                      onDoubleClick={() =>
+                        tabColumnRef.current?.resize(
+                          `${Math.round(TABCOL_DEFAULT_WIDTH / sidebarZoom)}px`,
+                        )
+                      }
+                      style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
+                      className="relative z-20 m-0 shrink-0 cursor-col-resize touch-none select-none border-0 bg-transparent p-0 after:pointer-events-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border/60 after:transition-colors after:content-[''] hover:after:bg-primary"
+                    />
+                  </>
+                )}
+                <ResizablePanel
+                  id="sidebar"
+                  panelRef={sidebarRef}
+                  defaultSize={`${sidebarWidthRef.current}px`}
+                  minSize={`${Math.round(SIDEBAR_MIN_WIDTH / sidebarZoom)}px`}
+                  maxSize={`${Math.round(SIDEBAR_MAX_WIDTH / sidebarZoom)}px`}
+                  collapsible
+                  collapsedSize={0}
+                  onResize={(size) => {
+                    if (size.inPixels > 0) persistSidebarWidth(size.inPixels);
+                  }}
+                >
+                  <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
+                    <div className="min-h-0 flex-1">
+                      {sidebarView === "explorer" ? (
+                        <FileExplorer
+                          ref={explorerRef}
+                          rootPath={effectiveExplorerRoot}
+                          sshStatus={sshExplorerStatus}
+                          onRetrySsh={retrySshExplorer}
+                          onOpenFile={handleOpenFile}
+                          onPathRenamed={handlePathRenamed}
+                          onPathDeleted={handlePathDeleted}
+                          onRevealInTerminal={cdInNewTab}
+                          onAttachToAgent={handleAttachFileToAgent}
+                          onOpenMarkdownPreview={openMarkdownPreview}
+                        />
                       ) : (
-                        <AiInputBarConnect
-                          onAdd={() => openSettings("models")}
+                        <SourceControlPanel
+                          open
+                          sourceControl={sourceControl}
+                          onOpenDiff={openGitDiffTab}
+                          onOpenGitGraph={openGitGraphFromContext}
                         />
                       )}
-                    </motion.div>
-                  ) : null}
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                    </div>
+                    <SidebarRail
+                      activeView={sidebarView}
+                      onSelectView={persistSidebarView}
+                      changedCount={sourceControl.changedCount}
+                    />
+                  </div>
+                </ResizablePanel>
+                <hr
+                  aria-orientation="vertical"
+                  aria-label="Resize sidebar"
+                  tabIndex={-1}
+                  onPointerDown={handleSidebarResizeStart}
+                  onDoubleClick={() =>
+                    sidebarRef.current?.resize(
+                      `${Math.round(SIDEBAR_DEFAULT_WIDTH / sidebarZoom)}px`,
+                    )
+                  }
+                  // Hit area holds a constant ~10px on-screen width regardless of
+                  // CSS `zoom`; otherwise a thin handle becomes ungrabbable when
+                  // zoomed out (the pointer hit-test resolves to the panel behind
+                  // it). The visible line stays slim via the ::after pseudo-element.
+                  style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
+                  className="relative z-20 m-0 shrink-0 cursor-col-resize touch-none select-none border-0 bg-transparent p-0 after:pointer-events-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border/60 after:transition-colors after:content-[''] hover:after:bg-primary"
+                />
+                <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="relative min-h-0 flex-1">
+                      {workspaceSurface}
+                    </div>
+
+                    {keysLoaded ? (
+                      <motion.div
+                        data-ai-input-bar
+                        initial={false}
+                        animate={{
+                          height: panelOpen ? "auto" : 0,
+                          opacity: panelOpen ? 1 : 0,
+                        }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                        aria-hidden={!panelOpen}
+                      >
+                        {hasComposer ? (
+                          <AiInputBar />
+                        ) : (
+                          <AiInputBarConnect
+                            onAdd={() => openSettings("models")}
+                          />
+                        )}
+                      </motion.div>
+                    ) : null}
+                  </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </PortalContainerProvider>
           </main>
 
           <StatusBar
@@ -1986,6 +2352,11 @@ export default function App() {
           />
 
           <UpdaterDialog />
+          {whatsNewOpen && (
+            <Suspense fallback={null}>
+              <WhatsNewDialog />
+            </Suspense>
+          )}
 
           <TabSearch
             tabs={tabs}

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { PortalContainerProvider } from "@/components/ui/portal-container";
 import {
   Popover,
   PopoverAnchor,
@@ -190,10 +191,14 @@ function highlight(text: string, query: string): ReactNode {
   );
 }
 
+// structural refactor deferred for this behavior-preserving pass
+// react-doctor-disable-next-line no-giant-component, react-doctor/no-giant-component
 export function GitHistoryPane({
   repoRoot,
   onOpenCommitFile,
   onSearchHandle,
+  // related useState calls are intentional; useReducer refactor deferred
+  // react-doctor-disable-next-line prefer-useReducer, react-doctor/prefer-useReducer
 }: Props) {
   const [commits, setCommits] = useState<GitLogEntry[]>([]);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
@@ -323,6 +328,9 @@ export function GitHistoryPane({
     setError(null);
     setEndReached(false);
     try {
+      // The await must run before the guard: the guard cancels this request
+      // only if a newer load superseded it while the network call was in flight.
+      // react-doctor-disable-next-line async-defer-await, react-doctor/async-defer-await
       const entries = await native.gitLog(repoRoot, { limit: PAGE_SIZE });
       if (requestId !== requestIdRef.current) return;
       setCommits(entries);
@@ -363,13 +371,20 @@ export function GitHistoryPane({
     }
   }, [commits, endReached, loadStatus, repoRoot]);
 
+  // Reset-and-reload when the repo changes: this effect clears caches and
+  // kicks off an async load, not a plain prop->state sync. Missing "deps" are
+  // stable refs (.current methods) that intentionally stay out of the array.
   useEffect(() => {
     filesInflightRef.current.clear();
     filesCacheRef.current.clear();
+    // react-doctor-disable-next-line no-adjust-state-on-prop-change, react-doctor/no-adjust-state-on-prop-change
     bumpFiles();
+    // react-doctor-disable-next-line no-adjust-state-on-prop-change, react-doctor/no-adjust-state-on-prop-change
     setCommits([]);
+    // react-doctor-disable-next-line no-adjust-state-on-prop-change, react-doctor/no-adjust-state-on-prop-change
     setOpenAnchor(null);
     void loadInitial();
+    // react-doctor-disable-next-line exhaustive-deps, react-doctor/exhaustive-deps
   }, [bumpFiles, loadInitial]);
 
   useEffect(() => {
@@ -423,6 +438,8 @@ export function GitHistoryPane({
     filesCacheRef.current.clear();
     bumpFiles();
     void loadInitial();
+    // missing "deps" are stable refs (.current methods); intentionally omitted
+    // react-doctor-disable-next-line exhaustive-deps, react-doctor/exhaustive-deps
   }, [bumpFiles, loadInitial]);
 
   const fetchFiles = useCallback(
@@ -450,6 +467,8 @@ export function GitHistoryPane({
         filesInflightRef.current.delete(sha);
       }
     },
+    // missing "deps" are stable refs and a stable bumpFiles callback; intentionally omitted
+    // react-doctor-disable-next-line exhaustive-deps, react-doctor/exhaustive-deps
     [repoRoot],
   );
 
@@ -482,6 +501,8 @@ export function GitHistoryPane({
   const openFilesEntry = useMemo(() => {
     if (!openAnchor) return null;
     return filesCacheRef.current.get(openAnchor.sha) ?? null;
+    // filesCacheRef is a stable ref; filesTick already triggers recompute on writes
+    // react-doctor-disable-next-line exhaustive-deps, react-doctor/exhaustive-deps
   }, [openAnchor, filesTick]);
 
   const handleFileOpen = useCallback(
@@ -622,58 +643,63 @@ export function GitHistoryPane({
           </>
         )}
 
-        <Popover
-          open={!!openAnchor}
-          onOpenChange={(next) => {
-            if (!next) closePopover();
-          }}
-        >
-          {typeof document !== "undefined"
-            ? createPortal(
-                <PopoverAnchor asChild>
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "fixed",
-                      top: openAnchor?.top ?? -9999,
-                      left: openAnchor?.left ?? -9999,
-                      width: openAnchor?.width ?? 0,
-                      height: openAnchor?.height ?? 0,
-                      pointerEvents: "none",
-                    }}
-                  />
-                </PopoverAnchor>,
-                document.body,
-              )
-            : null}
-          <PopoverContent
-            side="bottom"
-            align="start"
-            sideOffset={4}
-            alignOffset={0}
-            collisionPadding={16}
-            avoidCollisions
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            className="flex w-[420px] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-xl"
+        {/* The anchor is a fixed div portaled to body at the pointer's
+         * on-screen coords, so the content must also portal to body (not the
+         * zoom-content layer) to share that coordinate space at any zoom. */}
+        <PortalContainerProvider container={null}>
+          <Popover
+            open={!!openAnchor}
+            onOpenChange={(next) => {
+              if (!next) closePopover();
+            }}
           >
-            {openAnchor
-              ? (() => {
-                  const commit = commits.find((c) => c.sha === openAnchor.sha);
-                  if (!commit) return null;
-                  return (
-                    <CommitDetail
-                      commit={commit}
-                      filesEntry={openFilesEntry}
-                      remoteWeb={remoteWeb}
-                      onCopySha={copyToClipboard}
-                      onOpenFile={handleFileOpen}
-                      onRetryFiles={() => void fetchFiles(openAnchor.sha)}
+            {typeof document !== "undefined"
+              ? createPortal(
+                  <PopoverAnchor asChild>
+                    <div
+                      aria-hidden
+                      style={{
+                        position: "fixed",
+                        top: openAnchor?.top ?? -9999,
+                        left: openAnchor?.left ?? -9999,
+                        width: openAnchor?.width ?? 0,
+                        height: openAnchor?.height ?? 0,
+                        pointerEvents: "none",
+                      }}
                     />
-                  );
-                })()
+                  </PopoverAnchor>,
+                  document.body,
+                )
               : null}
-          </PopoverContent>
-        </Popover>
+            <PopoverContent
+              side="bottom"
+              align="start"
+              sideOffset={4}
+              alignOffset={0}
+              collisionPadding={16}
+              avoidCollisions
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              className="flex w-[420px] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-xl"
+            >
+              {openAnchor
+                ? (() => {
+                    const commit = commits.find((c) => c.sha === openAnchor.sha);
+                    if (!commit) return null;
+                    return (
+                      <CommitDetail
+                        commit={commit}
+                        filesEntry={openFilesEntry}
+                        remoteWeb={remoteWeb}
+                        onCopySha={copyToClipboard}
+                        onOpenFile={handleFileOpen}
+                        onRetryFiles={() => void fetchFiles(openAnchor.sha)}
+                      />
+                    );
+                  })()
+                : null}
+            </PopoverContent>
+          </Popover>
+        </PortalContainerProvider>
       </div>
     </TooltipProvider>
   );
@@ -801,7 +827,7 @@ const CommitRow = memo(function CommitRow({
             ) : null}
           </span>
         ) : commit.filesChanged === 0 ? (
-          <span className="text-muted-foreground/40">—</span>
+          <span className="text-muted-foreground/40">·</span>
         ) : null}
       </span>
     </button>

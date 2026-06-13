@@ -38,6 +38,16 @@ type PersistedSession = SessionSnapshot & { version: typeof SESSION_VERSION };
 
 export type BootState = SessionSnapshot & { nextId: number };
 
+/** Drop runtime-only per-pane fields (ssh host / remote cwd) before saving: a
+ * restored shell starts local, so a persisted SSH badge would be a lie. */
+function stripLeafRuntime(tree: PaneNode): PaneNode {
+  if (tree.kind === "leaf") {
+    if (tree.sshHost === undefined && tree.remoteCwd === undefined) return tree;
+    return { ...tree, sshHost: undefined, remoteCwd: undefined };
+  }
+  return { ...tree, children: tree.children.map(stripLeafRuntime) };
+}
+
 /** Tab kinds that survive a restart. ai-diff (one-shot approval), git-diff /
  * git-commit-file (stale against a moving repo) and settings (singleton)
  * are intentionally transient. */
@@ -49,7 +59,7 @@ function persistTab(tab: Tab): Tab | null {
         kind: "terminal",
         title: tab.title,
         cwd: tab.cwd,
-        paneTree: tab.paneTree,
+        paneTree: stripLeafRuntime(tab.paneTree),
         activeLeafId: tab.activeLeafId,
         private: tab.private,
         customTitle: tab.customTitle,

@@ -7,7 +7,7 @@ import {
 } from "@/settings/lib/searchIndex";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   onSelect: (entry: SettingsSearchEntry) => void;
@@ -19,12 +19,10 @@ export function SettingsSearch({ onSelect }: Props) {
   const [active, setActive] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  const results = useMemo(() => searchSettings(query), [query]);
-
-  // Reset highlight to the top result whenever the list changes.
-  useEffect(() => {
-    setActive(0);
-  }, [results]);
+  // Defer the searched query so rapid typing stays responsive: the input
+  // updates immediately while ranking runs in a non-blocking transition.
+  const deferredQuery = useDeferredValue(query);
+  const results = useMemo(() => searchSettings(deferredQuery), [deferredQuery]);
 
   // Close the dropdown when clicking outside the search box.
   useEffect(() => {
@@ -84,7 +82,10 @@ export function SettingsSearch({ onSelect }: Props) {
         placeholder="Search settings…"
         spellCheck={false}
         onChange={(e) => {
+          // Reset the highlight to the top match as the query changes, set
+          // together with the query so there is no stale-highlight frame.
           setQuery(e.target.value);
+          setActive(0);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}

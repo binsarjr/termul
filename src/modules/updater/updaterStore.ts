@@ -46,13 +46,20 @@ function isNewer(remote: string, current: string): boolean {
   return false;
 }
 
-async function checkLinuxRelease(): Promise<ManualUpdateInfo | null> {
-  const [current, res] = await Promise.all([
-    getVersion(),
-    fetch(GITHUB_LATEST_RELEASE, {
-      headers: { Accept: "application/vnd.github+json" },
-    }),
-  ]);
+interface LatestRelease {
+  version: string;
+  body: string;
+  releaseUrl: string;
+}
+
+/** The newest published GitHub release, the source of truth for "what's the
+ * latest version" on every platform. Unlike a cached check or a lagging update
+ * manifest, this can't get stuck a version behind, so a recheck always sees the
+ * truly-latest tag. Throws on a failed fetch so the caller can surface it. */
+async function fetchLatestRelease(): Promise<LatestRelease> {
+  const res = await fetch(GITHUB_LATEST_RELEASE, {
+    headers: { Accept: "application/vnd.github+json" },
+  });
   if (!res.ok) {
     throw new Error(`GitHub API ${res.status}`);
   }
@@ -61,11 +68,8 @@ async function checkLinuxRelease(): Promise<ManualUpdateInfo | null> {
     body?: string;
     html_url: string;
   };
-  const remote = data.tag_name.replace(/^v/, "");
-  if (!isNewer(remote, current)) return null;
   return {
-    version: remote,
-    currentVersion: current,
+    version: data.tag_name.replace(/^v/, ""),
     body: data.body ?? "",
     releaseUrl: data.html_url,
   };
@@ -115,22 +119,41 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     }
     set({ status: { kind: "checking" } });
     try {
-      if (IS_LINUX) {
-        const info = await checkLinuxRelease();
-        if (info) {
-          set({ status: { kind: "manual-available", info }, dialogOpen: true });
-        } else {
-          localStorage.setItem(LAST_CHECK_KEY, String(Date.now()));
-          set({ status: { kind: "uptodate" } });
-        }
-        return;
-      }
-      const update = await checkUpdate();
-      if (update) {
-        set({ status: { kind: "available", update }, dialogOpen: true });
-      } else {
+      const current = await getVersion();
+      // The published GitHub release is authoritative for the newest version on
+      // every platform, so a recheck can always supersede a version we surfaced
+      // earlier instead of sticking to the first update it found.
+      const latest = await fetchLatestRelease();
+      if (!isNewer(latest.version, current)) {
         localStorage.setItem(LAST_CHECK_KEY, String(Date.now()));
         set({ status: { kind: "uptodate" } });
+        return;
+      }
+      const info: ManualUpdateInfo = {
+        version: latest.version,
+        currentVersion: current,
+        body: latest.body,
+        releaseUrl: latest.releaseUrl,
+      };
+      // Linux ships no in-app updater, so always hand off to the package manager.
+      if (IS_LINUX) {
+        set({ status: { kind: "manual-available", info }, dialogOpen: true });
+        return;
+      }
+      // macOS / Windows: prefer the Tauri updater for one-click install, but
+      // only when its manifest already advertises the newest release. If the
+      // manifest lags behind the freshly-published tag (or the plugin errors),
+      // fall back to a manual download so we never surface a stale version.
+      let update: Update | null = null;
+      try {
+        update = await checkUpdate();
+      } catch {
+        update = null;
+      }
+      if (update && !isNewer(latest.version, update.version)) {
+        set({ status: { kind: "available", update }, dialogOpen: true });
+      } else {
+        set({ status: { kind: "manual-available", info }, dialogOpen: true });
       }
     } catch (err) {
       set({ status: { kind: "error", message: String(err) } });

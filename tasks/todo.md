@@ -1,79 +1,60 @@
-# Drag-drop → auto-upload to SSH host — 2026-06-12
+# Plan: optional left/vertical tab bar (top | left)
 
-Goal: when a file is dropped onto a pane that is currently SSHed into a host,
-upload it to `~/.termul-uploads/` on that host (reusing the explorer's
-ControlMaster — no re-auth) and insert the **remote** absolute path at the
-prompt, so a remote `claude` can read it. Non-SSH panes keep today's behavior
-(insert the local path). Paste-image is a later phase.
+Decision (from user): add an optional vertical tab bar on the LEFT (leftmost,
+to the left of the sidebar), chosen via Settings. Resizable column, icon + full
+name (Warp-like), default ~180px, clip long names (column is resizable 140-320).
+NO keyboard shortcut changes in this task (deferred; user still unsure on Cmd+B
+target). Default stays "top" so nothing changes for existing users.
 
-Decisions (locked by user):
-- Destination: remote temp dir `${TMPDIR:-/tmp}/termul-uploads` (OS-appropriate;
-  resolved + mkdir'd in one remote exec). [updated 2026-06-12 from ~/.termul-uploads]
-- Transfer: `scp` over the existing ControlMaster socket (`-o ControlPath=`).
-- UX: automatic, with a sonner toast (loading → success/error).
-- Scope now: drag-drop only. Paste deferred.
+Approach (vetted by design workflow): ONE orientation-aware TabBar (single source
+of truth). Do NOT set Radix Tabs Root orientation="vertical" (it injects unwanted
+variant styles and flips arrow-key roving focus). Mount the column as a SIBLING
+ResizablePanel inside the EXISTING horizontal ResizablePanelGroup, before the
+sidebar, with its own zoom-aware divider mirroring the sidebar's.
 
-## Phase 1 — Rust backend (3 files)
-- [x] `ssh/ops.rs`: `upload_file(state, host, local_path) -> remote_abs_path`
-      + `sanitize_upload_name` + 4 unit tests
-- [x] `ssh/mod.rs`: `#[tauri::command] ssh_upload_file`
-- [x] `lib.rs`: registered `ssh::ssh_upload_file`
+## Phase 1: preference plumbing + settings UI (no layout change)
+- [ ] store.ts: add `TabBarPositionPref = "top" | "left"`; Preferences field
+      `tabBarPosition`; KEY const; DEFAULT "top"; loadPreferences entry; setter
+      `setTabBarPosition`; onPreferencesChange map entry. (preferences.ts hydrates
+      generically, no edit.)
+- [ ] GeneralSection.tsx: in the existing "Tabs" group, add a SettingRow with a
+      Select (Top | Left), mirroring the Letter-spacing Select pattern.
+- [ ] Verify: tsc + vitest. Chooser renders; nothing reacts yet.
 
-## Phase 2 — Frontend (2 files)
-- [x] `useTerminalSession.ts`: `sshHostForSession(leafId)` export
-- [x] `useTerminalFileDrop.ts`: raw paths threaded; SSH branch →
-      `uploadDroppedFiles` (sequential invoke + sonner toast + remote insert)
+## Phase 2: make TabBar orientation-aware (single component)
+- [ ] TabBar.tsx: add `orientation?: "horizontal" | "vertical"` (default horizontal).
+      - dropTargetAt + 4px threshold become axis-aware (Y for vertical), keep
+        place "before"/"after" so onReorder/reorderTab are untouched.
+      - outer/inner container: vertical = overflow-y-auto + flex-col w-full
+        items-stretch; horizontal = unchanged.
+      - gate the wheel-to-horizontal effect on horizontal.
+      - drop indicator: vertical = horizontal bar top/bottom; horizontal = unchanged.
+      - extract NewTabMenu; vertical pins it as a header above the scroll area;
+        horizontal keeps it trailing.
+      - vertical label: truncate at column width.
+      - do NOT touch the Radix Tabs Root orientation.
+- [ ] Verify: tsc + vitest. Top mode byte-for-byte unchanged (default horizontal).
 
-## Phase 3 — Verify
-- [x] `useTerminalFileDrop.test.ts`: +`paths` in drop assertions, +raw-paths case
-- [x] `cargo check` + `cargo clippy --lib` clean
-- [x] `tsc --noEmit` clean, `vitest run` 389/389
-- [x] `vite build` OK; modulepreload still 5 chunks (react/xterm/utils/radix/motion)
-- [x] `cargo test --lib upload_tests` 4/4
-- [ ] (manual, later) `pnpm tauri dev`: drop image while SSHed → toast → remote
-      path inserted → `claude` reads it
+## Phase 3: mount resizable left column + gate Header
+- [ ] App.tsx: TABCOL_* constants + clamp/sanitize/read helpers + tabColumnRef +
+      width ref + persist + cleanup + handleTabColumnResizeStart (mirror sidebar).
+      When position==="left", render the tab-column ResizablePanel + zoom-aware
+      divider as the first siblings in the existing group; mount
+      `<TabBar orientation="vertical" .../>`.
+- [ ] Header.tsx: add `tabBarPosition` prop; render the in-header TabBar block only
+      when "top"; when "left" keep just the trailing drag spacer.
+- [ ] Verify: tsc + vitest + vite build; eyeball in tauri dev at zoom 0.5/1/2,
+      drag-reorder, resize divider, persistence, new-tab menu pinned.
 
-## Phase 4 — Paste-image backend (4 files) ✅
-- [x] `Cargo.toml`: `base64 = "0.22"` (resolved to locked 0.22.1)
-- [x] `modules/mod.rs`: `pub mod paste;`
-- [x] `modules/paste.rs`: `materialize_paste_image` + `sanitize_ext` + 2 unit tests
-- [x] `lib.rs`: `paste` in `use`, `paste::materialize_paste_image` registered
+## Pitfalls (from workflow, to honor)
+- Radix orientation trap -> keep Root horizontal.
+- CSS zoom hit-testing -> copy sidebar divide-by-zoom + Math.round(10/zoom) handle.
+- Drag axis -> clientY for vertical; indicator top/bottom.
+- Vertical scroll -> gate wheel handler; plain overflow-y-auto.
+- New-tab/group controls -> NewTabMenu pinned header in vertical.
+- Width key -> termul:tab-column.width (unused); reuse sanitize/clamp guards.
+- Don't break top mode -> defaults keep current behavior.
+- Header drag region -> keep the flex-1 spacer when TabBar hidden.
 
-## Phase 5 — Paste-image frontend (4 files) ✅
-- [x] `remoteUpload.ts` (new): `quotePathsForShell`, `uploadDroppedPaths`,
-      `pasteImage` — no session import (acyclic). Consolidated drop+paste upload UX.
-- [x] `useTerminalFileDrop.ts`: now uses `uploadDroppedPaths`; `formatDropPaths`
-      delegates to `quotePathsForShell`; dropped the duplicated helper block.
-- [x] `rendererPool.ts`: `LeafBridge.handlePasteImage?`; capture-phase `paste`
-      listener on slot `host` (image-only preventDefault; text paste untouched).
-- [x] `useTerminalSession.ts`: bridge `handlePasteImage` → `pasteImage({host:
-      s.sshHost, blob, mime})` → `s.pty.write(path + " ")`.
-
-## Phase 6 — Verify paste ✅
-- [x] `cargo check`/`clippy --lib` clean, `cargo test paste` 2/2
-- [x] `tsc` OK, `vitest` 389/389, `vite build` OK; modulepreload still 5 chunks
-- [ ] (manual) `pnpm tauri dev`: Cmd+V image while SSHed → upload → remote path;
-      local pane → local temp path; text paste still normal
-
-### Review (paste)
-- Interception via a capture-phase `paste` listener on the slot host — fires
-  before xterm's textarea handler, only claims the event when an image is present,
-  so text paste is completely unaffected. Decoupled from sessions via the new
-  optional `LeafBridge.handlePasteImage` (no circular import).
-- Upload UX consolidated into `remoteUpload.ts`; drop + paste now share one path.
-- Image bytes cross IPC as base64 (simple/confident vs Tauri binary-channel
-  guesswork). Fine for screenshots; very large pastes pay a ~33% wire overhead.
-- Still needs a real GUI run to confirm WKWebView populates `clipboardData.items`
-  with the image on macOS Cmd+V (high-confidence, but unverified at runtime).
-
-### Known limitations (documented, not bugs)
-- SSH detection is heuristic (typed `ssh user@host`); alias/mosh/nested-ssh not
-  detected → falls back to local-path insert.
-- Upload ControlMaster re-auths (BatchMode); passphrase key not in ssh-agent
-  fails even if the interactive terminal ssh succeeded.
-- Folders rejected (no `-r`); same-name re-upload overwrites in the scratch dir.
-- Non-ASCII/space filenames are sanitized to `_` for scp-mode-independence.
-- Windows client → remote (scp drive-letter parsing) untested; user is macOS.
-
-### Review
+## Review
 (to fill after implementation)

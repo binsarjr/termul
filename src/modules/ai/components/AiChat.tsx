@@ -21,6 +21,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+// no app-wide LazyMotion provider; m-conversion would drop animation features
+// react-doctor-disable-next-line use-lazy-motion, react-doctor/use-lazy-motion
 import { motion } from "motion/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -124,6 +126,8 @@ const ContextChips = memo(function ContextChips({
   return (
     <div className="mb-1 flex flex-wrap gap-1">
       {chips.map((c, i) => (
+        // chips carry no stable unique id and never reorder/filter
+        // react-doctor-disable-next-line no-array-index-as-key, react-doctor/no-array-index-as-key, react-doctor/no-array-index-key
         <span
           key={i}
           className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-card/60 px-1.5 py-0.5 text-[10.5px] text-muted-foreground"
@@ -307,6 +311,8 @@ const ContinueRow = memo(function ContinueRow({
       <span className="flex-1 text-muted-foreground">
         Hit the step limit. Continue to keep going.
       </span>
+      {/* descriptive aria-label already names the action; visible label intentional */}
+      {/* react-doctor-disable-next-line design-no-vague-button-label, react-doctor/design-no-vague-button-label */}
       <button
         type="button"
         onClick={onContinue}

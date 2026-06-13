@@ -3,6 +3,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { PortalContainerProvider } from "@/components/ui/portal-container"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon } from "@hugeicons/core-free-icons"
 
@@ -65,7 +66,9 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
+        {/* The dialog portals to body (zoom 1), so overlays inside it must too,
+         * even when the dialog is mounted within the zoomed `.zoom-content`. */}
+        <PortalContainerProvider container={null}>{children}</PortalContainerProvider>
         {showCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button

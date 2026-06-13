@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  findLeafCwd,
+  findLeafNode,
   hasLeaf,
   leafIds,
   nextLeafId,
   removeLeaf,
   setLeafCwd as setLeafCwdInTree,
+  setLeafRemoteCwd as setLeafRemoteCwdInTree,
+  setLeafSshHost as setLeafSshHostInTree,
   siblingLeafOf,
   splitLeaf,
   type PaneNode,
@@ -175,6 +177,23 @@ export type TabPatch = Partial<{
 function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : path;
+}
+
+/** The display fields a terminal tab should show for a given (now-active) leaf:
+ * the pane's cwd (falling back to the tab's last cwd) plus its per-pane remote
+ * cwd / ssh host, so the label and SSH badge follow the focused pane. Remote
+ * fields are undefined when the pane is local, which clears a stale badge. */
+function leafDisplay(
+  tree: PaneNode,
+  leafId: number,
+  fallbackCwd?: string,
+): { cwd?: string; remoteCwd?: string; sshHost?: string } {
+  const leaf = findLeafNode(tree, leafId);
+  return {
+    cwd: leaf?.cwd ?? fallbackCwd,
+    remoteCwd: leaf?.remoteCwd,
+    sshHost: leaf?.sshHost,
+  };
 }
 
 /** Returns a new array with the element at `from` moved to index `to`.
@@ -834,15 +853,15 @@ export function useTabs(initial?: Partial<TerminalTab>) {
       setTabs((curr) => {
         let changed = false;
         const next = curr.map((t) => {
-          if (
-            t.kind !== "terminal" ||
-            t.activeLeafId !== leafId ||
-            !hasLeaf(t.paneTree, leafId)
-          )
-            return t;
-          if (t.remoteCwd === nextRemote) return t;
+          if (t.kind !== "terminal" || !hasLeaf(t.paneTree, leafId)) return t;
+          // Store per pane so a background pane keeps its remote cwd; mirror to
+          // the tab only when that pane is the focused one.
+          const paneTree = setLeafRemoteCwdInTree(t.paneTree, leafId, nextRemote);
+          const tabChanged =
+            t.activeLeafId === leafId && t.remoteCwd !== nextRemote;
+          if (paneTree === t.paneTree && !tabChanged) return t;
           changed = true;
-          return { ...t, remoteCwd: nextRemote };
+          return { ...t, paneTree, ...(tabChanged && { remoteCwd: nextRemote }) };
         });
         return changed ? next : curr;
       });
@@ -860,15 +879,15 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     setTabs((curr) => {
       let changed = false;
       const next = curr.map((t) => {
-        if (
-          t.kind !== "terminal" ||
-          t.activeLeafId !== leafId ||
-          !hasLeaf(t.paneTree, leafId)
-        )
-          return t;
-        if (t.sshHost === nextHost) return t;
+        if (t.kind !== "terminal" || !hasLeaf(t.paneTree, leafId)) return t;
+        // Store per pane so each pane remembers its own ssh session; mirror to
+        // the tab (label + badge) only when that pane is the focused one.
+        const paneTree = setLeafSshHostInTree(t.paneTree, leafId, nextHost);
+        const tabChanged =
+          t.activeLeafId === leafId && t.sshHost !== nextHost;
+        if (paneTree === t.paneTree && !tabChanged) return t;
         changed = true;
-        return { ...t, sshHost: nextHost };
+        return { ...t, paneTree, ...(tabChanged && { sshHost: nextHost }) };
       });
       return changed ? next : curr;
     });
@@ -895,11 +914,10 @@ export function useTabs(initial?: Partial<TerminalTab>) {
         if (t.id !== tabId || t.kind !== "terminal") return t;
         if (!hasLeaf(t.paneTree, leafId)) return t;
         if (t.activeLeafId === leafId) return t;
-        const cwd = findLeafCwd(t.paneTree, leafId);
         return {
           ...t,
           activeLeafId: leafId,
-          ...(cwd !== undefined && { cwd }),
+          ...leafDisplay(t.paneTree, leafId, t.cwd),
         };
       }),
     );
@@ -911,8 +929,11 @@ export function useTabs(initial?: Partial<TerminalTab>) {
         if (t.id !== tabId || t.kind !== "terminal") return t;
         const next = nextLeafId(t.paneTree, t.activeLeafId, delta);
         if (next === t.activeLeafId) return t;
-        const cwd = findLeafCwd(t.paneTree, next);
-        return { ...t, activeLeafId: next, ...(cwd !== undefined && { cwd }) };
+        return {
+          ...t,
+          activeLeafId: next,
+          ...leafDisplay(t.paneTree, next, t.cwd),
+        };
       }),
     );
   }, []);
@@ -936,7 +957,12 @@ export function useTabs(initial?: Partial<TerminalTab>) {
             dir,
             t.cwd,
           );
-          return { ...t, paneTree, activeLeafId: leafId };
+          return {
+            ...t,
+            paneTree,
+            activeLeafId: leafId,
+            ...leafDisplay(paneTree, leafId, t.cwd),
+          };
         }),
       );
       return newLeafId;
@@ -971,7 +997,12 @@ export function useTabs(initial?: Partial<TerminalTab>) {
       didRemove = true;
       return curr.map((x) =>
         x.id === tab.id
-          ? { ...x, paneTree: newTree, activeLeafId: newActive }
+          ? {
+              ...x,
+              paneTree: newTree,
+              activeLeafId: newActive,
+              ...leafDisplay(newTree, newActive, tab.cwd),
+            }
           : x,
       );
     });
@@ -1004,7 +1035,12 @@ export function useTabs(initial?: Partial<TerminalTab>) {
       removedLeaf = target;
       return curr.map((x) =>
         x.id === tabId
-          ? { ...x, paneTree: newTree, activeLeafId: newActive }
+          ? {
+              ...x,
+              paneTree: newTree,
+              activeLeafId: newActive,
+              ...leafDisplay(newTree, newActive, t.cwd),
+            }
           : x,
       );
     });

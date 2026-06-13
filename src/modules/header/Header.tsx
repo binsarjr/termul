@@ -94,6 +94,9 @@ export const Header = memo(function Header({
   const rootRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const userShortcuts = usePreferencesStore((s) => s.shortcuts);
+  // When tabs live in the left column, the header drops its own tab strip and
+  // keeps only the trailing drag spacer so search and window controls hold.
+  const tabBarPosition = usePreferencesStore((s) => s.tabBarPosition);
 
   const tokensFor = (id: ShortcutId): string => {
     const s = SHORTCUTS.find((s) => s.id === id);
@@ -113,6 +116,8 @@ export const Header = memo(function Header({
       const w = entries[0]?.contentRect.width ?? 0;
       setCompact(w < COMPACT_WIDTH);
     });
+    // measured DOM width is only known post-layout, so it cannot seed useState; this reacts to live resizes
+    // react-doctor-disable-next-line no-initialize-state, react-doctor/no-initialize-state
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -204,22 +209,24 @@ export const Header = memo(function Header({
         className="flex min-w-0 flex-1 items-center gap-2"
         data-tauri-drag-region
       >
-        <TabBar
-          tabs={tabs}
-          activeId={activeId}
-          onSelect={onSelect}
-          onNew={onNew}
-          onNewPrivate={onNewPrivate}
-          onNewEditor={onNewEditor}
-          onNewGitGraph={onNewGitGraph}
-          onClose={onClose}
-          onPin={onPin}
-          onRename={onRename}
-          onToggleSpill={onToggleSpill}
-          onReorder={onReorder}
-          groupControls={groupControls}
-          compact={compact}
-        />
+        {tabBarPosition === "top" && (
+          <TabBar
+            tabs={tabs}
+            activeId={activeId}
+            onSelect={onSelect}
+            onNew={onNew}
+            onNewPrivate={onNewPrivate}
+            onNewEditor={onNewEditor}
+            onNewGitGraph={onNewGitGraph}
+            onClose={onClose}
+            onPin={onPin}
+            onRename={onRename}
+            onToggleSpill={onToggleSpill}
+            onReorder={onReorder}
+            groupControls={groupControls}
+            compact={compact}
+          />
+        )}
         <div data-tauri-drag-region className="h-full min-w-2 flex-1" />
       </div>
 
