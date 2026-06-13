@@ -2035,7 +2035,10 @@ export default function App() {
           />
 
           <main className="zoom-content flex min-h-0 flex-1 flex-col">
-            <PortalContainerProvider container={zoomPortalContainer}>
+            <PortalContainerProvider
+              container={zoomPortalContainer}
+              zoom={sidebarZoom}
+            >
               {/* display:contents so it adds zero layout/paint/stacking: Radix
                * appends position:fixed overlays here, inside the zoom layer. */}
               <div ref={setZoomPortalContainer} className="contents" />
