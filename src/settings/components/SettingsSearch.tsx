@@ -24,6 +24,19 @@ export function SettingsSearch({ onSelect }: Props) {
   const deferredQuery = useDeferredValue(query);
   const results = useMemo(() => searchSettings(deferredQuery), [deferredQuery]);
 
+  // Keep the highlight in range whenever the result list changes — done during
+  // render (not in the keystroke handler) so a list that shrinks under us, e.g.
+  // when the deferred query catches up after arrow-navigation, can't leave
+  // `active` past the end (which loses the highlight and makes Enter a no-op).
+  // prevResults IS read in the render body below; the rule only scans the JSX
+  // return, so it misfires. useRef would defer the reset by a frame and break it.
+  // react-doctor-disable-next-line react-doctor/rerender-state-only-in-handlers
+  const [prevResults, setPrevResults] = useState(results);
+  if (results !== prevResults) {
+    setPrevResults(results);
+    setActive(0);
+  }
+
   // Close the dropdown when clicking outside the search box.
   useEffect(() => {
     if (!open) return;
@@ -82,10 +95,7 @@ export function SettingsSearch({ onSelect }: Props) {
         placeholder="Search settings…"
         spellCheck={false}
         onChange={(e) => {
-          // Reset the highlight to the top match as the query changes, set
-          // together with the query so there is no stale-highlight frame.
           setQuery(e.target.value);
-          setActive(0);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}

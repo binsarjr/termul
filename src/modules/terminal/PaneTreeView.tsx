@@ -79,10 +79,16 @@ function SplitResizeHandle({
   };
 
   // Hold a constant ~10px on-screen hit width so the divider stays grabbable at
-  // any zoom; the visible line stays thin via the ::after pseudo-element.
+  // any zoom; the visible line stays thin via the inner element.
   const thickness = Math.round(10 / zoom);
+  // A native <hr> collapses to zero in the panel flexbox under WKWebView — no
+  // visible line and no pointer target, so both the divider and its drag die.
+  // role="separator" on a real div is the valid WAI-ARIA splitter pattern and
+  // lays out / hit-tests reliably.
   return (
-    <hr
+    // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
+    <div
+      role="separator"
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       aria-label="Resize panes"
       tabIndex={-1}
@@ -91,13 +97,17 @@ function SplitResizeHandle({
         horizontal ? { width: `${thickness}px` } : { height: `${thickness}px` }
       }
       className={cn(
-        "relative z-20 m-0 shrink-0 touch-none select-none border-0 bg-transparent p-0",
-        "after:pointer-events-none after:absolute after:bg-border/60 after:transition-colors after:content-[''] hover:after:bg-primary",
-        horizontal
-          ? "cursor-col-resize after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2"
-          : "cursor-row-resize after:inset-x-0 after:top-1/2 after:h-px after:-translate-y-1/2",
+        "group relative z-20 flex shrink-0 touch-none select-none items-center justify-center bg-transparent",
+        horizontal ? "cursor-col-resize" : "cursor-row-resize",
       )}
-    />
+    >
+      <div
+        className={cn(
+          "pointer-events-none bg-border/60 transition-colors group-hover:bg-primary",
+          horizontal ? "h-full w-px" : "h-px w-full",
+        )}
+      />
+    </div>
   );
 }
 
