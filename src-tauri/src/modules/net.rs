@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -22,9 +22,13 @@ const HEADER_BLOCKLIST: &[&str] = &[
 ];
 
 fn is_blocked_host_name(host: &str) -> bool {
+    // Absolute FQDNs ("metadata.google.internal.") are valid and resolve the
+    // same; strip a single trailing dot so the exact-match below can't be
+    // sidestepped by appending one.
     let host = host.to_ascii_lowercase();
+    let host = host.strip_suffix('.').unwrap_or(&host);
     matches!(
-        host.as_str(),
+        host,
         "metadata.google.internal" | "metadata" | "metadata.azure.com"
     )
 }
@@ -52,11 +56,27 @@ fn ip_kind(ip: IpAddr) -> IpKind {
             IpKind::Public
         }
         IpAddr::V6(v) => {
+            // Defeat embedded-IPv4 disguises: ::ffff:169.254.169.254 and the
+            // NAT64 well-known prefix both carry a v4 address that would
+            // otherwise fall through to Public. Reclassify by the inner v4 so a
+            // mapped metadata/private/loopback host can't masquerade as public.
+            if let Some(v4) = v.to_ipv4_mapped() {
+                return ip_kind(IpAddr::V4(v4));
+            }
+            let segs = v.segments();
+            if segs[0] == 0x0064 && segs[1] == 0xff9b && segs[2..6] == [0, 0, 0, 0] {
+                let v4 = Ipv4Addr::new(
+                    (segs[6] >> 8) as u8,
+                    (segs[6] & 0xff) as u8,
+                    (segs[7] >> 8) as u8,
+                    (segs[7] & 0xff) as u8,
+                );
+                return ip_kind(IpAddr::V4(v4));
+            }
             if v.is_loopback() || v.is_unspecified() || v.is_multicast() {
                 return IpKind::Loopback;
             }
             // Cloud metadata IPv6 (AWS): fd00:ec2::254
-            let segs = v.segments();
             if segs[0] == 0xfd00 && segs[1] == 0xec2 {
                 return IpKind::BlockedMetadata;
             }
@@ -427,6 +447,57 @@ mod tests {
             ip_kind("fe80::1".parse().unwrap()),
             IpKind::BlockedMetadata
         );
+    }
+
+    #[test]
+    fn ipv4_mapped_and_nat64_cannot_disguise_metadata() {
+        // ::ffff:169.254.169.254 — IPv4-mapped metadata literal must resolve to
+        // the embedded v4 (link-local) and stay blocked, not fall through to Public.
+        assert_eq!(
+            ip_kind("::ffff:169.254.169.254".parse().unwrap()),
+            IpKind::BlockedMetadata
+        );
+        // NAT64 well-known prefix 64:ff9b::/96 embedding the same metadata v4.
+        assert_eq!(
+            ip_kind("64:ff9b::a9fe:a9fe".parse().unwrap()),
+            IpKind::BlockedMetadata
+        );
+        // Mapped loopback / private must reclassify by the inner v4.
+        assert_eq!(
+            ip_kind("::ffff:127.0.0.1".parse().unwrap()),
+            IpKind::Loopback
+        );
+        assert_eq!(
+            ip_kind("::ffff:10.0.0.1".parse().unwrap()),
+            IpKind::Private
+        );
+        // A mapped public address stays public (no false positive).
+        assert_eq!(
+            ip_kind("::ffff:8.8.8.8".parse().unwrap()),
+            IpKind::Public
+        );
+    }
+
+    #[test]
+    fn ipv6_ula_classified_private_after_metadata() {
+        // Generic fc00::/7 unique-local addresses are private...
+        assert_eq!(ip_kind("fc00::1".parse().unwrap()), IpKind::Private);
+        assert_eq!(
+            ip_kind("fd12:3456:789a::1".parse().unwrap()),
+            IpKind::Private
+        );
+        // ...but the AWS fd00:ec2::/32 metadata prefix is matched first and stays
+        // blocked even though it is also inside fc00::/7. Ordering is load-bearing.
+        assert_eq!(
+            ip_kind("fd00:ec2::254".parse().unwrap()),
+            IpKind::BlockedMetadata
+        );
+    }
+
+    #[test]
+    fn trailing_dot_fqdn_does_not_bypass_metadata_name_block() {
+        assert!(validate_url("http://metadata.google.internal./", true).is_err());
+        assert!(validate_url("http://metadata./", true).is_err());
     }
 
     #[test]
