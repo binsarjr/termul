@@ -17,6 +17,8 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 
 export type ThemePref = "system" | "light" | "dark";
 
+export type TabBarPositionPref = "top" | "left";
+
 export const DEFAULT_THEME_ID = "termul-default";
 
 export type BackgroundKind = "none" | "image";
@@ -99,6 +101,9 @@ export type Preferences = {
   /** Truncate long tab titles with an ellipsis. Off shows the full name and
    * lets the tab strip scroll horizontally. */
   truncateTabTitles: boolean;
+  /** Where the tab bar lives: across the top (default) or as a resizable left
+   * column to the left of the sidebar. */
+  tabBarPosition: TabBarPositionPref;
 };
 
 const STORE_PATH = "termul-settings.json";
@@ -152,6 +157,7 @@ const KEY_DIM_INACTIVE_PANES = "dimInactivePanes";
 const KEY_TAB_TITLE_FROM_ACTIVE_PANE = "tabTitleFromActivePane";
 const KEY_TAB_SSH_BADGE = "tabSshBadge";
 const KEY_TRUNCATE_TAB_TITLES = "truncateTabTitles";
+const KEY_TAB_BAR_POSITION = "tabBarPosition";
 
 const TERMINAL_FONT_SIZE_DEFAULT = 14;
 const TERMINAL_FONT_SIZE_MIN = 8;
@@ -224,6 +230,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   tabTitleFromActivePane: true,
   tabSshBadge: true,
   truncateTabTitles: false,
+  tabBarPosition: "top",
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -390,6 +397,9 @@ export async function loadPreferences(): Promise<Preferences> {
     truncateTabTitles:
       get<boolean>(KEY_TRUNCATE_TAB_TITLES) ??
       DEFAULT_PREFERENCES.truncateTabTitles,
+    tabBarPosition:
+      get<TabBarPositionPref>(KEY_TAB_BAR_POSITION) ??
+      DEFAULT_PREFERENCES.tabBarPosition,
   };
 }
 
@@ -618,6 +628,12 @@ export async function setTruncateTabTitles(value: boolean): Promise<void> {
   await writePref(KEY_TRUNCATE_TAB_TITLES, value);
 }
 
+export async function setTabBarPosition(
+  value: TabBarPositionPref,
+): Promise<void> {
+  await writePref(KEY_TAB_BAR_POSITION, value);
+}
+
 
 export async function setHistoryAutocomplete(value: boolean): Promise<void> {
   await writePref(KEY_HISTORY_AUTOCOMPLETE, value);
@@ -710,6 +726,7 @@ export async function onPreferencesChange(
     [KEY_TAB_TITLE_FROM_ACTIVE_PANE]: "tabTitleFromActivePane",
     [KEY_TAB_SSH_BADGE]: "tabSshBadge",
     [KEY_TRUNCATE_TAB_TITLES]: "truncateTabTitles",
+    [KEY_TAB_BAR_POSITION]: "tabBarPosition",
   };
   // Same-process writes still fire onChange immediately; cross-window writes
   // arrive via the Tauri event emitted by writePref().

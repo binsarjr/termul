@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import type { ThemePref } from "@/modules/settings/store";
+import type { TabBarPositionPref, ThemePref } from "@/modules/settings/store";
 import {
   MAX_PANES_PER_TAB_MAX,
   MAX_PANES_PER_TAB_MIN,
@@ -38,6 +38,7 @@ import {
   setDropHibernatedOutput,
   setTerminalScrollback,
   setTerminalWebglEnabled,
+  setTabBarPosition,
   setTabSshBadge,
   setTabTitleFromActivePane,
   setTruncateTabTitles,
@@ -116,6 +117,7 @@ export function GeneralSection() {
   );
   const tabSshBadge = usePreferencesStore((s) => s.tabSshBadge);
   const truncateTabTitles = usePreferencesStore((s) => s.truncateTabTitles);
+  const tabBarPosition = usePreferencesStore((s) => s.tabBarPosition);
   const zoomLevel = usePreferencesStore((s) => s.zoomLevel);
   const agentNotifications = usePreferencesStore((s) => s.agentNotifications);
 
@@ -414,6 +416,27 @@ export function GeneralSection() {
             checked={truncateTabTitles}
             onCheckedChange={(v) => void setTruncateTabTitles(v)}
           />
+        </SettingRow>
+        <SettingRow
+          title="Tab bar position"
+          description="Show tabs across the top or as a resizable column to the left of the sidebar."
+        >
+          <Select
+            value={tabBarPosition}
+            onValueChange={(v) => void setTabBarPosition(v as TabBarPositionPref)}
+          >
+            <SelectTrigger size="sm" className="h-8 w-28 text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="top" className="text-[12px]">
+                Top
+              </SelectItem>
+              <SelectItem value="left" className="text-[12px]">
+                Left
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </SettingRow>
       </div>
 

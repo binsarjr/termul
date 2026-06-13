@@ -101,6 +101,7 @@ import {
 import { StatusBar } from "@/modules/statusbar";
 import {
   remoteHostOf,
+  TabBar,
   type TabGroupControls,
   TabSearch,
   useTabs,
@@ -222,6 +223,32 @@ function readSidebarWidth(): number {
       : SIDEBAR_DEFAULT_WIDTH;
   } catch {
     return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
+
+// The vertical (left) tab column mirrors the sidebar's zoom-aware sizing: bounds
+// are ON-SCREEN px so the column stays the same size at any zoom, with the same
+// loose layout-px guard against a corrupted stored value.
+const TABCOL_DEFAULT_WIDTH = 180;
+const TABCOL_MIN_WIDTH = 140;
+const TABCOL_MAX_WIDTH = 320;
+const TABCOL_WIDTH_STORAGE_KEY = "termul:tab-column.width";
+
+function clampTabColumnVisual(layoutWidth: number, zoom: number): number {
+  const visual = layoutWidth * zoom;
+  const clamped = Math.min(TABCOL_MAX_WIDTH, Math.max(TABCOL_MIN_WIDTH, visual));
+  return Math.round(clamped / zoom);
+}
+
+function readTabColumnWidth(): number {
+  try {
+    const stored = window.localStorage.getItem(TABCOL_WIDTH_STORAGE_KEY);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    return Number.isFinite(parsed)
+      ? sanitizeSidebarLayoutWidth(parsed)
+      : TABCOL_DEFAULT_WIDTH;
+  } catch {
+    return TABCOL_DEFAULT_WIDTH;
   }
 }
 
@@ -462,6 +489,74 @@ export default function App() {
       el.addEventListener("pointerup", onUp);
     },
     [sidebarWidthRef],
+  );
+
+  const tabBarPosition = usePreferencesStore((s) => s.tabBarPosition);
+  const tabColumnRef = useRef<PanelImperativeHandle | null>(null);
+  const tabColumnWidthRef = useLazyRef(() => readTabColumnWidth());
+  const tabColumnWidthWriteTimerRef = useRef(0);
+  const persistTabColumnWidth = useCallback((next: number) => {
+    tabColumnWidthRef.current = next;
+    if (tabColumnWidthWriteTimerRef.current) {
+      window.clearTimeout(tabColumnWidthWriteTimerRef.current);
+    }
+    tabColumnWidthWriteTimerRef.current = window.setTimeout(() => {
+      tabColumnWidthWriteTimerRef.current = 0;
+      try {
+        window.localStorage.setItem(TABCOL_WIDTH_STORAGE_KEY, String(next));
+      } catch {
+        // ignore
+      }
+    }, 200);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (tabColumnWidthWriteTimerRef.current) {
+        window.clearTimeout(tabColumnWidthWriteTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Mirrors handleSidebarResizeStart: the tab column lives inside `.zoom-content`
+  // too, so the visual drag delta is divided by the CSS zoom to track the cursor.
+  const handleTabColumnResizeStart = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const panel = tabColumnRef.current;
+      if (!panel) return;
+      e.preventDefault();
+      const zoom =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--app-zoom",
+          ),
+        ) || 1;
+      const startX = e.clientX;
+      const startWidth = panel.getSize().inPixels || tabColumnWidthRef.current;
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const prevCursor = document.body.style.cursor;
+      const prevSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (ev: PointerEvent) => {
+        const next = clampTabColumnVisual(
+          startWidth + (ev.clientX - startX) / zoom,
+          zoom,
+        );
+        panel.resize(`${next}px`);
+      };
+      const onUp = () => {
+        el.releasePointerCapture?.(e.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = prevCursor;
+        document.body.style.userSelect = prevSelect;
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    },
+    [tabColumnWidthRef],
   );
 
   const toggleExplorerFocus = useCallback(() => {
@@ -1937,6 +2032,54 @@ export default function App() {
               orientation="horizontal"
               className="min-h-0 flex-1"
             >
+              {tabBarPosition === "left" && (
+                <>
+                  <ResizablePanel
+                    id="tab-column"
+                    panelRef={tabColumnRef}
+                    defaultSize={`${tabColumnWidthRef.current}px`}
+                    minSize={`${Math.round(TABCOL_MIN_WIDTH / sidebarZoom)}px`}
+                    maxSize={`${Math.round(TABCOL_MAX_WIDTH / sidebarZoom)}px`}
+                    onResize={(size) => {
+                      if (size.inPixels > 0) persistTabColumnWidth(size.inPixels);
+                    }}
+                  >
+                    <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
+                      <TabBar
+                        orientation="vertical"
+                        tabs={tabs}
+                        activeId={activeId}
+                        onSelect={setActiveId}
+                        onNew={openNewTab}
+                        onNewPrivate={openNewPrivateTab}
+                        onNewEditor={openNewEditor}
+                        onNewGitGraph={openGitGraphFromContext}
+                        onClose={handleClose}
+                        onPin={pinTab}
+                        onRename={renameTab}
+                        onToggleSpill={setTabSpillToDisk}
+                        onReorder={reorderTab}
+                        groupControls={groupControls}
+                      />
+                    </div>
+                  </ResizablePanel>
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize tab bar"
+                    onPointerDown={handleTabColumnResizeStart}
+                    onDoubleClick={() =>
+                      tabColumnRef.current?.resize(
+                        `${Math.round(TABCOL_DEFAULT_WIDTH / sidebarZoom)}px`,
+                      )
+                    }
+                    style={{ width: `${Math.round(10 / sidebarZoom)}px` }}
+                    className="group relative z-20 flex shrink-0 cursor-col-resize touch-none select-none items-center justify-center bg-transparent"
+                  >
+                    <div className="pointer-events-none h-full w-px bg-border/60 transition-colors group-hover:bg-primary" />
+                  </div>
+                </>
+              )}
               <ResizablePanel
                 id="sidebar"
                 panelRef={sidebarRef}
