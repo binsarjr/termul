@@ -32,6 +32,12 @@ Verify before claiming done: `pnpm exec tsc --noEmit`, `pnpm test`, `cargo clipp
 - **Imports**: always `@/...` on the frontend, never relative across modules.
 - **pnpm only**, never npm/npx/yarn.
 
+## Releases
+
+- **Changelog**: every user-facing change adds an entry under `## [Unreleased]` in `CHANGELOG.md` ([Keep a Changelog](https://keepachangelog.com) format: Added / Changed / Fixed / Security). Internal-only work (refactors, CI, deps) needs no entry.
+- **Cutting a release**: bump the version in `package.json` and `src-tauri/tauri.conf.json` (they must match the tag), rename `## [Unreleased]` to `## [<version>] - <YYYY-MM-DD>`, add a fresh empty `## [Unreleased]` above it, then push a `v<version>` tag. `verify-version` in `release.yml` fails the build when the tag and `tauri.conf.json` disagree.
+- **How notes flow**: `release.yml` extracts the `## [<version>]` section into the GitHub release body, which the Tauri updater serves as the update `notes`. Termul shows them in the update prompt (`UpdaterDialog`) and, on the first launch after updating, in the What's New dialog (`src/modules/changelog`, gated on `getVersion()` vs a stored last-seen version). The bundled `CHANGELOG.md` is the single source.
+
 ## Architecture
 
 ### Two-process model

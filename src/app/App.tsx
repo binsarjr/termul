@@ -133,6 +133,7 @@ import {
   writeThemeFile,
 } from "@/modules/theme/themeFiles";
 import { UpdaterDialog, useUpdaterStore } from "@/modules/updater";
+import { useWhatsNewStore } from "@/modules/changelog/whatsNewStore";
 import {
   currentWorkspaceEnv,
   getWslHome,
@@ -151,6 +152,8 @@ import type { SearchAddon } from "@xterm/addon-search";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import {
   type PointerEvent as ReactPointerEvent,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -279,6 +282,14 @@ const PALETTE_EXCLUDED_SHORTCUTS = new Set<ShortcutId>([
   "editor.undo",
   "editor.redo",
 ]);
+
+// Loaded only when the dialog opens so the markdown renderer (streamdown) stays
+// out of the startup bundle.
+const WhatsNewDialog = lazy(() =>
+  import("@/modules/changelog/WhatsNewDialog").then((m) => ({
+    default: m.WhatsNewDialog,
+  })),
+);
 
 // Structural refactor deferred: splitting App or moving to useReducer is too
 // risky for this behavior-preserving pass.
@@ -1242,6 +1253,13 @@ export default function App() {
     const onFocus = () => void useUpdaterStore.getState().check();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  // Surface this version's changelog once, the first launch after an update.
+  // Gated on `open` so streamdown loads only when there is something to show.
+  const whatsNewOpen = useWhatsNewStore((s) => s.open);
+  useEffect(() => {
+    void useWhatsNewStore.getState().checkOnLaunch();
   }, []);
 
   const sendCd = useCallback(
@@ -2334,6 +2352,11 @@ export default function App() {
           />
 
           <UpdaterDialog />
+          {whatsNewOpen && (
+            <Suspense fallback={null}>
+              <WhatsNewDialog />
+            </Suspense>
+          )}
 
           <TabSearch
             tabs={tabs}
