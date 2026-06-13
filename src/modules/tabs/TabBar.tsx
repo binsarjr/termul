@@ -480,7 +480,7 @@ export const TabBar = memo(function TabBar({
                           onClose(t.id);
                         }
                       }}
-                      className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent hover:opacity-100 group-hover:opacity-60"
+                      className="rounded p-0.5 opacity-0 transition-opacity hover:bg-accent hover:opacity-100 group-hover:opacity-60 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
                       <HugeiconsIcon
                         icon={Cancel01Icon}
