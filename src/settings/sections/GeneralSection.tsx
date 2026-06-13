@@ -237,6 +237,7 @@ export function GeneralSection() {
       <div className="flex flex-col gap-2">
         <Label>Terminal</Label>
         <SettingRow
+          anchorId="use-webgl-renderer"
           title={
             <span className="inline-flex items-center gap-1.5">
               Use WebGL renderer
