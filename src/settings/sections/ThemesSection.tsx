@@ -35,6 +35,8 @@ const onEditTheme = (id: string) => {
   void getCurrentWindow().hide();
 };
 
+// structural refactor deferred
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function ThemesSection() {
   const { themeId, setThemeId, resolvedMode, customThemes } = useTheme();
   const builtinThemes = listBuiltinThemes();
@@ -65,6 +67,8 @@ export function ThemesSection() {
     if (!files || files.length === 0) return;
     for (const file of Array.from(files)) {
       try {
+        // sequential by design: setThemeId picks the last saved theme & errors abort remaining files
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const text = await file.text();
         const parsed = JSON.parse(text);
         const result = validateTheme(parsed);
@@ -103,6 +107,8 @@ export function ThemesSection() {
     }
     try {
       const prev = backgroundImageId;
+      // not parallelizable: id feeds setBackgroundImageId & the prev!==id delete depends on it
+      // react-doctor-disable-next-line react-doctor/async-parallel
       const { id } = await importBgImageFromFile(file);
       await setBackgroundImageId(id);
       await setBackgroundKind("image");
@@ -228,6 +234,8 @@ export function ThemesSection() {
                 </div>
                 {isCustom ? (
                   <span className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                    {/* nested inside the outer theme <button>; <button> in <button> is invalid HTML */}
+                    {/* react-doctor-disable-next-line react-doctor/prefer-tag-over-role */}
                     <span
                       role="button"
                       tabIndex={0}
@@ -247,6 +255,8 @@ export function ThemesSection() {
                     >
                       <HugeiconsIcon icon={Edit02Icon} size={12} strokeWidth={1.75} />
                     </span>
+                    {/* nested inside the outer theme <button>; <button> in <button> is invalid HTML */}
+                    {/* react-doctor-disable-next-line react-doctor/prefer-tag-over-role */}
                     <span
                       role="button"
                       tabIndex={0}

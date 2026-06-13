@@ -123,6 +123,8 @@ export const SourceControlPanel = memo(function SourceControlPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const [focusedRowKey, setFocusedRowKey] = useState<string | null>(null);
 
+  // unmount-only cleanup; only touches a stable ref, so no deps belong here
+  // react-doctor-disable-next-line exhaustive-deps, react-doctor/exhaustive-deps
   useEffect(() => {
     return () => {
       if (refreshAnimationRef.current) {
@@ -248,9 +250,13 @@ export const SourceControlPanel = memo(function SourceControlPanel({
     return map;
   }, [rows]);
 
+  // reacts to the list changing externally (not event logic / not a chain);
+  // drops the focused key once its row disappears from the virtualized list
   useEffect(() => {
     if (!focusedRowKey) return;
+    // react-doctor-disable-next-line no-event-handler, react-doctor/no-event-handler
     if (!rowKeyToIndex.has(focusedRowKey)) {
+      // react-doctor-disable-next-line no-chain-state-updates, react-doctor/no-chain-state-updates
       setFocusedRowKey(null);
     }
   }, [focusedRowKey, rowKeyToIndex]);
@@ -677,6 +683,8 @@ export const SourceControlPanel = memo(function SourceControlPanel({
               <div
                 ref={containerRef}
                 tabIndex={0}
+                // no native listbox element can hold these custom rows
+                // react-doctor-disable-next-line prefer-tag-over-role, react-doctor/prefer-tag-over-role
                 role="listbox"
                 aria-label="Changed files"
                 aria-activedescendant={
@@ -915,6 +923,8 @@ const EntryRow = memo(function EntryRow({
       id={`scm-row-${row.key}`}
       data-focused={focused || undefined}
       data-selected={isSelected || undefined}
+      // no native element pairs with the listbox option for this rich row
+      // react-doctor-disable-next-line prefer-tag-over-role, react-doctor/prefer-tag-over-role
       role="option"
       tabIndex={-1}
       aria-selected={isSelected}
@@ -1051,15 +1061,23 @@ function CommitFeedback({
 }: {
   feedback: { tone: "error" | "success"; message: string } | null;
 }) {
+  // visibleFeedback intentionally persists the last message through its
+  // fade-out, so it cannot be derived inline from the feedback prop
+  // react-doctor-disable-next-line no-derived-useState, react-doctor/no-derived-useState
   const [visibleFeedback, setVisibleFeedback] = useState(feedback);
   const [isVisible, setIsVisible] = useState(false);
 
+  // drives a timed show/hide animation in reaction to feedback; not a plain
+  // prop->state sync, and the timers make useReducer no cleaner here
+  // react-doctor-disable-next-line no-cascading-set-state, react-doctor/no-cascading-set-state
   useEffect(() => {
     if (!feedback) {
+      // react-doctor-disable-next-line no-adjust-state-on-prop-change, react-doctor/no-adjust-state-on-prop-change
       setIsVisible(false);
       return;
     }
     setVisibleFeedback(feedback);
+    // react-doctor-disable-next-line no-adjust-state-on-prop-change, react-doctor/no-adjust-state-on-prop-change
     setIsVisible(true);
     const hideTimer = window.setTimeout(() => setIsVisible(false), 3600);
     const clearTimer = window.setTimeout(() => {

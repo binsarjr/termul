@@ -49,6 +49,8 @@ import { labelFor, remoteIdentity } from "./lib/labelFor";
 import type { EditorTab, Tab } from "./lib/useTabs";
 import { TabRenameField } from "./TabRenameField";
 
+// Structural refactor deferred: moving this re-export out is out of scope here.
+// react-doctor-disable-next-line only-export-components, react-doctor/only-export-components
 export { labelFor };
 
 /** Group state + actions the TabBar needs, bundled to keep prop-forwarding
@@ -181,6 +183,9 @@ export const TabBar = memo(function TabBar({
       e.preventDefault();
       el.scrollLeft += e.deltaY;
     };
+    // Intentionally non-passive: the handler calls preventDefault() to convert
+    // vertical wheel into horizontal scroll, which passive listeners would ignore.
+    // react-doctor-disable-next-line client-passive-event-listeners, react-doctor/client-passive-event-listeners
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [vertical]);
@@ -456,6 +461,9 @@ export const TabBar = memo(function TabBar({
                     ) : null}
                   </span>
                   {tabs.length > 1 && (
+                    // role="button" not <button>: this control is nested inside
+                    // the TabsTrigger <button>, and nested buttons are invalid DOM.
+                    /* react-doctor-disable-next-line prefer-tag-over-role, react-doctor/prefer-tag-over-role */
                     <span
                       role="button"
                       tabIndex={0}

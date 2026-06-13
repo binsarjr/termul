@@ -116,6 +116,8 @@ export const Header = memo(function Header({
       const w = entries[0]?.contentRect.width ?? 0;
       setCompact(w < COMPACT_WIDTH);
     });
+    // measured DOM width is only known post-layout, so it cannot seed useState; this reacts to live resizes
+    // react-doctor-disable-next-line no-initialize-state, react-doctor/no-initialize-state
     ro.observe(el);
     return () => ro.disconnect();
   }, []);

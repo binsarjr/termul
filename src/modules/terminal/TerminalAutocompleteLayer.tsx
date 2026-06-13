@@ -64,8 +64,14 @@ export function TerminalAutocompleteLayer({
 
   const [state, setState] = useState<LayerState | null>(null);
 
+  // The setState calls are mutually exclusive paths in one rAF settle loop
+  // reacting to async getRender()/subscribe data, not a synchronous cascade.
+  // react-doctor-disable-next-line no-cascading-set-state, react-doctor/no-cascading-set-state
   useEffect(() => {
     if (!active) {
+      // Clearing overlay state tears down the paint loop; it is a real side
+      // effect of the async loop, not a derived-state mirror of the prop.
+      // react-doctor-disable-next-line no-adjust-state-on-prop-change, react-doctor/no-adjust-state-on-prop-change
       setState(null);
       return;
     }

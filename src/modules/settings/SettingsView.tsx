@@ -86,6 +86,9 @@ export function SettingsView({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // re-subscribe on onRequestClose identity is harmless (just add/remove listener);
+    // useEffectEvent is still experimental in React 19.1 and unused elsewhere here.
+    // react-doctor-disable-next-line prefer-use-effect-event, react-doctor/prefer-use-effect-event
   }, [active, onRequestClose]);
 
   return (

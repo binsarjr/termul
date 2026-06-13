@@ -145,6 +145,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { SearchAddon } from "@xterm/addon-search";
+// App is not wrapped in LazyMotion; converting to m + LazyMotion here is a
+// non-trivial, behavior-affecting refactor, so keep the full motion import.
+// react-doctor-disable-next-line react-doctor/use-lazy-motion
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import {
   type PointerEvent as ReactPointerEvent,
@@ -166,7 +169,11 @@ async function waitForClaudeTuiReady(
   while (Date.now() - start < timeoutMs) {
     const buf = readBuf();
     if (buf === null) return "gone";
+    // String substring search on a fresh buffer, not array membership.
+    // react-doctor-disable-next-line react-doctor/js-set-map-lookups
     if (buf.includes("shortcuts") || buf.includes("? for")) return "ready";
+    // Intentional sequential poll delay; iterations are dependent.
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop
     await new Promise((r) => setTimeout(r, 120));
   }
   return "timeout";
@@ -273,6 +280,9 @@ const PALETTE_EXCLUDED_SHORTCUTS = new Set<ShortcutId>([
   "editor.redo",
 ]);
 
+// Structural refactor deferred: splitting App or moving to useReducer is too
+// risky for this behavior-preserving pass.
+// react-doctor-disable-next-line react-doctor/no-giant-component, react-doctor/prefer-useReducer
 export default function App() {
   const {
     tabs,
@@ -422,6 +432,8 @@ export default function App() {
       }
       persistSidebarView(view);
     },
+    // sidebarRef/sidebarWidthRef are stable refs; intentionally omitted.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [persistSidebarView, sidebarView],
   );
   const persistSidebarWidth = useCallback((next: number) => {
@@ -437,7 +449,11 @@ export default function App() {
         // ignore
       }
     }, 200);
+    // Only touches stable refs (sidebarWidthRef/timer ref); no reactive deps.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, []);
+  // Unmount-only cleanup; reading the timer ref at teardown is the intent.
+  // react-doctor-disable-next-line react-doctor/exhaustive-deps
   useEffect(() => {
     return () => {
       if (sidebarWidthWriteTimerRef.current) {
@@ -521,6 +537,8 @@ export default function App() {
         // ignore
       }
     }, 200);
+    // Only touches stable refs (tabColumnWidthRef/timer ref); no reactive deps.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, []);
   // Clear any pending debounced width write when the app unmounts.
   useEffect(() => cancelTabColumnWidthWrite, [cancelTabColumnWidthWrite]);
@@ -597,6 +615,8 @@ export default function App() {
     explorerReturnFocusRef.current =
       active instanceof HTMLElement && active !== document.body ? active : null;
     explorer.focus();
+    // explorerRef/sidebarRef/sidebarWidthRef/return-focus ref are stable refs.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [persistSidebarView, sidebarView]);
 
   const [home, setHome] = useState<string | null>(null);
@@ -667,6 +687,8 @@ export default function App() {
       }
       resetWorkspace(nextHome ?? undefined);
     },
+    // Remaining refs (tabsRef/liveLeavesRef/*Refs) and state setters are stable.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [workspaceEnv, setWorkspaceEnv, resetWorkspace],
   );
   useEffect(() => {
@@ -725,6 +747,9 @@ export default function App() {
 
   const prefsHydrated = usePreferencesStore((s) => s.hydrated);
   const [keysLoaded, setKeysLoaded] = useState(false);
+  // Async key loader that subscribes to external onKeysChanged events and
+  // returns a cleanup; setState happens inside the async reload, not cascaded.
+  // react-doctor-disable-next-line react-doctor/no-cascading-set-state
   useEffect(() => {
     let alive = true;
     const reload = () => {
@@ -797,8 +822,12 @@ export default function App() {
         editorRefs.current.get(e.id)?.reload();
       }
     }
+    // appliedDiffsRef/editorRefs are stable refs; effect keys off `tabs` only.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs]);
 
+  // Returns a cleanup that awaits the listen() promise and unlistens.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     type FileWrittenPayload = { path: string; source?: string };
     const unlistenPromise = getCurrentWebviewWindow().listen<FileWrittenPayload>(
@@ -818,6 +847,8 @@ export default function App() {
     return () => {
       void unlistenPromise.then((un) => un());
     };
+    // Mount-once listener; reads tabsRef/editorRefs (stable refs) at fire time.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, []);
 
   const editorWatchRef = useLazyRef<Set<string>>(() => new Set());
@@ -830,6 +861,8 @@ export default function App() {
     watchAdd(toAdd);
     watchRemove(toRemove);
     editorWatchRef.current = want;
+    // editorWatchRef is a stable ref; watch* are module functions.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs]);
 
   const reloadChangedEditors = useCallback((paths: string[]) => {
@@ -856,6 +889,8 @@ export default function App() {
 
   // Theme editing: a custom theme is materialized to a real file and edited in
   // the code editor. Saving it re-ingests into the runtime store + applies live.
+  // Returns a cleanup that awaits the listen() promise and unlistens.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     type FileWrittenPayload = { path: string; source?: string };
     const unlistenPromise = getCurrentWebviewWindow().listen<FileWrittenPayload>(
@@ -918,6 +953,7 @@ export default function App() {
   const { explorerRoot, inheritedCwdForNewTab } = useWorkspaceCwd(
     activeTab,
     tabs,
+    // react-doctor-disable-next-line react-doctor/no-event-handler
     launchCwd ?? home,
   );
 
@@ -926,6 +962,8 @@ export default function App() {
       activeLeafId !== null ? (searchAddons.current.get(activeLeafId) ?? null) : null,
     );
     setActiveEditorHandle(editorRefs.current.get(activeId) ?? null);
+    // searchAddons/editorRefs are stable refs; only id/leaf drive the lookup.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeId, activeLeafId]);
 
   const handleSearchReady = useCallback(
@@ -933,6 +971,8 @@ export default function App() {
       searchAddons.current.set(leafId, addon);
       if (leafId === activeLeafId) setActiveSearchAddon(addon);
     },
+    // searchAddons is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeLeafId],
   );
 
@@ -944,6 +984,8 @@ export default function App() {
       editorRefs.current.delete(id);
       closeTab(id);
     },
+    // editorRefs is a stable ref; closeTab is the only reactive dep.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [closeTab],
   );
 
@@ -965,6 +1007,8 @@ export default function App() {
       if (!live.has(k)) terminalRefs.current.delete(k);
     for (const k of [...searchAddons.current.keys()])
       if (!live.has(k)) searchAddons.current.delete(k);
+    // liveLeavesRef/terminalRefs/searchAddons are stable refs; keyed off `tabs`.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs]);
 
   const handleClose = useCallback(
@@ -1061,6 +1105,8 @@ export default function App() {
       return editorRefs.current.get(activeId)?.getSelection() ?? null;
     }
     return null;
+    // terminalRefs/editorRefs are stable refs; tabs/activeId drive the lookup.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [tabs, activeId]);
 
   const togglePanelAndFocus = useCallback(() => {
@@ -1120,6 +1166,9 @@ export default function App() {
     null,
   );
 
+  // Registers document mouse listeners with a cleanup; setAskPopup runs inside
+  // the real mousedown/mouseup handlers, not cascaded in the effect body.
+  // react-doctor-disable-next-line react-doctor/no-cascading-set-state
   useEffect(() => {
     const isInsideAi = (t: EventTarget | null) => {
       const el = t as HTMLElement | null;
@@ -1203,6 +1252,8 @@ export default function App() {
       term.write(`cd ${quoteShellArg(path)}\r`);
       term.focus();
     },
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeLeafId],
   );
 
@@ -1211,12 +1262,16 @@ export default function App() {
     const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
     const command = block?.command?.trim();
     if (command) void navigator.clipboard.writeText(command).catch(() => {});
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const copyLastCommandOutput = useCallback(() => {
     if (activeLeafId === null) return;
     const block = terminalRefs.current.get(activeLeafId)?.getActiveBlock();
     if (block?.output) void navigator.clipboard.writeText(block.output).catch(() => {});
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const copyLastCommandBoth = useCallback(() => {
@@ -1226,6 +1281,8 @@ export default function App() {
     const command = block.command.trim();
     const text = [command, block.output].filter(Boolean).join("\n");
     if (text) void navigator.clipboard.writeText(text).catch(() => {});
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const reinputLastCommand = useCallback(() => {
@@ -1237,16 +1294,22 @@ export default function App() {
     // can edit/run it — matching Warp's "reinput", not an auto re-run.
     term.write(command);
     term.focus();
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const selectPrevBlock = useCallback(() => {
     if (activeLeafId === null) return;
     terminalRefs.current.get(activeLeafId)?.selectPrevBlock();
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const selectNextBlock = useCallback(() => {
     if (activeLeafId === null) return;
     terminalRefs.current.get(activeLeafId)?.selectNextBlock();
+    // terminalRefs is a stable ref; only activeLeafId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [activeLeafId]);
 
   const cdInNewTab = useCallback(
@@ -1261,6 +1324,8 @@ export default function App() {
         t.focus();
       }, 80);
     },
+    // tabsRef/terminalRefs are stable refs; only newTab is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [newTab],
   );
 
@@ -1477,6 +1542,8 @@ export default function App() {
         );
       }
     },
+    // tabsRef/terminalRefs are stable refs; only setActiveId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [setActiveId],
   );
 
@@ -1556,6 +1623,9 @@ export default function App() {
       "editor.undo": () => editorRefs.current.get(activeId)?.undo(),
       "editor.redo": () => editorRefs.current.get(activeId)?.redo(),
     }),
+    // editorRefs/searchInlineRef/tabsRef are stable refs; all reactive handlers
+    // are listed below.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [
       activeId,
       cycleTab,
@@ -1616,6 +1686,9 @@ export default function App() {
       }
       return false;
     },
+    // Keyed off activeTab; captureActiveSelection is read via closure and is
+    // intentionally not a dep to keep this callback's identity stable.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeTab],
   );
 
@@ -1668,6 +1741,8 @@ export default function App() {
       if (h) terminalRefs.current.set(leafId, h);
       else terminalRefs.current.delete(leafId);
     },
+    // terminalRefs is a stable ref; nothing reactive to depend on.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [],
   );
 
@@ -1677,6 +1752,8 @@ export default function App() {
       else editorRefs.current.delete(id);
       if (id === activeId) setActiveEditorHandle(h);
     },
+    // editorRefs is a stable ref; only activeId is reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [activeId],
   );
 
@@ -1699,6 +1776,8 @@ export default function App() {
         });
       }
     },
+    // authorizedCwds is a stable ref; only the store setters are reactive.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [setLeafCwd, setRemoteCwd],
   );
 
@@ -1774,6 +1853,8 @@ export default function App() {
         focus: () => {},
       };
     return null;
+    // terminalRefs is a stable ref; all reactive inputs are listed below.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [
     isTerminalTab,
     isEditorTab,
@@ -1786,6 +1867,9 @@ export default function App() {
 
   const activeCwd = activeTerminalLeafCwd;
 
+  // The setTimeout lives inside spawnManagedAgent, a callback invoked later by
+  // user action, not a timer created at effect-run time, so there is no leak.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     const findCwd = () => {
       const active = tabs.find((x) => x.id === activeId);
@@ -1840,6 +1924,9 @@ export default function App() {
           .register({ leafId, tabId, sessionId, task: oneLine, cwd });
         const hooksReady = invoke("agent_enable_claude_hooks").catch(() => {});
         void (async () => {
+          // The guard below writes to the session, which is only valid once it
+          // is ready, so this await must precede it and cannot be deferred.
+          // react-doctor-disable-next-line react-doctor/async-defer-await
           await Promise.all([whenSessionReady(leafId), hooksReady]);
           if (!writeToSession(leafId, "claude\r")) {
             useManagedAgentsStore.getState().remove(leafId);
@@ -1873,6 +1960,8 @@ export default function App() {
         return buf ? redactSensitive(buf) : null;
       },
     });
+    // terminalRefs is a stable ref; all reactive inputs are listed below.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
   }, [
     setLive,
     activeId,

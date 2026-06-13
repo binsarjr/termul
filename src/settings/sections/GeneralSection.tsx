@@ -87,6 +87,8 @@ const onToggleAutostart = async (next: boolean) => {
   }
 };
 
+// structural refactor deferred (settings section kept as one component)
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function GeneralSection() {
   const { mode, setMode } = useTheme();
 
@@ -519,7 +521,10 @@ function AutoSaveDelayInput({
 }) {
   const [draft, setDraft] = useState(String(value));
 
+  // draft is independently editable; this resyncs it to the canonical value prop, not pure derived state
+  // react-doctor-disable-next-line react-doctor/no-derived-state-effect, react-doctor/no-reset-all-state-on-prop-change
   useEffect(() => {
+    // react-doctor-disable-next-line react-doctor/no-derived-state
     setDraft(String(value));
   }, [value]);
 

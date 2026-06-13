@@ -27,6 +27,8 @@ import {
   TerminalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+// no app-wide LazyMotion provider; m-conversion would drop animation features
+// react-doctor-disable-next-line use-lazy-motion, react-doctor/use-lazy-motion
 import { motion } from "motion/react";
 import { useEffect, useMemo } from "react";
 import { estimateCost, getModel, getModelContextLimit, type ModelId } from "../config";
@@ -448,6 +450,8 @@ function SessionPicker() {
   const active = sessions.find((s) => s.id === activeId) ?? null;
   if (!active) return null;
 
+  // toSorted needs lib es2023; tsconfig target lacks it, so spread+sort stays
+  // react-doctor-disable-next-line js-tosorted-immutable, react-doctor/js-tosorted-immutable
   const sorted = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
 
   return (

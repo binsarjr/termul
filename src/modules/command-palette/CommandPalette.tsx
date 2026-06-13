@@ -74,6 +74,9 @@ function fuzzyScore(text: string, q: string): number {
   if (sub !== -1) return sub;
   let ti = 0;
   for (let i = 0; i < q.length; i++) {
+    // ordered subsequence match: string indexOf with an advancing offset; a Set
+    // would drop the positional/order info this scorer depends on.
+    // react-doctor-disable-next-line js-set-map-lookups, react-doctor/js-set-map-lookups
     ti = t.indexOf(q[i], ti);
     if (ti === -1) return -1;
     ti += 1;

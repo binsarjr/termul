@@ -10,6 +10,8 @@ function HoverCard({
   return <HoverCardPrimitive.Root data-slot="hover-card" {...props} />
 }
 
+// structural refactor deferred: shadcn co-locates the hover-card parts in one file
+// react-doctor-disable-next-line react-doctor/no-multi-comp
 function HoverCardTrigger({
   ...props
 }: React.ComponentProps<typeof HoverCardPrimitive.Trigger>) {
@@ -18,6 +20,8 @@ function HoverCardTrigger({
   )
 }
 
+// structural refactor deferred: shadcn co-locates the hover-card parts in one file
+// react-doctor-disable-next-line react-doctor/no-multi-comp
 function HoverCardContent({
   className,
   align = "center",

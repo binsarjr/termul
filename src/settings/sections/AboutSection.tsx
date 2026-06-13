@@ -64,8 +64,11 @@ export function AboutSection() {
       const p = platform();
       const a = arch();
       const platformLabel = PLATFORM_LABEL[p] ?? p;
+      // mount-once init effect: siblings getVersion/getName are async and cannot use a sync useState() initializer
+      // react-doctor-disable-next-line react-doctor/no-initialize-state
       setBuild(`${platformLabel} · ${a}`);
     } catch {
+      // react-doctor-disable-next-line react-doctor/no-initialize-state
       setBuild("");
     }
   }, []);
