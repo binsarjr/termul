@@ -10,6 +10,8 @@ dialog after an update).
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-06-14
+
 ### Added
 
 - Left-side vertical tab bar as an alternative to the top tab strip.
