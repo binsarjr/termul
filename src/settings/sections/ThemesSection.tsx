@@ -233,14 +233,14 @@ export function ThemesSection() {
                   ) : null}
                 </div>
                 {isCustom ? (
-                  <span className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                  <span className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
                     {/* nested inside the outer theme <button>; <button> in <button> is invalid HTML */}
                     {/* react-doctor-disable-next-line react-doctor/prefer-tag-over-role */}
                     <span
                       role="button"
                       tabIndex={0}
                       aria-label={`Edit ${t.name}`}
-                      className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={(e) => {
                         e.stopPropagation();
                         onEditTheme(t.id);
@@ -261,7 +261,7 @@ export function ThemesSection() {
                       role="button"
                       tabIndex={0}
                       aria-label={`Remove ${t.name}`}
-                      className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
+                      className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       onClick={(e) => {
                         e.stopPropagation();
                         void onRemoveCustomTheme(t.id);
