@@ -10,6 +10,33 @@ dialog after an update).
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-06-18
+
+### Added
+
+- Open any drive or folder as the workspace: a folder button in the status bar
+  and a bindable "Open folder" command (Command palette and Settings →
+  Shortcuts) open the native OS picker and re-root the session there. This
+  unblocks keeping code on a drive other than the home directory, notably on
+  Windows.
+
+### Fixed
+
+- The breadcrumb no longer labels a manually opened directory as "Home". It
+  shows the real path segments, and the "Home" badge appears only when the
+  current directory is genuinely under your home directory.
+
+## [0.3.9] - 2026-06-14
+
+### Fixed
+
+- Resize handles work again: the pane, sidebar, and tab-bar dividers had become
+  invisible and could not be dragged.
+- Settings search keeps its highlight in range, so pressing Enter always opens
+  the highlighted result instead of doing nothing.
+- The tab-close and theme Edit/Remove buttons now show a visible focus ring when
+  reached by keyboard, instead of being invisible focus stops.
+
 ## [0.3.8] - 2026-06-14
 
 ### Added

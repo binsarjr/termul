@@ -36,6 +36,7 @@ export type ShortcutId =
   | "palette.open"
   | "shortcuts.open"
   | "settings.open"
+  | "workspace.openFolder"
   | "sidebar.toggle"
   | "editor.undo"
   | "editor.redo";
@@ -78,6 +79,14 @@ export const SHORTCUTS: Shortcut[] = [
     label: "Command palette",
     group: "General",
     defaultBindings: [{ [MOD_PROP]: true, key: "k" }],
+  },
+  {
+    id: "workspace.openFolder",
+    label: "Open folder…",
+    group: "General",
+    // No default key — reachable from the command palette and the explorer
+    // header/empty-state buttons. Bindable in settings.
+    defaultBindings: [],
   },
   {
     id: "shortcuts.open",

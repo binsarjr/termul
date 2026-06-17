@@ -20,6 +20,8 @@
     "core:event:allow-unlisten",
     "opener:default",
     "opener:allow-open-path",
+    "dialog:default",
+    "dialog:allow-open",
     "log:default",
     "os:default",
     "os:allow-hostname",

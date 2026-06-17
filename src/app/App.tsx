@@ -48,6 +48,7 @@ import {
   type GitHistorySearchHandle,
 } from "@/modules/git-history";
 import { getLaunchDir } from "@/lib/launchDir";
+import { pickDirectory } from "@/lib/pickDirectory";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { useLazyRef } from "@/lib/useLazyRef";
 import { useZoom } from "@/lib/useZoom";
@@ -702,6 +703,52 @@ export default function App() {
     // react-doctor-disable-next-line react-doctor/exhaustive-deps
     [workspaceEnv, setWorkspaceEnv, resetWorkspace],
   );
+
+  // Native folder picker → re-root the workspace at any drive/folder (e.g.
+  // D:\code). Without this the workspace is pinned to the home-dir fallback,
+  // which on Windows is always C:\Users\<user>.
+  const openWorkspaceFolder = useCallback(async () => {
+    const dirty = tabsRef.current.some((t) => t.kind === "editor" && t.dirty);
+    if (dirty) {
+      window.alert("Save or close unsaved editor tabs before opening a folder.");
+      return;
+    }
+
+    let picked: string | null;
+    try {
+      picked = await pickDirectory(home ?? undefined);
+    } catch (e) {
+      window.alert(`Couldn't open the folder picker: ${String(e)}`);
+      return;
+    }
+    if (!picked) return; // user cancelled — leave the workspace untouched
+
+    // A folder picked from the native dialog is always a local Windows/Unix
+    // path; switch to the Local workspace before authorizing so the path isn't
+    // run through WSL UNC mapping.
+    setWorkspaceEnv(LOCAL_WORKSPACE);
+    let root = picked;
+    try {
+      root = await native.workspaceAuthorize(picked);
+    } catch (e) {
+      window.alert(`Couldn't open folder: ${String(e)}`);
+      return;
+    }
+
+    for (const id of liveLeavesRef.current) disposeSession(id);
+    searchAddons.current.clear();
+    terminalRefs.current.clear();
+    editorRefs.current.clear();
+    setActiveSearchAddon(null);
+    setActiveEditorHandle(null);
+    // Intentionally NOT setHome(root): `home` stays the real OS home so the
+    // breadcrumb shows the actual path (e.g. D: / code) and only renders the
+    // "Home" badge when the cwd is genuinely under the user's home dir.
+    setLaunchCwd(root);
+    resetWorkspace(root);
+    // Refs (tabsRef/liveLeavesRef/*Refs) and state setters are stable.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
+  }, [home, setWorkspaceEnv, resetWorkspace]);
   useEffect(() => {
     native
       .workspaceCurrentDir()
@@ -1626,6 +1673,9 @@ export default function App() {
       "ai.toggle": togglePanelAndFocus,
       "ai.askSelection": askFromSelection,
       "palette.open": () => setPaletteOpen((v) => !v),
+      "workspace.openFolder": () => {
+        void openWorkspaceFolder();
+      },
       "shortcuts.open": () => setShortcutsOpen((v) => !v),
       "settings.open": () => {
         const settingsTab = tabsRef.current.find((t) => t.kind === "settings");
@@ -1650,6 +1700,7 @@ export default function App() {
       handleCloseTabOrPane,
       openNewTab,
       openNewPrivateTab,
+      openWorkspaceFolder,
       openSettingsTab,
       closeSettingsTab,
       setActiveId,
@@ -2314,6 +2365,7 @@ export default function App() {
             home={home}
             onCd={sendCd}
             onWorkspaceChange={switchWorkspace}
+            onOpenFolder={openWorkspaceFolder}
             onOpenMini={openMini}
             hasComposer={hasComposer}
             privateActive={

@@ -9,7 +9,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CloudServerIcon, IncognitoIcon } from "@hugeicons/core-free-icons";
+import {
+  CloudServerIcon,
+  FolderOpenIcon,
+  IncognitoIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CwdBreadcrumb } from "./CwdBreadcrumb";
 import { WorkspaceEnvSelector } from "./WorkspaceEnvSelector";
@@ -28,6 +32,8 @@ type Props = {
   home: string | null;
   onCd: (path: string) => void;
   onWorkspaceChange: (env: WorkspaceEnv) => void;
+  /** Open the native folder picker and re-root the workspace at the choice. */
+  onOpenFolder: () => void;
   onOpenMini: () => void;
   /** Only rendered when the AI panel is open and a key is loaded. */
   hasComposer: boolean;
@@ -42,6 +48,7 @@ export function StatusBar({
   home,
   onCd,
   onWorkspaceChange,
+  onOpenFolder,
   onOpenMini,
   hasComposer,
   privateActive,
@@ -57,6 +64,22 @@ export function StatusBar({
     <footer className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-border/60 bg-card/60 px-3 text-[11px]">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <WorkspaceEnvSelector onSelect={onWorkspaceChange} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onOpenFolder}
+              className="flex h-6 shrink-0 items-center justify-center rounded-sm px-1 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+              title="Open folder"
+              aria-label="Open folder"
+            >
+              <HugeiconsIcon icon={FolderOpenIcon} size={13} strokeWidth={1.75} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-[11px]">
+            Open a folder on any drive as the workspace
+          </TooltipContent>
+        </Tooltip>
         <CwdBreadcrumb cwd={cwd} filePath={filePath} home={home} onCd={onCd} />
         {remoteLabel ? (
           <Tooltip>

@@ -1,7 +1,7 @@
 {
   "name": "termul",
   "private": true,
-  "version": "0.3.9",
+  "version": "0.3.10",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -51,6 +51,7 @@
     "@tanstack/react-virtual": "^3.13.24",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "~2.5.1",
+    "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-log": "~2.8.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2",
